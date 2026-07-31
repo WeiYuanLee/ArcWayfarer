@@ -63,35 +63,32 @@ Or start everything at once from the repo root:
 
 ## Building for distribution
 
-### 1. Freeze the backend
+PyInstaller does **not** cross-compile, so the backend is built separately per chip architecture (arm64 for Apple Silicon, x64 for Intel) and each architecture gets its own `.dmg` — no `lipo`-merged universal binary.
 
-PyInstaller does **not** cross-compile — you must run it on each chip architecture separately:
+### Automated: GitHub Actions (recommended)
 
-```bash
-# On an Intel Mac
-cd backend
-pyinstaller arcwayfarer-backend.spec --noconfirm --distpath ../dist-py-x64
-
-# On an Apple Silicon Mac
-cd backend
-pyinstaller arcwayfarer-backend.spec --noconfirm --distpath ../dist-py-arm64
-```
-
-Combine the two into a single universal binary with `lipo`, or simply publish two separate builds (one per architecture) if that's simpler for your workflow.
-
-### 2. Build the frontend and package with Electron
+Push a version tag and CI builds both architectures and publishes a GitHub Release automatically:
 
 ```bash
-cd frontend
-npm run build
-npm run dist          # electron-builder --mac, produces a .dmg in frontend/release/
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-`electron-builder`'s `mac.target.arch` in `package.json` is set to `universal`, which requires both the x64 and arm64 backend binaries to be present before packaging.
+`.github/workflows/release.yml` runs two matrix jobs — `macos-14` (Apple Silicon) and `macos-13` (Intel) — each running `scripts/build-mac.sh --arch <arch>`, then attaches both `.dmg` files to a GitHub Release for that tag.
 
-### 3. Distributing an unsigned build
+### Manual local build
 
-This project is not currently signed with an Apple Developer certificate. When a user downloads and opens the `.dmg`/`.app`, macOS Gatekeeper will block it with "cannot be opened because the developer cannot be verified." To run it anyway:
+On a Mac matching the architecture you want to build for:
+
+```bash
+scripts/build-mac.sh --arch arm64   # or: --arch x64
+```
+
+This freezes the backend with PyInstaller (`backend/arcwayfarer-backend.spec`), builds the frontend, and runs `electron-builder --mac` for that architecture. Output lands in `frontend/release/*.dmg`. To get both `.dmg` files from one machine, you'd need a second Python install for the other architecture (e.g. an x64 Python via Rosetta on Apple Silicon) — the GitHub Actions route above avoids this entirely by building each architecture on its native runner.
+
+### Distributing an unsigned build
+
+This project is not currently signed with an Apple Developer certificate (`mac.identity` is `null` in `package.json`, and CI builds with `CSC_IDENTITY_AUTO_DISCOVERY=false`). When a user downloads and opens the `.dmg`/`.app`, macOS Gatekeeper will block it with "cannot be opened because the developer cannot be verified." To run it anyway:
 
 1. Right-click (or Control-click) the app → **Open** → confirm **Open** in the dialog that appears.
 2. Or: **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the blocked app notice.
