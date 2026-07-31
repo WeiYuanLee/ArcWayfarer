@@ -1,0 +1,69 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from core import joystick
+
+router = APIRouter()
+
+_connections: set[WebSocket] = set()
+
+
+@router.websocket("/ws/status")
+async def ws_status(websocket: WebSocket) -> None:
+    await websocket.accept()
+    _connections.add(websocket)
+    try:
+        while True:
+            raw = await websocket.receive_json()
+            await _handle_message(raw)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _connections.discard(websocket)
+
+
+async def _handle_message(raw: dict) -> None:
+    msg_type = raw.get("type")
+    udid = raw.get("udid")
+    if not udid:
+        return
+    if msg_type == "joystick_input":
+        data = raw.get("data", {})
+        joystick.move_joystick(udid, data.get("direction", 0.0), data.get("intensity", 0.0))
+    elif msg_type == "joystick_stop":
+        await joystick.stop_joystick(udid)
+
+
+async def _broadcast(message: dict) -> None:
+    dead = []
+    for connection in _connections:
+        try:
+            await connection.send_json(message)
+        except Exception:  # noqa: BLE001 - connection may have dropped mid-broadcast
+            dead.append(connection)
+    for connection in dead:
+        _connections.discard(connection)
+
+
+async def broadcast_position(
+    udid: str,
+    lat: float,
+    lng: float,
+    speed_mps: float = 0.0,
+    eta_seconds: float = 0.0,
+    stop_index: int | None = None,
+) -> None:
+    await _broadcast(
+        {
+            "type": "position",
+            "udid": udid,
+            "lat": lat,
+            "lng": lng,
+            "speed_mps": speed_mps,
+            "eta_seconds": eta_seconds,
+            "stop_index": stop_index,
+        }
+    )
+
+
+async def broadcast_state(udid: str, state: str) -> None:
+    await _broadcast({"type": "state", "udid": udid, "state": state})

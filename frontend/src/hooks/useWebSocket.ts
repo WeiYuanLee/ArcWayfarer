@@ -1,0 +1,60 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { WS_URL } from '../services/api'
+
+type LivePosition = { lat: number; lng: number; speedMps: number; etaSeconds: number; stopIndex: number | null }
+type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
+type PositionMessage = {
+  type: 'position'
+  udid: string
+  lat: number
+  lng: number
+  speed_mps: number
+  eta_seconds: number
+  stop_index: number | null
+}
+type StateMessage = { type: 'state'; udid: string; state: DeviceState }
+type Message = PositionMessage | StateMessage
+
+export function useWebSocket() {
+  const [connected, setConnected] = useState(false)
+  const [positions, setPositions] = useState<Record<string, LivePosition>>({})
+  const [states, setStates] = useState<Record<string, DeviceState>>({})
+  const socketRef = useRef<WebSocket | null>(null)
+
+  useEffect(() => {
+    const socket = new WebSocket(WS_URL)
+    socketRef.current = socket
+
+    socket.onopen = () => setConnected(true)
+    socket.onclose = () => setConnected(false)
+    socket.onmessage = (event) => {
+      try {
+        const message: Message = JSON.parse(event.data)
+        if (message.type === 'position') {
+          setPositions((prev) => ({
+            ...prev,
+            [message.udid]: {
+              lat: message.lat,
+              lng: message.lng,
+              speedMps: message.speed_mps,
+              etaSeconds: message.eta_seconds,
+              stopIndex: message.stop_index,
+            },
+          }))
+        } else if (message.type === 'state') {
+          setStates((prev) => ({ ...prev, [message.udid]: message.state }))
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    }
+
+    return () => socket.close()
+  }, [])
+
+  const send = useCallback((type: string, data: unknown, udid?: string) => {
+    socketRef.current?.send(JSON.stringify({ type, data, udid }))
+  }, [])
+
+  return { connected, positions, states, send }
+}

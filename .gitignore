@@ -1,0 +1,26 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/release/
+
+# Packaging output
+dist-py/
+build-py/
+*.dmg
+*.zip
+
+# App runtime data
+.arcwayfarer/
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

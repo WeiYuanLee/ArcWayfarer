@@ -1,0 +1,100 @@
+import asyncio
+
+from pymobiledevice3.exceptions import ConnectionTerminatedError
+from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
+from pymobiledevice3.services.simulate_location import DtSimulateLocation
+
+from config import MOUNT_TIMEOUT_SECONDS
+from core import device_manager
+
+_DEAD_CONNECTION_ERRORS = (ConnectionTerminatedError, ConnectionError, OSError)
+
+
+class DeviceSession:
+    """A persistent location-simulation connection for one device.
+
+    Lives as long as the device is usable, not as long as any single Teleport/Navigate
+    call. iOS 17+'s DVT-based simulation only stays in effect while its RSD connection
+    is open, so every mode reuses the same session instead of opening/closing per call.
+    """
+
+    def __init__(self, udid, transport, backend, dvt_cm=None, ls_cm=None):
+        self.udid = udid
+        self.transport = transport
+        self._backend = backend
+        self._dvt_cm = dvt_cm
+        self._ls_cm = ls_cm
+
+    async def set(self, lat: float, lng: float) -> None:
+        try:
+            await self._backend.set(lat, lng)
+        except _DEAD_CONNECTION_ERRORS:
+            _sessions.pop(self.udid, None)
+            raise
+
+    async def clear(self) -> None:
+        try:
+            await self._backend.clear()
+        except _DEAD_CONNECTION_ERRORS:
+            _sessions.pop(self.udid, None)
+            raise
+
+    async def close(self) -> None:
+        if self._ls_cm is not None:
+            await self._ls_cm.__aexit__(None, None, None)
+        if self._dvt_cm is not None:
+            await self._dvt_cm.__aexit__(None, None, None)
+
+
+_sessions: dict[str, DeviceSession] = {}
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+async def get_session(udid: str) -> DeviceSession:
+    existing = _sessions.get(udid)
+    if existing is not None:
+        return existing
+
+    lock = _session_locks.setdefault(udid, asyncio.Lock())
+    async with lock:
+        # Re-check now that we hold the lock — another concurrent call for the same
+        # udid may have already created the session while we were waiting.
+        existing = _sessions.get(udid)
+        if existing is not None:
+            return existing
+
+        device = await device_manager.get_device(udid)
+        if device.status != "ready":
+            raise RuntimeError(device.detail or f"Device is not ready (status: {device.status}).")
+
+        lockdown = await device_manager.get_lockdown(udid)
+        try:
+            await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError as e:
+            raise RuntimeError(
+                "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
+            ) from e
+
+        if device.transport == "lockdown":
+            session = DeviceSession(udid, transport="lockdown", backend=DtSimulateLocation(lockdown))
+        else:
+            rsd = await device_manager.get_rsd(udid)
+            dvt_cm = DvtProvider(rsd)
+            dvt = await dvt_cm.__aenter__()
+            ls_cm = LocationSimulation(dvt)
+            location_simulation = await ls_cm.__aenter__()
+            session = DeviceSession(udid, transport="rsd", backend=location_simulation, dvt_cm=dvt_cm, ls_cm=ls_cm)
+
+        _sessions[udid] = session
+        return session
+
+
+async def close_session(udid: str) -> None:
+    session = _sessions.pop(udid, None)
+    if session is not None:
+        await session.close()
+
+
+def has_session(udid: str) -> bool:
+    return udid in _sessions
