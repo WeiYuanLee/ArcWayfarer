@@ -1,0 +1,63 @@
+name: Release macOS builds
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build ${{ matrix.arch }} dmg
+        run: bash scripts/build-mac.sh --arch ${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: frontend/release/*.dmg
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.dmg
+          body: |
+            ## 下載
+
+            - **Apple Silicon (M 系列晶片)**：下載檔名包含 `arm64` 的 `.dmg`
+            - **Intel 晶片**：下載檔名包含 `x64` 的 `.dmg`
+
+            不確定自己是哪種晶片：點左上角 蘋果選單 → 關於此 Mac，看「晶片」或「處理器」欄位。
+
+            ## 第一次開啟
+
+            這個版本沒有 Apple 開發者簽章，macOS Gatekeeper 會擋下第一次開啟。請在「應用程式」資料夾裡對 ArcWayfarer **按右鍵 → 開啟**（不要用雙擊），跳出的警告視窗再點一次「開啟」即可，之後就能正常雙擊啟動。
