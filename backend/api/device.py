@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from pymobiledevice3.exceptions import DeviceNotFoundError
 
 from core import device_manager
 from models.schemas import DeviceInfo
@@ -49,9 +50,14 @@ async def amfi_reveal_developer_mode(udid: str) -> dict:
             detail={"code": "amfi_not_available", "message": f"Failed to load AMFI service: {exc}"},
         )
 
-    lockdown = await device_manager.get_lockdown(udid)
     try:
+        lockdown = await device_manager.get_lockdown(udid)
         await AmfiService(lockdown).reveal_developer_mode_option_in_ui()
+    except DeviceNotFoundError:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "device_not_found_usbmux", "message": "Device must be connected via USB for AMFI reveal."},
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500,

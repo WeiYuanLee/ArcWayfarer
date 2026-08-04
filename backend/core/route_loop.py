@@ -6,23 +6,36 @@ from services.interpolator import interpolate
 
 
 async def _build_loop_playback(
-    nav_mode: NavMode, waypoints: list[tuple[float, float]], speed_mps: float, tick_seconds: float
-) -> tuple[list[tuple[float, float]], frozenset[int]]:
+    nav_mode: NavMode,
+    waypoints: list[tuple[float, float]],
+    speed_mps: float,
+    tick_seconds: float,
+    straight_line: bool = False,
+) -> tuple[list[tuple[float, float]], frozenset[int], dict[int, int]]:
     """Route + interpolate each leg separately so we know which tick index lands on each waypoint."""
     playback: list[tuple[float, float]] = []
     station_indices: set[int] = set()
+    stop_at: dict[int, int] = {0: 1}  # tick 0 = arrived at stop 1 (starting waypoint)
     n = len(waypoints)
     for i in range(n):
         start = waypoints[i]
         end = waypoints[(i + 1) % n]
-        leg_route = await route_service.fetch_route(nav_mode, start, end)
+        if straight_line:
+            leg_route = [start, end]
+        else:
+            try:
+                leg_route = await route_service.fetch_route(nav_mode, start, end)
+            except Exception:
+                leg_route = [start, end]
         leg_playback = interpolate(leg_route, speed_mps, tick_seconds)
         if playback and leg_playback:
             leg_playback = leg_playback[1:]  # drop the point shared with the previous leg's end
         playback.extend(leg_playback)
+        is_last_leg = i == n - 1
         if playback:
+            stop_at[len(playback) - 1] = 1 if is_last_leg else i + 2
             station_indices.add(len(playback) - 1)
-    return playback, frozenset(station_indices)
+    return playback, frozenset(station_indices), stop_at
 
 
 async def start_route_loop(
@@ -32,6 +45,7 @@ async def start_route_loop(
     pause_enabled: bool = False,
     pause_min: float = 5.0,
     pause_max: float = 20.0,
+    straight_line: bool = False,
     custom_speed_kmh: float | None = None,
 ) -> list[tuple[float, float]]:
     if len(waypoints) < 2:
@@ -40,8 +54,8 @@ async def start_route_loop(
     await device_manager.get_device(udid)  # raises ValueError before we schedule anything
     await simulation_engine.ensure_stopped(udid)
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
-    playback_points, station_indices = await _build_loop_playback(
-        nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS
+    playback_points, station_indices, stop_at = await _build_loop_playback(
+        nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS, straight_line
     )
     pause_range = (pause_min, pause_max) if pause_enabled else (0.0, 0.0)
     simulation_engine.start(
@@ -52,6 +66,7 @@ async def start_route_loop(
         loop=True,
         station_indices=station_indices,
         station_pause_range=pause_range,
+        stop_at=stop_at,
     )
     return playback_points
 

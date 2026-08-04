@@ -3,7 +3,7 @@ from pymobiledevice3.exceptions import AlreadyMountedError, TunneldConnectionErr
 from pymobiledevice3.lockdown import UsbmuxLockdownClient, create_using_usbmux
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
 from pymobiledevice3.services.mobile_image_mounter import auto_mount
-from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid
+from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid, get_tunneld_devices
 from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 
 from models.schemas import DeviceInfo
@@ -13,8 +13,16 @@ IOS_17 = Version("17.0")
 
 async def list_devices() -> list[DeviceInfo]:
     devices: list[DeviceInfo] = []
-    for mux_device in await usbmux_list_devices():
+    seen_udids: set[str] = set()
+
+    try:
+        mux_devices = await usbmux_list_devices()
+    except Exception:
+        mux_devices = []
+
+    for mux_device in mux_devices:
         udid = mux_device.serial
+        seen_udids.add(udid)
         try:
             devices.append(await _describe_device(udid))
         except Exception as e:  # noqa: BLE001 - surface any pairing/lockdown failure to the UI
@@ -28,6 +36,31 @@ async def list_devices() -> list[DeviceInfo]:
                     detail=str(e),
                 )
             )
+
+    try:
+        tunnels = await get_tunneld_devices()
+        for rsd in tunnels:
+            udid = rsd.udid
+            if udid not in seen_udids:
+                seen_udids.add(udid)
+                name = rsd.all_values.get("DeviceName") if hasattr(rsd, "all_values") else None
+                if not name:
+                    name = getattr(rsd, "product_type", udid)
+                version = getattr(rsd, "product_version", "17.0")
+                devices.append(
+                    DeviceInfo(
+                        udid=udid,
+                        name=name,
+                        ios_version=str(version),
+                        transport="rsd",
+                        status="ready",
+                    )
+                )
+    except TunneldConnectionError:
+        pass
+    except Exception:
+        pass
+
     return devices
 
 

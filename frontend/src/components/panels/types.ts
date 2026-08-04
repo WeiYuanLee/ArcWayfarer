@@ -3,7 +3,15 @@ import type { Device } from '../../services/api'
 export type LatLng = { lat: number; lng: number }
 export type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
 
-export type OverlayMarker = { id: string; lat: number; lng: number; color: string; label?: string }
+export type OverlayMarker = {
+  id: string
+  lat: number
+  lng: number
+  color: string
+  label?: string
+  draggable?: boolean
+  onDragEnd?: (lat: number, lng: number) => void
+}
 export type OverlayCircle = { lat: number; lng: number; radiusMeters: number }
 export type MapOverlay = { markers: OverlayMarker[]; path: LatLng[]; circle?: OverlayCircle | null }
 
@@ -18,6 +26,7 @@ export type PanelProps = {
   liveEtaSeconds: number | null
   liveStopIndex: number | null
   requestPoint: (onPick: (lat: number, lng: number) => void) => void
+  clearPoint?: () => void
   setOverlay: (overlay: MapOverlay) => void
   requestFlyTo: (lat: number, lng: number) => void
   sendWs: (type: string, data: unknown, udid?: string) => void

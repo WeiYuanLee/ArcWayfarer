@@ -5,17 +5,19 @@ import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
+import { SwitchBar } from '../common/SwitchBar'
+import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
 const CENTER_COLOR = '#4a9af0'
 
-export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, setOverlay }: PanelProps) {
+export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
   const [center, setCenter] = useState<LatLng | null>(null)
   const [centerText, setCenterText] = useState('')
-  const [radius, setRadius] = useState(50)
+  const [radius, setRadius] = useState(100)
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
@@ -29,6 +31,15 @@ export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, s
   const isPaused = deviceState === 'paused'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
+
+  // Auto fill center with live position if empty
+  useEffect(() => {
+    if (!center && livePosition && !centerText) {
+      setCenter(livePosition)
+      setCenterText(formatPoint(livePosition))
+    }
+  }, [livePosition, center, centerText])
+
   const canStart = deviceReady && !isActive && center !== null && radius > 0 && !isBusy
 
   useEffect(() => {
@@ -94,8 +105,10 @@ export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, s
 
   return (
     <div className="panel">
-      <h2>{t('randomwalk.title')}</h2>
-      <p className="panel-description">{t('randomwalk.description')}</p>
+      <div className="panel-header-row">
+        <h2>{t('randomwalk.title')}</h2>
+        <ModeInfoTooltip description={t('randomwalk.description')} />
+      </div>
 
       <div className="panel-scroll-body">
       {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
@@ -110,7 +123,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, s
         <span>C</span>
         <input
           type="text"
-          placeholder="lat,lng"
+          placeholder="Center (lat, lng or URL)"
           value={centerText}
           onFocus={() =>
             requestPoint((lat, lng) => {
@@ -121,8 +134,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, s
           onChange={(e) => handleCenterTextChange(e.target.value)}
         />
       </div>
+
       <div className="coord-row">
-        <span>m</span>
+        <span>Radius (m)</span>
         <input
           type="number"
           min={1}
@@ -132,25 +146,31 @@ export function RandomWalkPanel({ deviceId, device, deviceState, requestPoint, s
         />
       </div>
 
-      <label className="pause-toggle">
-        <input
-          type="checkbox"
-          checked={straightLine}
-          onChange={(e) => setStraightLine(e.target.checked)}
-          disabled={isActive}
-        />
-        {t('multistop.straight_line')}
-      </label>
+      <div className="panel-quick-actions">
+        {[50, 100, 300, 500].map((r) => (
+          <button
+            key={r}
+            className={`swap-button ${radius === r ? 'active' : ''}`}
+            onClick={() => setRadius(r)}
+          >
+            {`${r}m`}
+          </button>
+        ))}
+      </div>
 
-      <label className="pause-toggle">
-        <input
-          type="checkbox"
-          checked={pauseEnabled}
-          onChange={(e) => setPauseEnabled(e.target.checked)}
-          disabled={isActive}
-        />
-        {t('panel.pause_toggle')}
-      </label>
+      <SwitchBar
+        label={t('multistop.straight_line')}
+        checked={straightLine}
+        onChange={setStraightLine}
+        disabled={isActive}
+      />
+
+      <SwitchBar
+        label={t('panel.pause_toggle')}
+        checked={pauseEnabled}
+        onChange={setPauseEnabled}
+        disabled={isActive}
+      />
       {pauseEnabled && (
         <div className="coord-row">
           <span>{t('panel.sec_label')}</span>

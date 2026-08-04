@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react'
 import { pauseNavigate, pushHistory, resumeNavigate, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatEta, formatPoint, parsePoint } from './coords'
+import { estimateDurationMinutes, formatEta, formatPoint, haversineDistanceKm, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { FavoriteButton } from './FavoriteButton'
+import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
-export function NavigatePanel({ deviceId, device, deviceState, liveEtaSeconds, requestPoint, setOverlay }: PanelProps) {
+export function NavigatePanel({ deviceId, device, deviceState, livePosition, liveEtaSeconds, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
   const [start, setStart] = useState<LatLng | null>(null)
   const [end, setEnd] = useState<LatLng | null>(null)
@@ -26,18 +27,29 @@ export function NavigatePanel({ deviceId, device, deviceState, liveEtaSeconds, r
   const isPaused = deviceState === 'paused'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
+
+  // Auto fill start point with live position if empty
+  useEffect(() => {
+    if (!start && livePosition && !startText) {
+      setStart(livePosition)
+      setStartText(formatPoint(livePosition))
+    }
+  }, [livePosition, start, startText])
+
   const canStart = deviceReady && !isActive && start !== null && end !== null && !isBusy
+
+  const isLocked = isActive || isBusy
 
   useEffect(() => {
     setOverlay({
       markers: [
-        ...(start ? [{ id: 'nav-start', lat: start.lat, lng: start.lng, color: '#4caf50', label: 'S' }] : []),
-        ...(end ? [{ id: 'nav-end', lat: end.lat, lng: end.lng, color: '#e05555', label: 'E' }] : []),
+        ...(start ? [{ id: 'nav-start', lat: start.lat, lng: start.lng, color: '#4caf50', label: 'S', draggable: !isLocked, onDragEnd: (lat: number, lng: number) => { if (isLocked) return; setStart({ lat, lng }); setStartText(formatPoint({ lat, lng })) } }] : []),
+        ...(end ? [{ id: 'nav-end', lat: end.lat, lng: end.lng, color: '#e05555', label: 'E', draggable: !isLocked, onDragEnd: (lat: number, lng: number) => { if (isLocked) return; setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) } }] : []),
       ],
       path: routePath,
     })
     return () => setOverlay(EMPTY_OVERLAY)
-  }, [start, end, routePath, setOverlay])
+  }, [start, end, routePath, isLocked, setOverlay])
 
   async function handleStart() {
     if (!deviceId || !start || !end) return
@@ -99,10 +111,15 @@ export function NavigatePanel({ deviceId, device, deviceState, liveEtaSeconds, r
     setEndText(formatPoint(s))
   }
 
+  const distanceKm = start && end ? haversineDistanceKm(start, end) : null
+  const durationMin = distanceKm !== null ? estimateDurationMinutes(distanceKm, speedKmh) : null
+
   return (
     <div className="panel">
-      <h2>{t('navigate.title')}</h2>
-      <p className="panel-description">{t('navigate.description')}</p>
+      <div className="panel-header-row">
+        <h2>{t('navigate.title')}</h2>
+        <ModeInfoTooltip description={t('navigate.description')} />
+      </div>
 
       <div className="panel-scroll-body">
       {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
@@ -113,40 +130,58 @@ export function NavigatePanel({ deviceId, device, deviceState, liveEtaSeconds, r
         <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
       )}
 
+      {distanceKm !== null && (
+        <div className="route-preflight-badge">
+          <span>{t('navigate.distance')}: {distanceKm.toFixed(2)} km</span>
+          <span>·</span>
+          <span>{t('navigate.est_time')}: {durationMin} {t('navigate.minutes')}</span>
+        </div>
+      )}
+
       <div className="coord-row">
         <span>S</span>
-        <input
-          type="text"
-          placeholder="lat,lng"
-          value={startText}
-          onFocus={() =>
-            requestPoint((lat, lng) => {
-              setStart({ lat, lng })
-              setStartText(formatPoint({ lat, lng }))
-            })
-          }
-          onChange={(e) => handleStartTextChange(e.target.value)}
-        />
-        <FavoriteButton point={start} />
+        <div className="input-favorite-wrapper">
+          <input
+            type="text"
+            className="coord-input-large"
+            placeholder="lat, lng or URL"
+            value={startText}
+            onFocus={() =>
+              requestPoint((lat, lng) => {
+                setStart({ lat, lng })
+                setStartText(formatPoint({ lat, lng }))
+              })
+            }
+            onChange={(e) => handleStartTextChange(e.target.value)}
+          />
+          <div className="inside-favorite-action">
+            <FavoriteButton point={start} />
+          </div>
+        </div>
       </div>
       <button className="swap-button" onClick={handleSwap} title={t('navigate.swap')}>
         {t('navigate.swap')}
       </button>
       <div className="coord-row">
         <span>E</span>
-        <input
-          type="text"
-          placeholder="lat,lng"
-          value={endText}
-          onFocus={() =>
-            requestPoint((lat, lng) => {
-              setEnd({ lat, lng })
-              setEndText(formatPoint({ lat, lng }))
-            })
-          }
-          onChange={(e) => handleEndTextChange(e.target.value)}
-        />
-        <FavoriteButton point={end} />
+        <div className="input-favorite-wrapper">
+          <input
+            type="text"
+            className="coord-input-large"
+            placeholder="lat, lng or URL"
+            value={endText}
+            onFocus={() =>
+              requestPoint((lat, lng) => {
+                setEnd({ lat, lng })
+                setEndText(formatPoint({ lat, lng }))
+              })
+            }
+            onChange={(e) => handleEndTextChange(e.target.value)}
+          />
+          <div className="inside-favorite-action">
+            <FavoriteButton point={end} />
+          </div>
+        </div>
       </div>
 
       <SpeedSlider

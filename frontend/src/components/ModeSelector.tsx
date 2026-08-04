@@ -20,16 +20,20 @@ type Props = {
 export function ModeSelector({ value, onChange }: Props) {
   const t = useT()
   return (
-    <div className="mode-selector">
-      {MODES.map((mode) => (
-        <button
-          key={mode.id}
-          className={mode.id === value ? 'active' : ''}
-          onClick={() => onChange(mode.id)}
-        >
-          {t(mode.labelKey)}
-        </button>
-      ))}
+    <div className="dynamic-capsule-selector">
+      {MODES.map((mode) => {
+        const isActive = mode.id === value
+        return (
+          <button
+            key={mode.id}
+            className={`capsule-item ${isActive ? 'active' : ''}`}
+            onClick={() => onChange(mode.id)}
+          >
+            <span className="capsule-label">{t(mode.labelKey)}</span>
+            {isActive && <div className="capsule-glow-indicator" />}
+          </button>
+        )
+      })}
     </div>
   )
 }

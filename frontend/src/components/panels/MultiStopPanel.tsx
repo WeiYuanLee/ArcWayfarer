@@ -1,14 +1,25 @@
 import { useEffect, useState } from 'react'
-import { pauseMultiStop, pushHistory, resumeMultiStop, startMultiStop, stopMultiStop, type NavMode } from '../../services/api'
+import { parseGpx } from './gpx'
+import {
+  pauseMultiStop,
+  pushHistory,
+  resumeMultiStop,
+  startMultiStop,
+  stopMultiStop,
+  type NavMode,
+} from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatEta, formatPoint, parsePastedPoints, parsePoint } from './coords'
-import { parseGpx } from './gpx'
+import { formatPoint, parsePastedPoints, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
+import { ActiveFlightHUD } from './ActiveFlightHUD'
+import { SwitchBar } from '../common/SwitchBar'
+import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type ImportMessage = { kind: 'ok' | 'error'; text: string }
 
 const WAYPOINT_COLOR = '#4a9af0'
 
@@ -16,9 +27,11 @@ export function MultiStopPanel({
   deviceId,
   device,
   deviceState,
+  livePosition,
   liveEtaSeconds,
   liveStopIndex,
   requestPoint,
+  requestFlyTo,
   setOverlay,
 }: PanelProps) {
   const t = useT()
@@ -30,14 +43,15 @@ export function MultiStopPanel({
   const [pauseEnabled, setPauseEnabled] = useState(false)
   const [pauseMin, setPauseMin] = useState(5)
   const [pauseMax, setPauseMax] = useState(20)
-  const [straightLine, setStraightLine] = useState(false)
+  const [straightLine, setStraightLine] = useState(true)
   const [speedKmh, setSpeedKmh] = useState(5)
   const [jumpMode, setJumpMode] = useState(false)
   const [jumpPreDelay, setJumpPreDelay] = useState(0)
   const [jumpPostDelay, setJumpPostDelay] = useState(2)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
-  const [importMessage, setImportMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [importMessage, setImportMessage] = useState<ImportMessage | null>(null)
+  const [gpxFileName, setGpxFileName] = useState<string | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -47,15 +61,50 @@ export function MultiStopPanel({
   const validWaypoints = waypoints.filter((w): w is LatLng => w !== null)
   const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy
 
+  // Auto fill waypoint 1 with live position if empty
+  useEffect(() => {
+    if (!waypoints[0] && livePosition && !texts[0]) {
+      updateWaypoint(0, livePosition)
+    }
+  }, [livePosition])
+
+  // Automatically update route path preview when not active
+  useEffect(() => {
+    if (!isActive) {
+      if (validWaypoints.length >= 2) {
+        setRoutePath(validWaypoints)
+      } else {
+        setRoutePath([])
+      }
+    }
+  }, [waypoints, isActive])
+
+  const isLocked = isActive || isBusy
+
   useEffect(() => {
     setOverlay({
       markers: waypoints
-        .map((wp, idx) => (wp ? { id: `multistop-${idx}`, lat: wp.lat, lng: wp.lng, color: WAYPOINT_COLOR, label: String(idx + 1) } : null))
+        .map((wp, idx) =>
+          wp
+            ? {
+                id: `multistop-${idx}`,
+                lat: wp.lat,
+                lng: wp.lng,
+                color: WAYPOINT_COLOR,
+                label: String(idx + 1),
+                draggable: !isLocked,
+                onDragEnd: (lat: number, lng: number) => {
+                  if (isLocked) return
+                  updateWaypoint(idx, { lat, lng })
+                },
+              }
+            : null
+        )
         .filter((m): m is NonNullable<typeof m> => m !== null),
       path: routePath,
     })
     return () => setOverlay(EMPTY_OVERLAY)
-  }, [waypoints, routePath, setOverlay])
+  }, [waypoints, routePath, isLocked, setOverlay])
 
   function updateWaypoint(idx: number, point: LatLng) {
     setWaypoints((prev) => prev.map((w, i) => (i === idx ? point : w)))
@@ -78,6 +127,32 @@ export function MultiStopPanel({
     setTexts((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  function handleMoveWaypoint(idx: number, direction: 'up' | 'down') {
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= waypoints.length) return
+    setWaypoints((prev) => {
+      const next = [...prev]
+      const temp = next[idx]
+      next[idx] = next[targetIdx]
+      next[targetIdx] = temp
+      return next
+    })
+    setTexts((prev) => {
+      const next = [...prev]
+      const temp = next[idx]
+      next[idx] = next[targetIdx]
+      next[targetIdx] = temp
+      return next
+    })
+  }
+
+  function handleClearAllWaypoints() {
+    setWaypoints([null, null])
+    setTexts(['', ''])
+    setGpxFileName(null)
+    setImportMessage(null)
+  }
+
   async function handleGpxFile(file: File) {
     setImportMessage(null)
     try {
@@ -89,6 +164,8 @@ export function MultiStopPanel({
       }
       setWaypoints(points)
       setTexts(points.map(formatPoint))
+      setGpxFileName(file.name)
+      requestFlyTo(points[0].lat, points[0].lng)
     } catch {
       setImportMessage({ kind: 'error', text: t('multistop.gpx_import_failed') })
     }
@@ -102,6 +179,7 @@ export function MultiStopPanel({
     }
     setWaypoints(points)
     setTexts(points.map(formatPoint))
+    requestFlyTo(points[0].lat, points[0].lng)
     setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
     setPasteOpen(false)
     setPasteText('')
@@ -155,189 +233,211 @@ export function MultiStopPanel({
 
   return (
     <div className="panel">
-      <h2>{t('multistop.title')}</h2>
-      <p className="panel-description">{t('multistop.description')}</p>
-
-      <div className="panel-scroll-body">
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {deviceState === 'teleporting' && (
-        <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-      )}
-
-      <div className="waypoint-list">
-        {waypoints.map((_, idx) => (
-          <div className="coord-row" key={idx}>
-            <span>{idx + 1}</span>
-            <input
-              type="text"
-              placeholder="lat,lng"
-              value={texts[idx] ?? ''}
-              onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-              onChange={(e) => handleTextChange(idx, e.target.value)}
-            />
-            <button className="waypoint-remove" onClick={() => handleRemoveWaypoint(idx)} title={t('panel.remove_waypoint')}>
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-      <button className="swap-button" onClick={handleAddWaypoint}>
-        {t('panel.add_waypoint')}
-      </button>
-
-      <div className="import-actions">
-        <label className="swap-button">
-          {t('multistop.import_gpx')}
-          <input
-            type="file"
-            accept=".gpx,application/gpx+xml"
-            style={{ display: 'none' }}
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (file) await handleGpxFile(file)
-              e.target.value = ''
-            }}
-          />
-        </label>
-        <button className="swap-button" onClick={() => setPasteOpen((open) => !open)}>
-          {t('multistop.paste_coords')}
-        </button>
+      <div className="panel-header-row">
+        <h2>{t('multistop.title')}</h2>
+        <ModeInfoTooltip description={t('multistop.description')} />
       </div>
 
-      {pasteOpen && (
-        <>
-          <textarea
-            className="paste-textarea"
-            placeholder={t('multistop.paste_placeholder')}
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-          />
-          <div className="import-actions">
-            <button className="swap-button" onClick={handlePasteSubmit}>
-              {t('multistop.paste_submit')}
-            </button>
-            <button className="swap-button" onClick={() => setPasteOpen(false)}>
-              {t('multistop.paste_cancel')}
-            </button>
-          </div>
-        </>
-      )}
-
-      {importMessage && (
-        <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
-      )}
-
-      <label className="pause-toggle">
-        <input
-          type="checkbox"
-          checked={jumpMode}
-          onChange={(e) => setJumpMode(e.target.checked)}
-          disabled={isActive}
+      {isActive ? (
+        <ActiveFlightHUD
+          modeName={t('multistop.title')}
+          isRunning={isRunning}
+          isPaused={isPaused}
+          isBusy={isBusy}
+          currentIndex={liveStopIndex ?? 1}
+          totalPoints={validWaypoints.length || 2}
+          liveEtaSeconds={liveEtaSeconds}
+          livePosition={livePosition}
+          routePath={routePath}
+          waypoints={waypoints}
+          isLoop={false}
+          onPauseResume={handlePauseResume}
+          onStop={handleStop}
         />
-        {t('multistop.jump_mode')}
-      </label>
-
-      {jumpMode ? (
-        <>
-          <div className="coord-row">
-            <span>{t('multistop.jump_pre_delay')}</span>
-            <input
-              type="number"
-              min={0}
-              value={jumpPreDelay}
-              disabled={isActive}
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => setJumpPreDelay(Number(e.target.value))}
-            />
-          </div>
-          <div className="coord-row">
-            <span>{t('multistop.jump_post_delay')}</span>
-            <input
-              type="number"
-              min={0}
-              value={jumpPostDelay}
-              disabled={isActive}
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => setJumpPostDelay(Number(e.target.value))}
-            />
-          </div>
-        </>
       ) : (
-        <>
-          <label className="pause-toggle">
-            <input
-              type="checkbox"
-              checked={straightLine}
-              onChange={(e) => setStraightLine(e.target.checked)}
-              disabled={isActive}
-            />
-            {t('multistop.straight_line')}
-          </label>
+        <div className="panel-scroll-body">
+          {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
+          {deviceId && !deviceReady && (
+            <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
+          )}
+          {deviceState === 'teleporting' && (
+            <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
+          )}
 
-          <label className="pause-toggle">
-            <input
-              type="checkbox"
-              checked={pauseEnabled}
-              onChange={(e) => setPauseEnabled(e.target.checked)}
-              disabled={isActive}
-            />
-            {t('panel.pause_toggle')}
-          </label>
-          {pauseEnabled && (
-            <div className="coord-row">
-              <span>{t('panel.sec_label')}</span>
-              <input
-                type="number"
-                min={0}
-                value={pauseMin}
-                disabled={isActive}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setPauseMin(Number(e.target.value))}
-              />
-              <span>–</span>
-              <input
-                type="number"
-                min={0}
-                value={pauseMax}
-                disabled={isActive}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setPauseMax(Number(e.target.value))}
-              />
+          {gpxFileName && (
+            <div className="route-preflight-badge">
+              <span>GPX: {gpxFileName}</span>
+              <span>·</span>
+              <span>{validWaypoints.length} Points</span>
             </div>
           )}
 
-          <SpeedSlider
-            valueKmh={speedKmh}
-            navMode={navMode}
-            onChange={setSpeedKmh}
-            onNavModeChange={setNavMode}
+          <div className="waypoint-list">
+            {waypoints.map((_, idx) => (
+              <div className="coord-row" key={idx}>
+                <span>{idx + 1}</span>
+                <input
+                  type="text"
+                  placeholder="lat, lng or URL"
+                  value={texts[idx] ?? ''}
+                  onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
+                  onChange={(e) => handleTextChange(idx, e.target.value)}
+                />
+                <div className="waypoint-row-actions">
+                  <button disabled={idx === 0} onClick={() => handleMoveWaypoint(idx, 'up')} title="Move Up">↑</button>
+                  <button disabled={idx === waypoints.length - 1} onClick={() => handleMoveWaypoint(idx, 'down')} title="Move Down">↓</button>
+                  <button className="waypoint-remove" onClick={() => handleRemoveWaypoint(idx)} title={t('panel.remove_waypoint')}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="panel-quick-actions">
+            <button className="swap-button" onClick={handleAddWaypoint}>
+              {t('panel.add_waypoint')}
+            </button>
+            <button className="swap-button" onClick={handleClearAllWaypoints}>
+              {t('multistop.action.clear_all')}
+            </button>
+          </div>
+
+          <div className="import-actions">
+            <label className="swap-button">
+              {t('multistop.import_gpx')}
+              <input
+                type="file"
+                accept=".gpx,application/gpx+xml"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (file) await handleGpxFile(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            <button className="swap-button" onClick={() => setPasteOpen((open) => !open)}>
+              {t('multistop.paste_coords')}
+            </button>
+          </div>
+
+          {pasteOpen && (
+            <>
+              <textarea
+                className="paste-textarea"
+                placeholder={t('multistop.paste_placeholder')}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+              />
+              <div className="import-actions">
+                <button className="swap-button" onClick={handlePasteSubmit}>
+                  {t('multistop.paste_submit')}
+                </button>
+                <button className="swap-button" onClick={() => setPasteOpen(false)}>
+                  {t('multistop.paste_cancel')}
+                </button>
+              </div>
+            </>
+          )}
+
+          {importMessage && (
+            <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
+          )}
+
+          <SwitchBar
+            label={t('multistop.jump_mode')}
+            checked={jumpMode}
+            onChange={setJumpMode}
             disabled={isActive}
           />
-        </>
-      )}
-      </div>
 
-      <PlaybackControls
-        canStart={canStart}
-        isActive={isActive}
-        isPaused={isPaused}
-        isBusy={isBusy}
-        onStart={handleStart}
-        onPauseResume={handlePauseResume}
-        onStop={handleStop}
-      />
+          {jumpMode ? (
+            <>
+              <div className="coord-row">
+                <span>{t('multistop.jump_pre_delay')}</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={jumpPreDelay}
+                  disabled={isActive}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setJumpPreDelay(Number(e.target.value))}
+                />
+              </div>
+              <div className="coord-row">
+                <span>{t('multistop.jump_post_delay')}</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={jumpPostDelay}
+                  disabled={isActive}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setJumpPostDelay(Number(e.target.value))}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <SwitchBar
+                label={t('multistop.straight_line')}
+                checked={straightLine}
+                onChange={setStraightLine}
+                disabled={isActive}
+              />
+
+              <SwitchBar
+                label={t('panel.pause_toggle')}
+                checked={pauseEnabled}
+                onChange={setPauseEnabled}
+                disabled={isActive}
+              />
+              {pauseEnabled && (
+                <div className="coord-row">
+                  <span>{t('panel.sec_label')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={pauseMin}
+                    disabled={isActive}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPauseMin(Number(e.target.value))}
+                  />
+                  <span>–</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={pauseMax}
+                    disabled={isActive}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPauseMax(Number(e.target.value))}
+                  />
+                </div>
+              )}
+
+              <SpeedSlider
+                valueKmh={speedKmh}
+                navMode={navMode}
+                onChange={setSpeedKmh}
+                onNavModeChange={setNavMode}
+                disabled={isActive}
+              />
+            </>
+          )}
+
+          <PlaybackControls
+            canStart={canStart}
+            isActive={isActive}
+            isPaused={isPaused}
+            isBusy={isBusy}
+            onStart={handleStart}
+            onPauseResume={handlePauseResume}
+            onStop={handleStop}
+          />
+        </div>
+      )}
 
       {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {isRunning && (
-        <p className="panel-status ok">
-          {t('multistop.stop_progress')} {liveStopIndex ?? 1} / {validWaypoints.length}
-          {!jumpMode && liveEtaSeconds !== null ? ` … ETA ${formatEta(liveEtaSeconds)}` : ''}
-        </p>
-      )}
-      {isPaused && <p className="panel-status warning">{t('panel.paused')}</p>}
       {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
     </div>
   )

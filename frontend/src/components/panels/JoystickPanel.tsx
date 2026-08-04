@@ -5,6 +5,7 @@ import type { PanelProps } from './types'
 import { SpeedSlider } from './SpeedSlider'
 import { JoystickPad } from './JoystickPad'
 import { useJoystickKeyboard } from '../../hooks/useJoystickKeyboard'
+import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -18,6 +19,8 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
   const deviceReady = device?.status === 'ready'
   const isActive = deviceState === 'joystick'
   const isBusy = status.kind === 'busy'
+  
+  // Auto fallback to livePosition if point is null
   const startPoint = point ?? livePosition
   const canStart = deviceReady && !isActive && startPoint !== null && !isBusy
 
@@ -56,8 +59,10 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
 
   return (
     <div className="panel">
-      <h2>{t('joystick.title')}</h2>
-      <p className="panel-description">{t('joystick.description')}</p>
+      <div className="panel-header-row">
+        <h2>{t('joystick.title')}</h2>
+        <ModeInfoTooltip description={t('joystick.description')} />
+      </div>
 
       {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
       {deviceId && !deviceReady && (
@@ -77,12 +82,12 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
 
       <div className="panel-actions icon-actions">
         {!isActive ? (
-          <button disabled={!canStart} onClick={handleStart} title={t('playback.start')}>
-            ▶
+          <button disabled={!canStart} onClick={handleStart} title={t('joystick.action.start')}>
+            {t('joystick.action.start')}
           </button>
         ) : (
-          <button disabled={isBusy} onClick={handleStop} title={t('playback.stop')}>
-            ⏹
+          <button disabled={isBusy} onClick={handleStop} title={t('joystick.action.stop')}>
+            {t('joystick.action.stop')}
           </button>
         )}
       </div>
