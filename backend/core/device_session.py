@@ -42,9 +42,17 @@ class DeviceSession:
 
     async def close(self) -> None:
         if self._ls_cm is not None:
-            await self._ls_cm.__aexit__(None, None, None)
+            try:
+                await self._ls_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._ls_cm = None
         if self._dvt_cm is not None:
-            await self._dvt_cm.__aexit__(None, None, None)
+            try:
+                await self._dvt_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._dvt_cm = None
 
 
 _sessions: dict[str, DeviceSession] = {}
@@ -68,15 +76,14 @@ async def get_session(udid: str) -> DeviceSession:
         if device.status != "ready":
             raise RuntimeError(device.detail or f"Device is not ready (status: {device.status}).")
 
-        lockdown = await device_manager.get_lockdown(udid)
-        try:
-            await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError as e:
-            raise RuntimeError(
-                "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
-            ) from e
-
         if device.transport == "lockdown":
+            lockdown = await device_manager.get_lockdown(udid)
+            try:
+                await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError as e:
+                raise RuntimeError(
+                    "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
+                ) from e
             session = DeviceSession(udid, transport="lockdown", backend=DtSimulateLocation(lockdown))
         else:
             rsd = await device_manager.get_rsd(udid)

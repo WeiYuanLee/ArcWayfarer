@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WS_URL } from '../services/api'
 
-type LivePosition = { lat: number; lng: number; speedMps: number; etaSeconds: number; stopIndex: number | null }
+export type LivePosition = { lat: number; lng: number; speedMps: number; etaSeconds: number; stopIndex: number | null }
 type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
 type PositionMessage = {
   type: 'position'
   udid: string
-  lat: number
-  lng: number
+  lat: number | null
+  lng: number | null
   speed_mps: number
   eta_seconds: number
   stop_index: number | null
@@ -31,16 +31,25 @@ export function useWebSocket() {
       try {
         const message: Message = JSON.parse(event.data)
         if (message.type === 'position') {
-          setPositions((prev) => ({
-            ...prev,
-            [message.udid]: {
-              lat: message.lat,
-              lng: message.lng,
-              speedMps: message.speed_mps,
-              etaSeconds: message.eta_seconds,
-              stopIndex: message.stop_index,
-            },
-          }))
+          if (message.lat === null || message.lng === null) {
+            setPositions((prev) => {
+              if (!(message.udid in prev)) return prev
+              const next = { ...prev }
+              delete next[message.udid]
+              return next
+            })
+          } else {
+            setPositions((prev) => ({
+              ...prev,
+              [message.udid]: {
+                lat: message.lat!,
+                lng: message.lng!,
+                speedMps: message.speed_mps,
+                etaSeconds: message.eta_seconds,
+                stopIndex: message.stop_index,
+              },
+            }))
+          }
         } else if (message.type === 'state') {
           setStates((prev) => ({ ...prev, [message.udid]: message.state }))
         }

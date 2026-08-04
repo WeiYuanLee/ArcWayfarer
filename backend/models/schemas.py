@@ -58,6 +58,7 @@ class RouteLoopStartRequest(BaseModel):
     pause_enabled: bool = False
     pause_min: float = 5.0
     pause_max: float = 20.0
+    straight_line: bool = False
     custom_speed_kmh: Optional[float] = None
 
 

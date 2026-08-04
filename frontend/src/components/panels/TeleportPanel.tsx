@@ -4,17 +4,19 @@ import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePoint } from './coords'
 import { FavoriteButton } from './FavoriteButton'
+import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
 
-export function TeleportPanel({ deviceId, device, deviceState, point, requestPoint, setOverlay, requestFlyTo }: PanelProps) {
+export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setOverlay, requestFlyTo }: PanelProps) {
   const t = useT()
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   const deviceReady = device?.status === 'ready'
+  const isOtherModeActive = deviceState !== 'idle' && deviceState !== 'teleporting'
   const canAct = deviceReady && target !== null && status.kind !== 'busy'
 
   useEffect(() => {
@@ -36,6 +38,19 @@ export function TeleportPanel({ deviceId, device, deviceState, point, requestPoi
     })
   }
 
+  function handlePasteClipboard() {
+    navigator.clipboard.readText().then((text) => {
+      if (!text) return
+      handleTextChange(text)
+    }).catch(() => {})
+  }
+
+  function handleUseCurrentLocation() {
+    if (!livePosition) return
+    setTarget(livePosition)
+    setTargetText(formatPoint(livePosition))
+  }
+
   function handlePreview() {
     if (!target) return
     setOverlay({
@@ -52,6 +67,8 @@ export function TeleportPanel({ deviceId, device, deviceState, point, requestPoi
       await setLocation(deviceId, target.lat, target.lng)
       pushHistory({ lat: target.lat, lng: target.lng, kind: 'teleport' }).catch(() => {})
       setStatus({ kind: 'success', message: t('teleport.status.set_success') })
+      setOverlay({ markers: [], path: [] })
+      requestFlyTo(target.lat, target.lng)
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('teleport.status.set_failed') })
     }
@@ -62,6 +79,10 @@ export function TeleportPanel({ deviceId, device, deviceState, point, requestPoi
     setStatus({ kind: 'busy' })
     try {
       await clearLocation(deviceId)
+      setOverlay(EMPTY_OVERLAY)
+      setTarget(null)
+      setTargetText('')
+      clearPoint?.()
       setStatus({ kind: 'success', message: t('teleport.status.clear_success') })
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('teleport.status.clear_failed') })
@@ -81,27 +102,42 @@ export function TeleportPanel({ deviceId, device, deviceState, point, requestPoi
 
   return (
     <div className="panel">
-      <h2>{t('teleport.title')}</h2>
-      <p className="panel-description">{t('teleport.description')}</p>
+      <div className="panel-header-row">
+        <h2>{t('teleport.title')}</h2>
+        <ModeInfoTooltip description={t('teleport.description')} />
+      </div>
 
       {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
       {deviceId && !deviceReady && (
         <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
       )}
-      {deviceState === 'navigating' && (
+      {isOtherModeActive && (
         <p className="panel-hint warning">{t('teleport.hint.navigating')}</p>
       )}
 
-      <div className="coord-input-row">
+      <div className="input-favorite-wrapper">
         <input
           type="text"
           className="coord-input-large"
-          placeholder="lat,lng"
+          placeholder="lat, lng or Google Maps URL"
           value={targetText}
           onFocus={handleFocusInput}
           onChange={(e) => handleTextChange(e.target.value)}
         />
-        <FavoriteButton point={target} />
+        <div className="inside-favorite-action">
+          <FavoriteButton point={target} />
+        </div>
+      </div>
+
+      <div className="panel-quick-actions">
+        <button className="swap-button" onClick={handlePasteClipboard} title={t('teleport.action.paste')}>
+          {t('teleport.action.paste')}
+        </button>
+        {livePosition && (
+          <button className="swap-button" onClick={handleUseCurrentLocation} title={t('teleport.action.my_location')}>
+            {t('teleport.action.my_location')}
+          </button>
+        )}
       </div>
 
       <div className="panel-actions">
@@ -120,16 +156,15 @@ export function TeleportPanel({ deviceId, device, deviceState, point, requestPoi
       {status.kind === 'success' && <p className="panel-status ok">{status.message}</p>}
       {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
 
-      <div className="goldditto-section">
-        <div className="goldditto-section-header">
-          <span className="goldditto-section-icon">🌼</span>
-          <h2>{t('teleport.goldditto.title')}</h2>
+      <details className="goldditto-details">
+        <summary className="goldditto-summary">{t('teleport.goldditto.title')}</summary>
+        <div className="goldditto-content">
+          <p className="panel-hint">{t('teleport.goldditto.help')}</p>
+          <button className="goldditto-button" disabled={!canAct} onClick={handleGoldDitto}>
+            {t('teleport.goldditto.action')}
+          </button>
         </div>
-        <p className="panel-hint">{t('teleport.goldditto.help')}</p>
-        <button className="goldditto-button" disabled={!canAct} onClick={handleGoldDitto}>
-          {t('teleport.goldditto.action')}
-        </button>
-      </div>
+      </details>
     </div>
   )
 }

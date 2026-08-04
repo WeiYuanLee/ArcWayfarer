@@ -19,6 +19,11 @@ export const STRINGS = {
   'favorites.delete': { zh: '刪除', en: 'Delete' },
   'favorites.added': { zh: '已加入最愛', en: 'Added to favorites' },
 
+  // Search
+  'search.placeholder': { zh: '搜尋地名關鍵字 (例如: 台北101, 駁二藝術特區)…', en: 'Search place keyword (e.g. Taipei 101)…' },
+  'search.no_results': { zh: '未找到匹配的地點', en: 'No matching places found' },
+  'search.title': { zh: '搜尋地點', en: 'Search Location' },
+
   // Shared panel hints
   'panel.hint.select_device': { zh: '請先選擇裝置。', en: 'Select a device above.' },
   'panel.hint.device_not_ready': { zh: '裝置尚未就緒。', en: 'Device is not ready yet.' },
@@ -87,8 +92,8 @@ export const STRINGS = {
     en: 'Click the field below, then click the map — or type coordinates directly.',
   },
   'teleport.hint.navigating': {
-    zh: '裝置正在導航中 — 設定位置將會停止導航。',
-    en: 'Device is currently navigating — Set Location will stop it.',
+    zh: '裝置正在進行其他模式 — 設定或清除位置將會停止當前模式。',
+    en: 'Device is currently running another mode — setting or clearing location will stop it.',
   },
   'teleport.action.preview': { zh: '預覽', en: 'Preview' },
   'teleport.action.set_location': { zh: '設定位置', en: 'Set Location' },
@@ -179,6 +184,29 @@ export const STRINGS = {
   },
   'joystick.status.failed_start': { zh: '搖桿啟動失敗。', en: 'Failed to start joystick.' },
   'joystick.status.failed_stop': { zh: '搖桿停止失敗。', en: 'Failed to stop joystick.' },
+
+  // Command Palette & HUD
+  'cmdpalette.title': { zh: '快速指令 / 搜尋', en: 'Command Palette' },
+  'cmdpalette.placeholder': { zh: '搜尋導航模式、地點、指令… (Cmd+K)', en: 'Search modes, locations, actions… (Cmd+K)' },
+  'cmdpalette.no_results': { zh: '找不到符合的項目。', en: 'No matching items found.' },
+  'cmdpalette.section.modes': { zh: '導航模式', en: 'Navigation Modes' },
+  'cmdpalette.section.actions': { zh: '動作與快捷鍵', en: 'Actions & Shortcuts' },
+  'cmdpalette.section.favorites': { zh: '最愛地點', en: 'Favorites' },
+  'cmdpalette.section.history': { zh: '歷史記錄', en: 'History' },
+  'statusbar.copied': { zh: '已複製座標！', en: 'Coordinates copied!' },
+
+  // New Buttons & Preflight Labels
+  'teleport.action.paste': { zh: '貼上剪貼簿', en: 'Paste' },
+  'teleport.action.my_location': { zh: '帶入當前點', en: 'My Location' },
+  'navigate.distance': { zh: '預估距離', en: 'Distance' },
+  'navigate.est_time': { zh: '預估時間', en: 'Est. Time' },
+  'navigate.minutes': { zh: '分', en: 'min' },
+  'routeloop.action.reverse': { zh: '翻轉路線', en: 'Reverse Path' },
+  'multistop.action.clear_all': { zh: '清空全部點位', en: 'Clear All' },
+  'joystick.action.start': { zh: '啟動搖桿', en: 'Start Joystick' },
+  'joystick.action.stop': { zh: '停止搖桿', en: 'Stop Joystick' },
+  'topbar.search': { zh: '搜尋…', en: 'Search…' },
+  'hud.current_leg': { zh: '當前航段', en: 'Current Leg' },
 } as const satisfies Record<string, Record<Lang, string>>
 
 export type StringKey = keyof typeof STRINGS

@@ -118,7 +118,8 @@ export function startRouteLoop(
   navMode: NavMode,
   waypoints: LatLng[],
   stationPause: StationPause,
-  customSpeedKmh?: number
+  customSpeedKmh?: number,
+  straightLine: boolean = false
 ): Promise<{ status: string; route: LatLng[] }> {
   return postJsonWithResponse('/api/route-loop/start', {
     udid,
@@ -127,6 +128,7 @@ export function startRouteLoop(
     pause_enabled: stationPause.enabled,
     pause_min: stationPause.min,
     pause_max: stationPause.max,
+    straight_line: straightLine,
     custom_speed_kmh: customSpeedKmh ?? null,
   })
 }

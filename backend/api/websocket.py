@@ -46,8 +46,8 @@ async def _broadcast(message: dict) -> None:
 
 async def broadcast_position(
     udid: str,
-    lat: float,
-    lng: float,
+    lat: float | None,
+    lng: float | None,
     speed_mps: float = 0.0,
     eta_seconds: float = 0.0,
     stop_index: int | None = None,

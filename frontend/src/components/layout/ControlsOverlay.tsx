@@ -4,7 +4,7 @@ import { PANEL_BY_MODE } from '../panels'
 import type { PanelProps } from '../panels/types'
 import type { Device } from '../../services/api'
 import { FloatingCard } from './FloatingCard'
-import { useT } from '../../i18n'
+import { useT, type StringKey } from '../../i18n'
 
 type Props = {
   devices: Device[]
@@ -12,6 +12,15 @@ type Props = {
   modeByDevice: Record<string, Mode>
   onModeChange: (udid: string, mode: Mode) => void
   panelPropsFor: (udid: string) => PanelProps
+}
+
+const MODE_LABEL_KEYS: Record<Mode, StringKey> = {
+  'teleport': 'mode.teleport',
+  'navigate': 'mode.navigate',
+  'route-loop': 'mode.route_loop',
+  'multi-stop': 'mode.multi_stop',
+  'random-walk': 'mode.random_walk',
+  'joystick': 'mode.joystick',
 }
 
 export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onModeChange, panelPropsFor }: Props) {
@@ -54,7 +63,7 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
             onClick={() => setPanelExpanded(true)}
             aria-label={t('overlay.expand_panel')}
           >
-            ▸ {focusedMode.replace('-', ' ')}
+            ▸ {t(MODE_LABEL_KEYS[focusedMode])}
           </button>
         )}
       </div>
