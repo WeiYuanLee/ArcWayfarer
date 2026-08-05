@@ -4,6 +4,7 @@ import {
   pauseMultiStop,
   pushHistory,
   resumeMultiStop,
+  setLocation,
   startMultiStop,
   stopMultiStop,
   type NavMode,
@@ -16,6 +17,7 @@ import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
+import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -81,6 +83,18 @@ export function MultiStopPanel({
 
   const isLocked = isActive || isBusy
 
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    title?: string
+    items: ContextMenuItem[]
+  } | null>(null)
+
+  // Clean up overlay on unmount only
+  useEffect(() => {
+    return () => setOverlay(EMPTY_OVERLAY)
+  }, [setOverlay])
+
   useEffect(() => {
     setOverlay({
       markers: waypoints
@@ -92,19 +106,94 @@ export function MultiStopPanel({
                 lng: wp.lng,
                 color: WAYPOINT_COLOR,
                 label: String(idx + 1),
+                title: `Stop #${idx + 1} (${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)})`,
                 draggable: !isLocked,
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked) return
                   updateWaypoint(idx, { lat, lng })
+                },
+                onContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
+                  setContextMenu({
+                    x: clientX,
+                    y: clientY,
+                    title: `Stop #${idx + 1}`,
+                    items: [
+                      {
+                        id: 'teleport',
+                        label: '⚡ 瞬移至此點 (Teleport)',
+                        disabled: deviceState !== 'idle' || !deviceId,
+                        onClick: async () => {
+                          if (!deviceId) return
+                          try {
+                            await setLocation(deviceId, wp.lat, wp.lng)
+                          } catch (e) {
+                            setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                          }
+                        },
+                      },
+                      {
+                        id: 'copy-coords',
+                        label: '📋 複製經緯度 (Copy)',
+                        onClick: () => {
+                          navigator.clipboard.writeText(`${wp.lat.toFixed(6)}, ${wp.lng.toFixed(6)}`)
+                        },
+                      },
+                      {
+                        id: 'delete',
+                        label: '🗑️ 刪除此點位 (Remove)',
+                        danger: true,
+                        disabled: isLocked || waypoints.length <= 2,
+                        onClick: () => handleRemoveWaypoint(idx),
+                      },
+                    ],
+                  })
                 },
               }
             : null
         )
         .filter((m): m is NonNullable<typeof m> => m !== null),
       path: routePath,
+      onPathClick: (lat, lng) => {
+        if (isLocked) return
+        handleAddWaypointWithPoint({ lat, lng })
+      },
+      onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
+        setContextMenu({
+          x: clientX,
+          y: clientY,
+          title: `地圖位置 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          items: [
+            {
+              id: 'add-wp-here',
+              label: '➕ 在此處新增路徑點',
+              disabled: isLocked,
+              onClick: () => handleAddWaypointWithPoint({ lat, lng }),
+            },
+            {
+              id: 'teleport-here',
+              label: '⚡ 瞬移裝置至此',
+              disabled: deviceState !== 'idle' || !deviceId,
+              onClick: async () => {
+                if (!deviceId) return
+                try {
+                  await setLocation(deviceId, lat, lng)
+                } catch (e) {
+                  setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                }
+              },
+            },
+            {
+              id: 'copy-map-coords',
+              label: '📋 複製座標',
+              onClick: () => {
+                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+              },
+            },
+          ],
+        })
+      },
     })
-    return () => setOverlay(EMPTY_OVERLAY)
-  }, [waypoints, routePath, isLocked, setOverlay])
+  }, [waypoints, routePath, isLocked, deviceState, deviceId, setOverlay])
 
   function updateWaypoint(idx: number, point: LatLng) {
     setWaypoints((prev) => prev.map((w, i) => (i === idx ? point : w)))
@@ -120,6 +209,24 @@ export function MultiStopPanel({
   function handleAddWaypoint() {
     setWaypoints((prev) => [...prev, null])
     setTexts((prev) => [...prev, ''])
+  }
+
+  function handleAddWaypointWithPoint(pt: LatLng) {
+    setWaypoints((prev) => [...prev, pt])
+    setTexts((prev) => [...prev, formatPoint(pt)])
+  }
+
+  function handleInsertWaypointAfter(idx: number, pt: LatLng) {
+    setWaypoints((prev) => {
+      const next = [...prev]
+      next.splice(idx + 1, 0, pt)
+      return next
+    })
+    setTexts((prev) => {
+      const next = [...prev]
+      next.splice(idx + 1, 0, formatPoint(pt))
+      return next
+    })
   }
 
   function handleRemoveWaypoint(idx: number) {
@@ -439,6 +546,16 @@ export function MultiStopPanel({
 
       {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
       {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={contextMenu.title}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }

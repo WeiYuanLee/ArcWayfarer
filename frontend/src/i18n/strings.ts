@@ -133,6 +133,14 @@ export const STRINGS = {
   'routeloop.status.failed_start': { zh: '路線循環啟動失敗。', en: 'Failed to start route loop.' },
   'routeloop.status.failed_stop': { zh: '路線循環停止失敗。', en: 'Failed to stop route loop.' },
   'routeloop.status.failed_update': { zh: '路線循環更新失敗。', en: 'Failed to update route loop.' },
+  'routeloop.mode.manual': { zh: '手動路徑點', en: 'Manual Waypoints' },
+  'routeloop.mode.circle': { zh: '圓形路徑', en: 'Circle Route' },
+  'routeloop.circle.center': { zh: '中心點', en: 'Center Point' },
+  'routeloop.circle.radius': { zh: '半徑 (公里)', en: 'Radius (km)' },
+  'routeloop.circle.count': { zh: '段數 (點數)', en: 'Segments (points)' },
+  'routeloop.circle.select_center_map': { zh: '點擊地圖選擇中心點', en: 'Click map to choose center' },
+  'routeloop.circle.use_current_location': { zh: '帶入當前點', en: 'Use device location' },
+
 
   // Multi-stop panel
   'multistop.title': { zh: '多點巡迴', en: 'Multi-stop' },
@@ -189,10 +197,12 @@ export const STRINGS = {
   'cmdpalette.title': { zh: '快速指令 / 搜尋', en: 'Command Palette' },
   'cmdpalette.placeholder': { zh: '搜尋導航模式、地點、指令… (Cmd+K)', en: 'Search modes, locations, actions… (Cmd+K)' },
   'cmdpalette.no_results': { zh: '找不到符合的項目。', en: 'No matching items found.' },
+  'cmdpalette.searching': { zh: '搜尋地點中…', en: 'Searching places…' },
   'cmdpalette.section.modes': { zh: '導航模式', en: 'Navigation Modes' },
   'cmdpalette.section.actions': { zh: '動作與快捷鍵', en: 'Actions & Shortcuts' },
   'cmdpalette.section.favorites': { zh: '最愛地點', en: 'Favorites' },
   'cmdpalette.section.history': { zh: '歷史記錄', en: 'History' },
+  'cmdpalette.section.places': { zh: '搜尋地點結果', en: 'Place Search Results' },
   'statusbar.copied': { zh: '已複製座標！', en: 'Coordinates copied!' },
 
   // New Buttons & Preflight Labels

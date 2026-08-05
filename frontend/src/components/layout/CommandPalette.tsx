@@ -2,30 +2,36 @@ import { useEffect, useRef, useState } from 'react'
 import { listFavorites, listHistory, type Favorite, type HistoryEntry } from '../../services/api'
 import { useT } from '../../i18n'
 import type { Mode } from '../ModeSelector'
+import { usePlaceSearch } from '../../hooks/usePlaceSearch'
 
 type Props = {
   isOpen: boolean
   onClose: () => void
   onSelectMode: (mode: Mode) => void
   onFlyTo: (lat: number, lng: number) => void
+  onSelectPlace?: (lat: number, lng: number, placeName?: string) => void
   onRefreshDevices: () => void
 }
 
 type PaletteItem = {
   id: string
-  section: 'modes' | 'actions' | 'favorites' | 'history'
+  section: 'modes' | 'actions' | 'favorites' | 'history' | 'places'
   title: string
   subtitle?: string
   action: () => void
 }
 
-export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onRefreshDevices }: Props) {
+export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelectPlace, onRefreshDevices }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [favorites, setFavorites] = useState<Favorite[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const { results: placeResults, loading: placeLoading } = usePlaceSearch(query)
+
+  const handlePlaceSelect = onSelectPlace || onFlyTo
 
   useEffect(() => {
     if (!isOpen) return
@@ -74,7 +80,7 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onRefre
     section: 'favorites',
     title: f.name,
     subtitle: `Favorite · ${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}`,
-    action: () => onFlyTo(f.lat, f.lng),
+    action: () => handlePlaceSelect(f.lat, f.lng, f.name),
   }))
 
   const histItems: PaletteItem[] = history.map((h, i) => ({
@@ -82,16 +88,31 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onRefre
     section: 'history',
     title: h.name || `${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}`,
     subtitle: `History · ${h.kind}`,
-    action: () => onFlyTo(h.lat, h.lng),
+    action: () => handlePlaceSelect(h.lat, h.lng, h.name || undefined),
   }))
 
-  const allItems = [...modeItems, ...actionItems, ...favItems, ...histItems]
+  const placeItems: PaletteItem[] = placeResults.map((p) => ({
+    id: `place-${p.id}`,
+    section: 'places',
+    title: p.name,
+    subtitle: `Place · ${p.address}`,
+    action: () => handlePlaceSelect(p.lat, p.lng, p.name),
+  }))
+
+  const allItems = [...modeItems, ...actionItems, ...favItems, ...histItems, ...placeItems]
   const q = query.trim().toLowerCase()
   const filtered = q
     ? allItems.filter((item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q))
     : allItems
 
+  useEffect(() => {
+    if (selectedIndex >= filtered.length && filtered.length > 0) {
+      setSelectedIndex(filtered.length - 1)
+    }
+  }, [filtered.length, selectedIndex])
+
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.nativeEvent.isComposing) return
     if (e.key === 'Escape') {
       onClose()
     } else if (e.key === 'ArrowDown') {
@@ -129,7 +150,9 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onRefre
 
         <div className="cmd-palette-body">
           {filtered.length === 0 ? (
-            <div className="cmd-palette-empty">{t('cmdpalette.no_results')}</div>
+            <div className="cmd-palette-empty">
+              {placeLoading ? t('cmdpalette.searching') : t('cmdpalette.no_results')}
+            </div>
           ) : (
             filtered.map((item, idx) => (
               <div

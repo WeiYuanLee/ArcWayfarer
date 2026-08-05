@@ -26,6 +26,8 @@ export async function searchPlaceByKeyword(
   const response = await fetch(url.toString(), {
     signal,
     headers: {
+      // NOTE (Tech Debt): 'User-Agent' is a forbidden header name in browser Fetch API / Electron renderer.
+      // Custom User-Agent will be ignored or overridden by the browser. Consider proxying geocoding via backend API.
       'User-Agent': 'ArcWayfarer-Location-Simulator/1.0',
       'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
     },

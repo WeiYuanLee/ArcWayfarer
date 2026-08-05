@@ -23,15 +23,41 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setTarget(point)
     setTargetText(formatPoint(point))
   }, [point])
-  useEffect(() => () => setOverlay(EMPTY_OVERLAY), [setOverlay])
+
+  useEffect(() => {
+    if (target) {
+      setOverlay({
+        markers: [
+          {
+            id: 'teleport-target',
+            lat: target.lat,
+            lng: target.lng,
+            color: '#4a4af0',
+            label: '📍',
+            draggable: !isOtherModeActive && status.kind !== 'busy',
+            onDragEnd: (lat: number, lng: number) => {
+              setTarget({ lat, lng })
+              setTargetText(formatPoint({ lat, lng }))
+            },
+          },
+        ],
+        path: [],
+      })
+    } else {
+      setOverlay(EMPTY_OVERLAY)
+    }
+    return () => setOverlay(EMPTY_OVERLAY)
+  }, [target, isOtherModeActive, status.kind, setOverlay])
 
   function handleTextChange(value: string) {
+    setStatus({ kind: 'idle' })
     setTargetText(value)
     const parsed = parsePoint(value)
-    if (parsed) setTarget(parsed)
+    setTarget(parsed)
   }
 
   function handleFocusInput() {
+    setStatus({ kind: 'idle' })
     requestPoint((lat, lng) => {
       setTarget({ lat, lng })
       setTargetText(formatPoint({ lat, lng }))
@@ -39,6 +65,7 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
   }
 
   function handlePasteClipboard() {
+    setStatus({ kind: 'idle' })
     navigator.clipboard.readText().then((text) => {
       if (!text) return
       handleTextChange(text)
@@ -47,16 +74,13 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
 
   function handleUseCurrentLocation() {
     if (!livePosition) return
+    setStatus({ kind: 'idle' })
     setTarget(livePosition)
     setTargetText(formatPoint(livePosition))
   }
 
   function handlePreview() {
     if (!target) return
-    setOverlay({
-      markers: [{ id: 'teleport-preview', lat: target.lat, lng: target.lng, color: '#4a4af0', label: '●' }],
-      path: [],
-    })
     requestFlyTo(target.lat, target.lng)
   }
 
@@ -67,7 +91,6 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
       await setLocation(deviceId, target.lat, target.lng)
       pushHistory({ lat: target.lat, lng: target.lng, kind: 'teleport' }).catch(() => {})
       setStatus({ kind: 'success', message: t('teleport.status.set_success') })
-      setOverlay({ markers: [], path: [] })
       requestFlyTo(target.lat, target.lng)
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('teleport.status.set_failed') })

@@ -46,16 +46,28 @@ export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string 
 }
 
 async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const payload = await res.json().catch(() => null)
-  if (!res.ok) {
-    throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+    }
+    return payload as T
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out (15s). Please check device connection.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return payload as T
 }
 
 async function postJson(path: string, body: unknown): Promise<void> {

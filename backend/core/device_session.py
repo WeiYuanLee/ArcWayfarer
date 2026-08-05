@@ -8,7 +8,7 @@ from pymobiledevice3.services.simulate_location import DtSimulateLocation
 from config import MOUNT_TIMEOUT_SECONDS
 from core import device_manager
 
-_DEAD_CONNECTION_ERRORS = (ConnectionTerminatedError, ConnectionError, OSError)
+_DEAD_CONNECTION_ERRORS = (ConnectionTerminatedError, ConnectionError, OSError, asyncio.TimeoutError, TimeoutError)
 
 
 class DeviceSession:
@@ -25,20 +25,25 @@ class DeviceSession:
         self._backend = backend
         self._dvt_cm = dvt_cm
         self._ls_cm = ls_cm
+        self._lock = asyncio.Lock()
 
     async def set(self, lat: float, lng: float) -> None:
-        try:
-            await self._backend.set(lat, lng)
-        except _DEAD_CONNECTION_ERRORS:
-            _sessions.pop(self.udid, None)
-            raise
+        async with self._lock:
+            try:
+                await asyncio.wait_for(self._backend.set(lat, lng), timeout=10.0)
+            except Exception:
+                _sessions.pop(self.udid, None)
+                await self.close()
+                raise
 
     async def clear(self) -> None:
-        try:
-            await self._backend.clear()
-        except _DEAD_CONNECTION_ERRORS:
-            _sessions.pop(self.udid, None)
-            raise
+        async with self._lock:
+            try:
+                await asyncio.wait_for(self._backend.clear(), timeout=10.0)
+            except Exception:
+                _sessions.pop(self.udid, None)
+                await self.close()
+                raise
 
     async def close(self) -> None:
         if self._ls_cm is not None:
@@ -57,6 +62,27 @@ class DeviceSession:
 
 _sessions: dict[str, DeviceSession] = {}
 _session_locks: dict[str, asyncio.Lock] = {}
+
+
+class LockdownSimulateLocationWrapper:
+    """Wrapper for iOS < 17 lockdown location simulation that creates a fresh lockdown connection per command."""
+
+    def __init__(self, udid: str):
+        self.udid = udid
+
+    async def set(self, lat: float, lng: float) -> None:
+        lockdown = await device_manager.get_lockdown(self.udid)
+        try:
+            await device_manager.ensure_mounted(lockdown)
+        except Exception:
+            pass
+        backend = DtSimulateLocation(lockdown)
+        await backend.set(lat, lng)
+
+    async def clear(self) -> None:
+        lockdown = await device_manager.get_lockdown(self.udid)
+        backend = DtSimulateLocation(lockdown)
+        await backend.clear()
 
 
 async def get_session(udid: str) -> DeviceSession:
@@ -84,7 +110,7 @@ async def get_session(udid: str) -> DeviceSession:
                 raise RuntimeError(
                     "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
                 ) from e
-            session = DeviceSession(udid, transport="lockdown", backend=DtSimulateLocation(lockdown))
+            session = DeviceSession(udid, transport="lockdown", backend=LockdownSimulateLocationWrapper(udid))
         else:
             rsd = await device_manager.get_rsd(udid)
             dvt_cm = DvtProvider(rsd)
