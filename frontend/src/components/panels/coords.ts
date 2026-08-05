@@ -8,9 +8,12 @@ export function parsePoint(text: string): LatLng | null {
   if (!text) return null
   const trimmed = text.trim()
   
-  // Check for URL containing @lat,lng or ?q=lat,lng
+  // Check for URL containing @lat,lng, ?q=lat,lng, !3dlat!4dlng, ll=lat,lng, or /loc:lat+lng
   const urlMatch = trimmed.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/) ||
-                   trimmed.match(/[?&]q=(-?\d+(?:\.\d+)?)(?:%2C|,)(-?\d+(?:\.\d+)?)/)
+                   trimmed.match(/[?&]q=(-?\d+(?:\.\d+)?)(?:%2C|,|\s)+(-?\d+(?:\.\d+)?)/) ||
+                   trimmed.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/) ||
+                   trimmed.match(/[?&]ll=(-?\d+(?:\.\d+)?)(?:%2C|,|\s)+(-?\d+(?:\.\d+)?)/) ||
+                   trimmed.match(/\/loc:(-?\d+(?:\.\d+)?)\+(-?\d+(?:\.\d+)?)/)
   if (urlMatch) {
     const lat = Number(urlMatch[1])
     const lng = Number(urlMatch[2])
@@ -19,8 +22,22 @@ export function parsePoint(text: string): LatLng | null {
     }
   }
 
-  // Check for standard numbers separated by comma, space, or parentheses
-  const match = trimmed.match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/)
+  // Check for DMS Degree-Minute-Second format (e.g. 25°02'02.4"N 121°33'54.0"E)
+  const dmsMatch = trimmed.match(
+    /(\d+)[°\s]+(\d+)['\s]+(\d+(?:\.\d+)?)["\s]*([NSns])[,\s]+(\d+)[°\s]+(\d+)['\s]+(\d+(?:\.\d+)?)["\s]*([EWew])/
+  )
+  if (dmsMatch) {
+    let lat = Number(dmsMatch[1]) + Number(dmsMatch[2]) / 60 + Number(dmsMatch[3]) / 3600
+    if (dmsMatch[4].toUpperCase() === 'S') lat = -lat
+    let lng = Number(dmsMatch[5]) + Number(dmsMatch[6]) / 60 + Number(dmsMatch[7]) / 3600
+    if (dmsMatch[8].toUpperCase() === 'W') lng = -lng
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng }
+    }
+  }
+
+  // Check for standard numbers separated by comma, space, colon, slash, or tab
+  const match = trimmed.match(/(-?\d+(?:\.\d+)?)[,\s:\/;\t]+(-?\d+(?:\.\d+)?)/)
   if (!match) return null
   const lat = Number(match[1])
   const lng = Number(match[2])
@@ -72,6 +89,42 @@ export function haversineDistanceKm(a: LatLng, b: LatLng): number {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(h))
 }
+
+export function movePoint(center: LatLng, bearingDeg: number, distanceMeters: number): LatLng {
+  const EARTH_RADIUS_M = 6371000.0
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const toDeg = (rad: number) => (rad * 180) / Math.PI
+
+  const bearing = toRad(bearingDeg)
+  const angularDistance = distanceMeters / EARTH_RADIUS_M
+
+  const lat1 = toRad(center.lat)
+  const lng1 = toRad(center.lng)
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angularDistance) +
+      Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
+  )
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+      Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+    )
+
+  return { lat: toDeg(lat2), lng: toDeg(lng2) }
+}
+
+export function pointsOnCircle(center: LatLng, radiusMeters: number, count: number): LatLng[] {
+  const safeCount = Math.max(4, Math.floor(count))
+  const points: LatLng[] = []
+  for (let i = 0; i < safeCount; i++) {
+    const bearing = (360 / safeCount) * i
+    points.push(movePoint(center, bearing, radiusMeters))
+  }
+  return points
+}
+
 
 export function estimateDurationMinutes(distanceKm: number, speedKmh: number): number {
   if (speedKmh <= 0) return 0

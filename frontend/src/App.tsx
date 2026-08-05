@@ -97,12 +97,38 @@ export default function App() {
     if (point) requestFlyTo(point.lat, point.lng)
   }
 
+  const handlePlaceSelect = useCallback(
+    (lat: number, lng: number) => {
+      requestFlyTo(lat, lng)
+      if (pendingPickRef.current) {
+        handleMapClick(lat, lng)
+      }
+    },
+    [requestFlyTo]
+  )
+
   const connectedIds = new Set(devices.map((d) => d.udid))
   const livePositions = Object.fromEntries(
     Object.entries(positions)
-      .filter(([udid]) => connectedIds.has(udid))
+      .filter(([udid]) => connectedIds.size === 0 || connectedIds.has(udid))
       .map(([udid, p]) => [udid, { lat: p.lat, lng: p.lng }])
   )
+
+  const setOverlayForDevice = useCallback((udid: string, overlay: MapOverlay) => {
+    setOverlaysByDevice((prev) => {
+      if (prev[udid] === overlay) return prev
+      return { ...prev, [udid]: overlay }
+    })
+  }, [])
+
+  const overlayCallbacksRef = useRef<Record<string, (overlay: MapOverlay) => void>>({})
+
+  const getSetOverlayForDevice = useCallback((udid: string) => {
+    if (!overlayCallbacksRef.current[udid]) {
+      overlayCallbacksRef.current[udid] = (overlay: MapOverlay) => setOverlayForDevice(udid, overlay)
+    }
+    return overlayCallbacksRef.current[udid]
+  }, [setOverlayForDevice])
 
   function panelPropsFor(udid: string): PanelProps {
     const device = devices.find((d) => d.udid === udid) ?? null
@@ -117,7 +143,7 @@ export default function App() {
       liveStopIndex: position?.stopIndex ?? null,
       requestPoint,
       clearPoint: () => setPointByDevice((prev) => ({ ...prev, [udid]: null })),
-      setOverlay: (overlay: MapOverlay) => setOverlaysByDevice((prev) => ({ ...prev, [udid]: overlay })),
+      setOverlay: getSetOverlayForDevice(udid),
       requestFlyTo,
       sendWs: send,
     }
@@ -160,12 +186,7 @@ export default function App() {
           />
           <IconRail onFlyTo={requestFlyTo} />
           <div className="overlay-status-dock">
-            <PlaceSearchBar
-              onSelectPlace={(lat, lng) => {
-                requestFlyTo(lat, lng)
-                handleMapClick(lat, lng)
-              }}
-            />
+            <PlaceSearchBar onSelectPlace={handlePlaceSelect} />
             <StatusBar
               deviceState={focusedDeviceState}
               livePosition={focusedPosition ? { lat: focusedPosition.lat, lng: focusedPosition.lng } : null}
@@ -184,6 +205,7 @@ export default function App() {
           if (focusedDeviceId) handleModeChange(focusedDeviceId, mode)
         }}
         onFlyTo={requestFlyTo}
+        onSelectPlace={handlePlaceSelect}
         onRefreshDevices={refreshDevices}
       />
     </div>

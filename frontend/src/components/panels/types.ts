@@ -9,11 +9,21 @@ export type OverlayMarker = {
   lng: number
   color: string
   label?: string
+  title?: string
   draggable?: boolean
+  isHovered?: boolean
+  onDrag?: (lat: number, lng: number) => void
   onDragEnd?: (lat: number, lng: number) => void
+  onContextMenu?: (e: { lat: number; lng: number; clientX: number; clientY: number }) => void
 }
 export type OverlayCircle = { lat: number; lng: number; radiusMeters: number }
-export type MapOverlay = { markers: OverlayMarker[]; path: LatLng[]; circle?: OverlayCircle | null }
+export type MapOverlay = {
+  markers: OverlayMarker[]
+  path: LatLng[]
+  circle?: OverlayCircle | null
+  onPathClick?: (lat: number, lng: number) => void
+  onMapContextMenu?: (e: { lat: number; lng: number; clientX: number; clientY: number }) => void
+}
 
 export const EMPTY_OVERLAY: MapOverlay = { markers: [], path: [], circle: null }
 

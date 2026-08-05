@@ -109,7 +109,6 @@ type Props = {
 export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositions, overlays, flyTo, children }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
-  const markerRef = useRef<L.Marker | null>(null)
   const liveMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayPathCasingsRef = useRef<Map<string, L.Polyline>>(new Map())
@@ -148,22 +147,6 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
       mapRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-
-    if (selectedPoint) {
-      if (markerRef.current) {
-        markerRef.current.setLatLng(selectedPoint)
-      } else {
-        markerRef.current = L.marker(selectedPoint).addTo(map)
-      }
-    } else if (markerRef.current) {
-      markerRef.current.remove()
-      markerRef.current = null
-    }
-  }, [selectedPoint])
 
   useEffect(() => {
     const map = mapRef.current

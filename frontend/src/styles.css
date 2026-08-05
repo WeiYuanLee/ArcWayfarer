@@ -391,6 +391,7 @@ body {
 
 .panel-scroll-body {
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   flex: 1;
   padding-right: 2px;
@@ -764,6 +765,29 @@ body {
   margin-top: 8px;
   font-size: 12px;
   color: #bbb;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  will-change: transform;
+}
+
+.coord-row.hovered {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.25);
+  transform: translateX(4px);
+}
+
+.coord-row.hovered span {
+  color: #60a5fa;
+  transform: scale(1.2);
+}
+
+.coord-row.hovered input {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: #2d3748;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.3);
 }
 
 .coord-row span {
@@ -773,6 +797,7 @@ body {
   flex-shrink: 0;
   text-align: center;
   font-weight: 600;
+  transition: transform 0.2s ease, color 0.2s ease;
 }
 
 .coord-row input,
@@ -786,7 +811,7 @@ body {
   border-radius: 8px;
   font-size: 13px;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .coord-row input:focus,
@@ -993,6 +1018,14 @@ body {
   color: #fff;
 }
 
+.swap-button.active {
+  background: #3b52d4;
+  border-color: #5b6bff;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(91, 107, 255, 0.35);
+}
+
+
 .import-actions {
   display: flex;
   gap: 6px;
@@ -1052,6 +1085,8 @@ body {
 
 .transport-tab {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1080,6 +1115,12 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.transport-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .transport-icon {
   font-size: 14px;
 }
@@ -1088,6 +1129,8 @@ body {
   font-size: 10px;
   opacity: 0.65;
   font-family: monospace;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* 2. Speed Telemetry Header */
@@ -2125,6 +2168,98 @@ body {
   color: #888;
   font-size: 12px;
 }
+
+/* Custom Right-Click Context Menu & Map Path Tooltips */
+.path-tooltip {
+  background: rgba(15, 23, 42, 0.9) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(96, 165, 250, 0.4) !important;
+  color: #60a5fa !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+.custom-context-menu {
+  position: fixed;
+  z-index: 99999;
+  min-width: 200px;
+  background: rgba(18, 22, 34, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(96, 165, 250, 0.15);
+  padding: 6px;
+  animation: contextMenuPop 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  will-change: transform, opacity;
+}
+
+@keyframes contextMenuPop {
+  0% { opacity: 0; transform: scale(0.92) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.context-menu-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+
+.context-menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.28);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+.context-menu-item.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.28);
+  color: #fca5a5;
+}
+
+.context-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.context-menu-item .item-icon {
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+
 
 
 

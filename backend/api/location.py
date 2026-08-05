@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException
 
 from core import joystick, teleport
@@ -9,6 +10,7 @@ from models.schemas import (
     SetLocationRequest,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/location")
 
 
@@ -17,8 +19,10 @@ async def post_set_location(body: SetLocationRequest) -> dict:
     try:
         await teleport.set_location(body.udid, body.lat, body.lng)
     except ValueError as e:
+        logger.warning("Device not found for set_location: %s", e)
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001 - surface device/tunnel errors to the UI
+        logger.exception("Error in set_location for udid=%s: %s", body.udid, e)
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"status": "ok"}
 

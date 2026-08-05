@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { searchPlaceByKeyword, type PlaceSearchResult } from '../../services/geocoding'
+import type { PlaceSearchResult } from '../../services/geocoding'
 import { useT } from '../../i18n'
 import { useClickOutside } from '../../hooks/useClickOutside'
+import { usePlaceSearch } from '../../hooks/usePlaceSearch'
 
 interface Props {
   onSelectPlace: (lat: number, lng: number, placeName: string) => void
@@ -10,52 +11,22 @@ interface Props {
 export const PlaceSearchBar: React.FC<Props> = ({ onSelectPlace }) => {
   const t = useT()
   const [keyword, setKeyword] = useState('')
-  const [results, setResults] = useState<PlaceSearchResult[]>([])
-  const [loading, setLoading] = useState(false)
+  const { results, loading, errorMsg, clearResults } = usePlaceSearch(keyword)
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
 
   useClickOutside([containerRef], () => setIsOpen(false), isOpen)
 
   useEffect(() => {
-    const trimmed = keyword.trim()
-    if (!trimmed) {
-      setResults([])
+    if (results.length > 0 || errorMsg) {
+      setIsOpen(true)
+      setSelectedIndex(-1)
+    } else if (!keyword.trim()) {
       setIsOpen(false)
-      setErrorMsg(null)
-      return
     }
-
-    const controller = new AbortController()
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      setErrorMsg(null)
-      try {
-        const items = await searchPlaceByKeyword(trimmed, controller.signal)
-        setResults(items)
-        setIsOpen(true)
-        setSelectedIndex(-1)
-        if (items.length === 0) {
-          setErrorMsg(t('search.no_results'))
-        }
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          console.error('Keyword search failed:', err)
-          setErrorMsg(t('search.no_results'))
-        }
-      } finally {
-        setLoading(false)
-      }
-    }, 350)
-
-    return () => {
-      clearTimeout(timer)
-      controller.abort()
-    }
-  }, [keyword, t])
+  }, [results, errorMsg, keyword])
 
   const handleSelect = (item: PlaceSearchResult) => {
     onSelectPlace(item.lat, item.lng, item.name)
@@ -64,6 +35,7 @@ export const PlaceSearchBar: React.FC<Props> = ({ onSelectPlace }) => {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return
     if (!isOpen || results.length === 0) return
 
     if (e.key === 'ArrowDown') {
@@ -74,8 +46,9 @@ export const PlaceSearchBar: React.FC<Props> = ({ onSelectPlace }) => {
       setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (selectedIndex >= 0 && selectedIndex < results.length) {
-        handleSelect(results[selectedIndex])
+      const targetIndex = selectedIndex >= 0 ? selectedIndex : 0
+      if (targetIndex < results.length) {
+        handleSelect(results[targetIndex])
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false)
@@ -101,9 +74,8 @@ export const PlaceSearchBar: React.FC<Props> = ({ onSelectPlace }) => {
             className="place-search-clear"
             onClick={() => {
               setKeyword('')
-              setResults([])
+              clearResults()
               setIsOpen(false)
-              setErrorMsg(null)
             }}
             title="Clear"
           >
@@ -121,6 +93,7 @@ export const PlaceSearchBar: React.FC<Props> = ({ onSelectPlace }) => {
             <li
               key={item.id}
               className={`dropdown-row ${index === selectedIndex ? 'selected' : ''}`}
+              onMouseEnter={() => setSelectedIndex(index)}
               onClick={() => handleSelect(item)}
             >
               <span className="row-icon">📍</span>
