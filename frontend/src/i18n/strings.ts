@@ -156,6 +156,8 @@ export const STRINGS = {
   'multistop.jump_post_delay': { zh: '站後延遲（秒）', en: 'Post-arrival delay (sec)' },
   'multistop.custom_speed': { zh: '自訂速度 (km/h)', en: 'Custom speed (km/h)' },
   'multistop.import_gpx': { zh: '匯入 GPX', en: 'Import GPX' },
+  'multistop.export_template': { zh: '匯出範本', en: 'Export JSON' },
+  'multistop.import_template': { zh: '載入範本', en: 'Import JSON' },
   'multistop.paste_coords': { zh: '貼上座標', en: 'Paste coordinates' },
   'multistop.paste_placeholder': { zh: '每行一組座標，例如：\n25.033, 121.565\n25.041, 121.557', en: 'One coordinate per line, e.g.:\n25.033, 121.565\n25.041, 121.557' },
   'multistop.paste_submit': { zh: '套用', en: 'Apply' },

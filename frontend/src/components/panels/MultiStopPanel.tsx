@@ -276,6 +276,65 @@ export function MultiStopPanel({
     setPasteText('')
   }
 
+  function handleExportTemplate() {
+    if (validWaypoints.length === 0) return
+    const template = {
+      version: '1.0',
+      kind: 'multi_stop',
+      name: `MultiStop_Route_${new Date().toISOString().slice(0, 10)}`,
+      speedKmh,
+      navMode,
+      straightLine,
+      jumpMode,
+      jumpPreDelay,
+      jumpPostDelay,
+      pauseEnabled,
+      pauseMin,
+      pauseMax,
+      waypoints: validWaypoints,
+    }
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `multistop-route-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function processTemplateFile(file: File) {
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      if (Array.isArray(data.waypoints) && data.waypoints.length > 0) {
+        setAllWaypoints(data.waypoints)
+        if (typeof data.speedKmh === 'number') setSpeedKmh(data.speedKmh)
+        if (data.navMode) setNavMode(data.navMode)
+        if (typeof data.straightLine === 'boolean') setStraightLine(data.straightLine)
+        if (typeof data.jumpMode === 'boolean') setJumpMode(data.jumpMode)
+        if (typeof data.jumpPreDelay === 'number') setJumpPreDelay(data.jumpPreDelay)
+        if (typeof data.jumpPostDelay === 'number') setJumpPostDelay(data.jumpPostDelay)
+        requestFlyTo(data.waypoints[0].lat, data.waypoints[0].lng)
+        setImportMessage({ kind: 'ok', text: '已順利載入路線範本！' })
+      }
+    } catch {
+      setImportMessage({ kind: 'error', text: '範本檔案解析失敗，請確認格式。' })
+    }
+  }
+
+  async function handleTemplateFile(file: File) {
+    if (validWaypoints.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: t('confirm.gpx_overwrite_title'),
+        description: '載入範本將會替換現有的所有路徑點與設定。',
+        onConfirm: () => processTemplateFile(file),
+      })
+    } else {
+      processTemplateFile(file)
+    }
+  }
+
   function handlePasteSubmit() {
     if (validWaypoints.length > 0) {
       setConfirmModal({
@@ -427,6 +486,22 @@ export function MultiStopPanel({
                 }}
               />
             </label>
+            <label className="swap-button">
+              {t('multistop.import_template')}
+              <input
+                type="file"
+                accept=".json,application/json"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (file) await handleTemplateFile(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            <button className="swap-button" onClick={handleExportTemplate} disabled={validWaypoints.length === 0}>
+              {t('multistop.export_template')}
+            </button>
             <button className="swap-button" onClick={() => setPasteOpen((open) => !open)}>
               {t('multistop.paste_coords')}
             </button>
