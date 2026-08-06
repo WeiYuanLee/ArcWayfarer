@@ -177,6 +177,9 @@ export const STRINGS = {
   'contextmenu.teleport_here': { zh: '⚡ 瞬移裝置至此', en: '⚡ Teleport device here' },
   'contextmenu.copy_coords_short': { zh: '📋 複製座標', en: '📋 Copy coordinates' },
 
+  // Toast
+  'toast.copied_coords': { zh: '已複製經緯度至剪貼簿 📋', en: 'Coordinates copied to clipboard 📋' },
+
   // Confirm dialogs
   'confirm.clear_all_title': { zh: '確認清空所有點位？', en: 'Clear all waypoints?' },
   'confirm.clear_all_desc': { zh: '此操作將清除目前設定的所有路徑點，無法復原。', en: 'This will clear all current waypoints. This action cannot be undone.' },

@@ -4,6 +4,7 @@ import { ControlsOverlay } from './components/layout/ControlsOverlay'
 import { IconRail } from './components/layout/IconRail'
 import { StatusBar } from './components/layout/StatusBar'
 import { CommandPalette } from './components/layout/CommandPalette'
+import { ToastContainer } from './components/common/Toast'
 import { MapView } from './components/map/MapView'
 import { PlaceSearchBar } from './components/map/PlaceSearchBar'
 import type { Mode } from './components/ModeSelector'
@@ -209,6 +210,7 @@ export default function App() {
         onSelectPlace={handlePlaceSelect}
         onRefreshDevices={refreshDevices}
       />
+      <ToastContainer />
     </div>
   )
 }

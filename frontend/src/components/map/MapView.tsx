@@ -268,6 +268,14 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
         }
 
         existing.off('dragend')
+        existing.off('drag')
+        if (m.onDrag) {
+          const onDrag = m.onDrag
+          existing.on('drag', (e: L.LeafletEvent) => {
+            const ll = (e.target as L.Marker).getLatLng().wrap()
+            onDrag(ll.lat, ll.lng)
+          })
+        }
         if (m.onDragEnd) {
           const onDragEnd = m.onDragEnd
           existing.on('dragend', (e: L.LeafletEvent) => {

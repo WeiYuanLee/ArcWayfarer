@@ -19,6 +19,7 @@ import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
+import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
@@ -132,6 +133,10 @@ export function MultiStopPanel({
                 label: String(idx + 1),
                 title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
                 draggable: !isLocked,
+                onDrag: (lat: number, lng: number) => {
+                  if (isLocked) return
+                  updateWaypoint(idx, { lat, lng })
+                },
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked) return
                   updateWaypoint(idx, { lat, lng })
@@ -161,6 +166,7 @@ export function MultiStopPanel({
                         onClick: () => {
                           if (!item.point) return
                           navigator.clipboard.writeText(`${item.point.lat.toFixed(6)}, ${item.point.lng.toFixed(6)}`)
+                          showToast(t('toast.copied_coords'))
                         },
                       },
                       {
@@ -212,6 +218,7 @@ export function MultiStopPanel({
               label: t('contextmenu.copy_coords_short'),
               onClick: () => {
                 navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+                showToast(t('toast.copied_coords'))
               },
             },
           ],
