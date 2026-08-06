@@ -240,33 +240,60 @@ export function MultiStopPanel({
     })
   }
 
-  async function processGpxFile(file: File) {
+  async function processUnifiedImportFile(file: File) {
     setImportMessage(null)
+    const isJson = file.name.toLowerCase().endsWith('.json')
     try {
       const text = await file.text()
+      if (isJson) {
+        try {
+          const data = JSON.parse(text)
+          if (Array.isArray(data.waypoints) && data.waypoints.length > 0) {
+            setAllWaypoints(data.waypoints)
+            if (typeof data.speedKmh === 'number') setSpeedKmh(data.speedKmh)
+            if (data.navMode) setNavMode(data.navMode)
+            if (typeof data.straightLine === 'boolean') setStraightLine(data.straightLine)
+            if (typeof data.jumpMode === 'boolean') setJumpMode(data.jumpMode)
+            if (typeof data.jumpPreDelay === 'number') setJumpPreDelay(data.jumpPreDelay)
+            if (typeof data.jumpPostDelay === 'number') setJumpPostDelay(data.jumpPostDelay)
+            if (typeof data.pauseEnabled === 'boolean') setPauseEnabled(data.pauseEnabled)
+            if (typeof data.pauseMin === 'number') setPauseMin(data.pauseMin)
+            if (typeof data.pauseMax === 'number') setPauseMax(data.pauseMax)
+            requestFlyTo(data.waypoints[0].lat, data.waypoints[0].lng)
+            setImportMessage({ kind: 'ok', text: t('multistop.import_template_success') })
+            return
+          }
+        } catch {
+          // fall through to GPX parsing
+        }
+      }
+
+      // Try GPX parsing
       const points = parseGpx(text)
-      if (points.length === 0) {
-        setImportMessage({ kind: 'error', text: t('multistop.gpx_no_points') })
+      if (points.length > 0) {
+        setAllWaypoints(points)
+        setGpxFileName(file.name)
+        requestFlyTo(points[0].lat, points[0].lng)
+        setImportMessage({ kind: 'ok', text: t('multistop.import_gpx_success') })
         return
       }
-      setAllWaypoints(points)
-      setGpxFileName(file.name)
-      requestFlyTo(points[0].lat, points[0].lng)
+
+      setImportMessage({ kind: 'error', text: t('multistop.import_unrecognized_file') })
     } catch {
-      setImportMessage({ kind: 'error', text: t('multistop.gpx_import_failed') })
+      setImportMessage({ kind: 'error', text: t('multistop.import_file_failed') })
     }
   }
 
-  async function handleGpxFile(file: File) {
+  async function handleUnifiedImportFile(file: File) {
     if (validWaypoints.length > 0) {
       setConfirmModal({
         isOpen: true,
         title: t('confirm.gpx_overwrite_title'),
         description: t('confirm.gpx_overwrite_desc'),
-        onConfirm: () => processGpxFile(file),
+        onConfirm: () => processUnifiedImportFile(file),
       })
     } else {
-      processGpxFile(file)
+      processUnifiedImportFile(file)
     }
   }
 
@@ -281,6 +308,19 @@ export function MultiStopPanel({
     setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
     setPasteOpen(false)
     setPasteText('')
+  }
+
+  function handlePasteSubmit() {
+    if (validWaypoints.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: t('confirm.paste_overwrite_title'),
+        description: t('confirm.paste_overwrite_desc'),
+        onConfirm: () => processPasteSubmit(),
+      })
+    } else {
+      processPasteSubmit()
+    }
   }
 
   function handleExportTemplate() {
@@ -307,52 +347,6 @@ export function MultiStopPanel({
     a.download = `multistop-route-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  async function processTemplateFile(file: File) {
-    try {
-      const text = await file.text()
-      const data = JSON.parse(text)
-      if (Array.isArray(data.waypoints) && data.waypoints.length > 0) {
-        setAllWaypoints(data.waypoints)
-        if (typeof data.speedKmh === 'number') setSpeedKmh(data.speedKmh)
-        if (data.navMode) setNavMode(data.navMode)
-        if (typeof data.straightLine === 'boolean') setStraightLine(data.straightLine)
-        if (typeof data.jumpMode === 'boolean') setJumpMode(data.jumpMode)
-        if (typeof data.jumpPreDelay === 'number') setJumpPreDelay(data.jumpPreDelay)
-        if (typeof data.jumpPostDelay === 'number') setJumpPostDelay(data.jumpPostDelay)
-        requestFlyTo(data.waypoints[0].lat, data.waypoints[0].lng)
-        setImportMessage({ kind: 'ok', text: '已順利載入路線範本！' })
-      }
-    } catch {
-      setImportMessage({ kind: 'error', text: '範本檔案解析失敗，請確認格式。' })
-    }
-  }
-
-  async function handleTemplateFile(file: File) {
-    if (validWaypoints.length > 0) {
-      setConfirmModal({
-        isOpen: true,
-        title: t('confirm.gpx_overwrite_title'),
-        description: '載入範本將會替換現有的所有路徑點與設定。',
-        onConfirm: () => processTemplateFile(file),
-      })
-    } else {
-      processTemplateFile(file)
-    }
-  }
-
-  function handlePasteSubmit() {
-    if (validWaypoints.length > 0) {
-      setConfirmModal({
-        isOpen: true,
-        title: t('confirm.paste_overwrite_title'),
-        description: t('confirm.paste_overwrite_desc'),
-        onConfirm: () => processPasteSubmit(),
-      })
-    } else {
-      processPasteSubmit()
-    }
   }
 
   async function handleStart() {
@@ -481,27 +475,14 @@ export function MultiStopPanel({
 
           <div className="import-actions">
             <label className="swap-button">
-              {t('multistop.import_gpx')}
+              {t('multistop.import_file')}
               <input
                 type="file"
-                accept=".gpx,application/gpx+xml"
+                accept=".gpx,.json,application/gpx+xml,application/json"
                 style={{ display: 'none' }}
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
-                  if (file) await handleGpxFile(file)
-                  e.target.value = ''
-                }}
-              />
-            </label>
-            <label className="swap-button">
-              {t('multistop.import_template')}
-              <input
-                type="file"
-                accept=".json,application/json"
-                style={{ display: 'none' }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0]
-                  if (file) await handleTemplateFile(file)
+                  if (file) await handleUnifiedImportFile(file)
                   e.target.value = ''
                 }}
               />
