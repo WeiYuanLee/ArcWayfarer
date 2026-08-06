@@ -11,6 +11,8 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { useT } from '../../i18n'
 
+import { useWaypointList } from '../../hooks/useWaypointList'
+
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type SubMode = 'manual' | 'circle'
 
@@ -19,8 +21,18 @@ const WAYPOINT_COLOR = '#4a9af0'
 export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveStopIndex, liveEtaSeconds, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
   const [subMode, setSubMode] = useState<SubMode>('manual')
-  const [waypoints, setWaypoints] = useState<(LatLng | null)[]>([null, null])
-  const [texts, setTexts] = useState<string[]>(['', ''])
+  const {
+    items,
+    validWaypoints,
+    updateWaypoint,
+    handleTextChange,
+    addWaypoint,
+    removeWaypoint,
+    moveWaypoint,
+    setAllWaypoints,
+    reverseWaypoints,
+    setAsStart,
+  } = useWaypointList(2)
   
   // Circle sub-mode states
   const [circleCenter, setCircleCenter] = useState<LatLng | null>(null)
@@ -48,7 +60,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const isPaused = deviceState === 'paused'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
-  const validWaypoints = waypoints.filter((w): w is LatLng => w !== null)
   const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy
 
   const effectivePath = isActive
@@ -76,23 +87,22 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       const radiusM = Math.max(0, circleRadiusKm * 1000)
       const count = Math.max(4, Math.min(36, circleCount || 8))
       const generated = pointsOnCircle(circleCenter, radiusM, count)
-      setWaypoints(generated)
-      setTexts(generated.map((p) => formatPoint(p)))
+      setAllWaypoints(generated)
     }
-  }, [subMode, circleCenter, circleRadiusKm, circleCount])
+  }, [subMode, circleCenter, circleRadiusKm, circleCount, setAllWaypoints])
 
   useEffect(() => {
     setOverlay({
-      markers: waypoints
-        .map((wp, idx) =>
-          wp
+      markers: items
+        .map((item, idx) =>
+          item.point
             ? {
                 id: `loop-${idx}`,
-                lat: wp.lat,
-                lng: wp.lng,
+                lat: item.point.lat,
+                lng: item.point.lng,
                 color: WAYPOINT_COLOR,
                 label: String(idx + 1),
-                title: `Stop #${idx + 1} (${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)})`,
+                title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
                 draggable: !isLocked && subMode === 'manual',
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked || subMode === 'circle') return
@@ -109,9 +119,9 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                         label: '⚡ 瞬移至此點 (Teleport)',
                         disabled: deviceState !== 'idle' || !deviceId,
                         onClick: async () => {
-                          if (!deviceId) return
+                          if (!deviceId || !item.point) return
                           try {
-                            await setLocation(deviceId, wp.lat, wp.lng)
+                            await setLocation(deviceId, item.point.lat, item.point.lng)
                           } catch (e) {
                             setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
                           }
@@ -121,21 +131,22 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                         id: 'set-start',
                         label: '📍 設為路線起點',
                         disabled: isLocked || idx === 0,
-                        onClick: () => handleSetAsStart(idx),
+                        onClick: () => setAsStart(idx),
                       },
                       {
                         id: 'copy-coords',
                         label: '📋 複製經緯度 (Copy)',
                         onClick: () => {
-                          navigator.clipboard.writeText(`${wp.lat.toFixed(6)}, ${wp.lng.toFixed(6)}`)
+                          if (!item.point) return
+                          navigator.clipboard.writeText(`${item.point.lat.toFixed(6)}, ${item.point.lng.toFixed(6)}`)
                         },
                       },
                       {
                         id: 'delete',
                         label: '🗑️ 刪除此點位 (Remove)',
                         danger: true,
-                        disabled: isLocked || waypoints.length <= 2 || subMode === 'circle',
-                        onClick: () => handleRemoveWaypoint(idx),
+                        disabled: isLocked || items.length <= 2 || subMode === 'circle',
+                        onClick: () => removeWaypoint(idx),
                       },
                     ],
                   })
@@ -150,7 +161,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         : null,
       onPathClick: (lat, lng) => {
         if (isLocked || subMode === 'circle') return
-        handleAddWaypointWithPoint({ lat, lng })
+        addWaypoint({ lat, lng })
       },
       onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
         setContextMenu({
@@ -162,7 +173,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               id: 'add-wp-here',
               label: '➕ 在此處新增路徑點',
               disabled: isLocked || subMode === 'circle',
-              onClick: () => handleAddWaypointWithPoint({ lat, lng }),
+              onClick: () => addWaypoint({ lat, lng }),
             },
             {
               id: 'select-circle-center',
@@ -201,71 +212,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         })
       },
     })
-  }, [waypoints, effectivePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm])
-
-  function updateWaypoint(idx: number, point: LatLng) {
-    setWaypoints((prev) => prev.map((w, i) => (i === idx ? point : w)))
-    setTexts((prev) => prev.map((txt, i) => (i === idx ? formatPoint(point) : txt)))
-  }
-
-  function handleTextChange(idx: number, value: string) {
-    setTexts((prev) => prev.map((t, i) => (i === idx ? value : t)))
-    const parsed = parsePoint(value)
-    if (parsed) setWaypoints((prev) => prev.map((w, i) => (i === idx ? parsed : w)))
-  }
-
-  function handleAddWaypoint() {
-    setWaypoints((prev) => [...prev, null])
-    setTexts((prev) => [...prev, ''])
-  }
-
-  function handleAddWaypointWithPoint(pt: LatLng) {
-    setWaypoints((prev) => [...prev, pt])
-    setTexts((prev) => [...prev, formatPoint(pt)])
-  }
-
-  function handleSetAsStart(idx: number) {
-    if (idx <= 0) return
-    setWaypoints((prev) => {
-      const target = prev[idx]
-      const rest = prev.filter((_, i) => i !== idx)
-      return [target, ...rest]
-    })
-    setTexts((prev) => {
-      const target = prev[idx]
-      const rest = prev.filter((_, i) => i !== idx)
-      return [target, ...rest]
-    })
-  }
-
-  function handleRemoveWaypoint(idx: number) {
-    setWaypoints((prev) => prev.filter((_, i) => i !== idx))
-    setTexts((prev) => prev.filter((_, i) => i !== idx))
-  }
-
-  function handleMoveWaypoint(idx: number, direction: 'up' | 'down') {
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (targetIdx < 0 || targetIdx >= waypoints.length) return
-    setWaypoints((prev) => {
-      const next = [...prev]
-      const temp = next[idx]
-      next[idx] = next[targetIdx]
-      next[targetIdx] = temp
-      return next
-    })
-    setTexts((prev) => {
-      const next = [...prev]
-      const temp = next[idx]
-      next[idx] = next[targetIdx]
-      next[targetIdx] = temp
-      return next
-    })
-  }
-
-  function handleReverseWaypoints() {
-    setWaypoints((prev) => [...prev].reverse())
-    setTexts((prev) => [...prev].reverse())
-  }
+  }, [items, effectivePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint])
 
   function handlePickCircleCenter() {
     requestPoint((lat, lng) => {
@@ -346,7 +293,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           liveEtaSeconds={liveEtaSeconds}
           livePosition={livePosition}
           routePath={effectivePath}
-          waypoints={waypoints}
+          waypoints={items.map((i) => i.point)}
           isLoop={true}
           onPauseResume={handlePauseResume}
           onStop={handleStop}
@@ -376,8 +323,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   setSubMode('circle')
                   if (circleCenter) {
                     const generated = pointsOnCircle(circleCenter, circleRadiusKm * 1000, circleCount)
-                    setWaypoints(generated)
-                    setTexts(generated.map((p) => formatPoint(p)))
+                    setAllWaypoints(generated)
                   }
                 }}
                 disabled={isActive}
@@ -389,20 +335,25 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             {subMode === 'manual' ? (
               <>
                 <div className="waypoint-list">
-                  {waypoints.map((_, idx) => (
-                    <div className="coord-row" key={idx}>
+                  {items.map((item, idx) => (
+                    <div className="coord-row" key={item.id}>
                       <span>{idx + 1}</span>
                       <input
                         type="text"
                         placeholder="lat, lng or URL"
-                        value={texts[idx] ?? ''}
+                        value={item.rawText}
                         onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
                         onChange={(e) => handleTextChange(idx, e.target.value)}
                       />
                       <div className="waypoint-row-actions">
-                        <button disabled={idx === 0} onClick={() => handleMoveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                        <button disabled={idx === waypoints.length - 1} onClick={() => handleMoveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                        <button className="waypoint-remove" onClick={() => handleRemoveWaypoint(idx)} title={t('panel.remove_waypoint')}>
+                        <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
+                        <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
+                        <button
+                          className="waypoint-remove"
+                          disabled={isLocked || items.length <= 2}
+                          onClick={() => removeWaypoint(idx)}
+                          title={t('panel.remove_waypoint')}
+                        >
                           ✕
                         </button>
                       </div>
@@ -411,10 +362,10 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 </div>
 
                 <div className="panel-quick-actions">
-                  <button className="swap-button" onClick={handleAddWaypoint}>
+                  <button className="swap-button" onClick={() => addWaypoint()}>
                     {t('panel.add_waypoint')}
                   </button>
-                  <button className="swap-button" onClick={handleReverseWaypoints} title={t('routeloop.action.reverse')}>
+                  <button className="swap-button" onClick={reverseWaypoints} title={t('routeloop.action.reverse')}>
                     {t('routeloop.action.reverse')}
                   </button>
                 </div>

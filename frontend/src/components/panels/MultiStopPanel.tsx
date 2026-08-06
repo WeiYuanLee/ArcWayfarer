@@ -20,6 +20,8 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { useT } from '../../i18n'
 
+import { useWaypointList } from '../../hooks/useWaypointList'
+
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type ImportMessage = { kind: 'ok' | 'error'; text: string }
 
@@ -37,8 +39,18 @@ export function MultiStopPanel({
   setOverlay,
 }: PanelProps) {
   const t = useT()
-  const [waypoints, setWaypoints] = useState<(LatLng | null)[]>([null, null])
-  const [texts, setTexts] = useState<string[]>(['', ''])
+  const {
+    items,
+    validWaypoints,
+    updateWaypoint,
+    handleTextChange,
+    addWaypoint,
+    insertWaypointAfter,
+    removeWaypoint,
+    moveWaypoint,
+    clearAllWaypoints,
+    setAllWaypoints,
+  } = useWaypointList(2)
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [routePath, setRoutePath] = useState<LatLng[]>([])
@@ -60,15 +72,14 @@ export function MultiStopPanel({
   const isPaused = deviceState === 'paused'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
-  const validWaypoints = waypoints.filter((w): w is LatLng => w !== null)
   const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy
 
   // Auto fill waypoint 1 with live position if empty
   useEffect(() => {
-    if (!waypoints[0] && livePosition && !texts[0]) {
+    if (!items[0]?.point && livePosition && !items[0]?.rawText) {
       updateWaypoint(0, livePosition)
     }
-  }, [livePosition])
+  }, [livePosition, items, updateWaypoint])
 
   // Automatically update route path preview when not active
   useEffect(() => {
@@ -79,7 +90,7 @@ export function MultiStopPanel({
         setRoutePath([])
       }
     }
-  }, [waypoints, isActive])
+  }, [validWaypoints, isActive])
 
   const isLocked = isActive || isBusy
 
@@ -97,16 +108,16 @@ export function MultiStopPanel({
 
   useEffect(() => {
     setOverlay({
-      markers: waypoints
-        .map((wp, idx) =>
-          wp
+      markers: items
+        .map((item, idx) =>
+          item.point
             ? {
                 id: `multistop-${idx}`,
-                lat: wp.lat,
-                lng: wp.lng,
+                lat: item.point.lat,
+                lng: item.point.lng,
                 color: WAYPOINT_COLOR,
                 label: String(idx + 1),
-                title: `Stop #${idx + 1} (${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)})`,
+                title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
                 draggable: !isLocked,
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked) return
@@ -123,9 +134,9 @@ export function MultiStopPanel({
                         label: '⚡ 瞬移至此點 (Teleport)',
                         disabled: deviceState !== 'idle' || !deviceId,
                         onClick: async () => {
-                          if (!deviceId) return
+                          if (!deviceId || !item.point) return
                           try {
-                            await setLocation(deviceId, wp.lat, wp.lng)
+                            await setLocation(deviceId, item.point.lat, item.point.lng)
                           } catch (e) {
                             setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
                           }
@@ -135,15 +146,16 @@ export function MultiStopPanel({
                         id: 'copy-coords',
                         label: '📋 複製經緯度 (Copy)',
                         onClick: () => {
-                          navigator.clipboard.writeText(`${wp.lat.toFixed(6)}, ${wp.lng.toFixed(6)}`)
+                          if (!item.point) return
+                          navigator.clipboard.writeText(`${item.point.lat.toFixed(6)}, ${item.point.lng.toFixed(6)}`)
                         },
                       },
                       {
                         id: 'delete',
                         label: '🗑️ 刪除此點位 (Remove)',
                         danger: true,
-                        disabled: isLocked || waypoints.length <= 2,
-                        onClick: () => handleRemoveWaypoint(idx),
+                        disabled: isLocked || items.length <= 2,
+                        onClick: () => removeWaypoint(idx),
                       },
                     ],
                   })
@@ -155,7 +167,7 @@ export function MultiStopPanel({
       path: routePath,
       onPathClick: (lat, lng) => {
         if (isLocked) return
-        handleAddWaypointWithPoint({ lat, lng })
+        addWaypoint({ lat, lng })
       },
       onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
         setContextMenu({
@@ -167,7 +179,7 @@ export function MultiStopPanel({
               id: 'add-wp-here',
               label: '➕ 在此處新增路徑點',
               disabled: isLocked,
-              onClick: () => handleAddWaypointWithPoint({ lat, lng }),
+              onClick: () => addWaypoint({ lat, lng }),
             },
             {
               id: 'teleport-here',
@@ -186,76 +198,17 @@ export function MultiStopPanel({
               id: 'copy-map-coords',
               label: '📋 複製座標',
               onClick: () => {
-                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lat.toFixed(6)}`)
               },
             },
           ],
         })
       },
     })
-  }, [waypoints, routePath, isLocked, deviceState, deviceId, setOverlay])
-
-  function updateWaypoint(idx: number, point: LatLng) {
-    setWaypoints((prev) => prev.map((w, i) => (i === idx ? point : w)))
-    setTexts((prev) => prev.map((txt, i) => (i === idx ? formatPoint(point) : txt)))
-  }
-
-  function handleTextChange(idx: number, value: string) {
-    setTexts((prev) => prev.map((t, i) => (i === idx ? value : t)))
-    const parsed = parsePoint(value)
-    if (parsed) setWaypoints((prev) => prev.map((w, i) => (i === idx ? parsed : w)))
-  }
-
-  function handleAddWaypoint() {
-    setWaypoints((prev) => [...prev, null])
-    setTexts((prev) => [...prev, ''])
-  }
-
-  function handleAddWaypointWithPoint(pt: LatLng) {
-    setWaypoints((prev) => [...prev, pt])
-    setTexts((prev) => [...prev, formatPoint(pt)])
-  }
-
-  function handleInsertWaypointAfter(idx: number, pt: LatLng) {
-    setWaypoints((prev) => {
-      const next = [...prev]
-      next.splice(idx + 1, 0, pt)
-      return next
-    })
-    setTexts((prev) => {
-      const next = [...prev]
-      next.splice(idx + 1, 0, formatPoint(pt))
-      return next
-    })
-  }
-
-  function handleRemoveWaypoint(idx: number) {
-    setWaypoints((prev) => prev.filter((_, i) => i !== idx))
-    setTexts((prev) => prev.filter((_, i) => i !== idx))
-  }
-
-  function handleMoveWaypoint(idx: number, direction: 'up' | 'down') {
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-    if (targetIdx < 0 || targetIdx >= waypoints.length) return
-    setWaypoints((prev) => {
-      const next = [...prev]
-      const temp = next[idx]
-      next[idx] = next[targetIdx]
-      next[targetIdx] = temp
-      return next
-    })
-    setTexts((prev) => {
-      const next = [...prev]
-      const temp = next[idx]
-      next[idx] = next[targetIdx]
-      next[targetIdx] = temp
-      return next
-    })
-  }
+  }, [items, routePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint])
 
   function handleClearAllWaypoints() {
-    setWaypoints([null, null])
-    setTexts(['', ''])
+    clearAllWaypoints()
     setGpxFileName(null)
     setImportMessage(null)
   }
@@ -269,8 +222,7 @@ export function MultiStopPanel({
         setImportMessage({ kind: 'error', text: t('multistop.gpx_no_points') })
         return
       }
-      setWaypoints(points)
-      setTexts(points.map(formatPoint))
+      setAllWaypoints(points)
       setGpxFileName(file.name)
       requestFlyTo(points[0].lat, points[0].lng)
     } catch {
@@ -284,8 +236,7 @@ export function MultiStopPanel({
       setImportMessage({ kind: 'error', text: t('multistop.paste_empty') })
       return
     }
-    setWaypoints(points)
-    setTexts(points.map(formatPoint))
+    setAllWaypoints(points)
     requestFlyTo(points[0].lat, points[0].lng)
     setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
     setPasteOpen(false)
@@ -356,7 +307,7 @@ export function MultiStopPanel({
           liveEtaSeconds={liveEtaSeconds}
           livePosition={livePosition}
           routePath={routePath}
-          waypoints={waypoints}
+          waypoints={items.map((i) => i.point)}
           isLoop={false}
           onPauseResume={handlePauseResume}
           onStop={handleStop}
@@ -380,20 +331,25 @@ export function MultiStopPanel({
           )}
 
           <div className="waypoint-list">
-            {waypoints.map((_, idx) => (
-              <div className="coord-row" key={idx}>
+            {items.map((item, idx) => (
+              <div className="coord-row" key={item.id}>
                 <span>{idx + 1}</span>
                 <input
                   type="text"
                   placeholder="lat, lng or URL"
-                  value={texts[idx] ?? ''}
+                  value={item.rawText}
                   onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
                   onChange={(e) => handleTextChange(idx, e.target.value)}
                 />
                 <div className="waypoint-row-actions">
-                  <button disabled={idx === 0} onClick={() => handleMoveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                  <button disabled={idx === waypoints.length - 1} onClick={() => handleMoveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                  <button className="waypoint-remove" onClick={() => handleRemoveWaypoint(idx)} title={t('panel.remove_waypoint')}>
+                  <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
+                  <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
+                  <button
+                    className="waypoint-remove"
+                    disabled={isLocked || items.length <= 2}
+                    onClick={() => removeWaypoint(idx)}
+                    title={t('panel.remove_waypoint')}
+                  >
                     ✕
                   </button>
                 </div>
@@ -402,7 +358,7 @@ export function MultiStopPanel({
           </div>
 
           <div className="panel-quick-actions">
-            <button className="swap-button" onClick={handleAddWaypoint}>
+            <button className="swap-button" onClick={() => addWaypoint()}>
               {t('panel.add_waypoint')}
             </button>
             <button className="swap-button" onClick={handleClearAllWaypoints}>
