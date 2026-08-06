@@ -18,6 +18,7 @@ import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
+import { ConfirmModal } from '../common/ConfirmModal'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
@@ -67,6 +68,17 @@ export function MultiStopPanel({
   const [pasteText, setPasteText] = useState('')
   const [importMessage, setImportMessage] = useState<ImportMessage | null>(null)
   const [gpxFileName, setGpxFileName] = useState<string | null>(null)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    description: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  })
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -132,7 +144,7 @@ export function MultiStopPanel({
                     items: [
                       {
                         id: 'teleport',
-                        label: '⚡ 瞬移至此點 (Teleport)',
+                        label: t('contextmenu.teleport'),
                         disabled: deviceState !== 'idle' || !deviceId,
                         onClick: async () => {
                           if (!deviceId || !item.point) return
@@ -145,7 +157,7 @@ export function MultiStopPanel({
                       },
                       {
                         id: 'copy-coords',
-                        label: '📋 複製經緯度 (Copy)',
+                        label: t('contextmenu.copy_coords'),
                         onClick: () => {
                           if (!item.point) return
                           navigator.clipboard.writeText(`${item.point.lat.toFixed(6)}, ${item.point.lng.toFixed(6)}`)
@@ -153,7 +165,7 @@ export function MultiStopPanel({
                       },
                       {
                         id: 'delete',
-                        label: '🗑️ 刪除此點位 (Remove)',
+                        label: t('contextmenu.delete_waypoint'),
                         danger: true,
                         disabled: isLocked || items.length <= 2,
                         onClick: () => removeWaypoint(idx),
@@ -178,13 +190,13 @@ export function MultiStopPanel({
           items: [
             {
               id: 'add-wp-here',
-              label: '➕ 在此處新增路徑點',
+              label: t('contextmenu.add_wp_here'),
               disabled: isLocked,
               onClick: () => addWaypoint({ lat, lng }),
             },
             {
               id: 'teleport-here',
-              label: '⚡ 瞬移裝置至此',
+              label: t('contextmenu.teleport_here'),
               disabled: deviceState !== 'idle' || !deviceId,
               onClick: async () => {
                 if (!deviceId) return
@@ -197,24 +209,31 @@ export function MultiStopPanel({
             },
             {
               id: 'copy-map-coords',
-              label: '📋 複製座標',
+              label: t('contextmenu.copy_coords_short'),
               onClick: () => {
-                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lat.toFixed(6)}`)
+                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
               },
             },
           ],
         })
       },
     })
-  }, [items, routePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint])
+  }, [items, routePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint, t])
 
   function handleClearAllWaypoints() {
-    clearAllWaypoints()
-    setGpxFileName(null)
-    setImportMessage(null)
+    setConfirmModal({
+      isOpen: true,
+      title: t('confirm.clear_all_title'),
+      description: t('confirm.clear_all_desc'),
+      onConfirm: () => {
+        clearAllWaypoints()
+        setGpxFileName(null)
+        setImportMessage(null)
+      },
+    })
   }
 
-  async function handleGpxFile(file: File) {
+  async function processGpxFile(file: File) {
     setImportMessage(null)
     try {
       const text = await file.text()
@@ -231,7 +250,20 @@ export function MultiStopPanel({
     }
   }
 
-  function handlePasteSubmit() {
+  async function handleGpxFile(file: File) {
+    if (validWaypoints.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: t('confirm.gpx_overwrite_title'),
+        description: t('confirm.gpx_overwrite_desc'),
+        onConfirm: () => processGpxFile(file),
+      })
+    } else {
+      processGpxFile(file)
+    }
+  }
+
+  function processPasteSubmit() {
     const { points, invalidCount } = parsePastedPoints(pasteText)
     if (points.length === 0) {
       setImportMessage({ kind: 'error', text: t('multistop.paste_empty') })
@@ -242,6 +274,19 @@ export function MultiStopPanel({
     setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
     setPasteOpen(false)
     setPasteText('')
+  }
+
+  function handlePasteSubmit() {
+    if (validWaypoints.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: t('confirm.paste_overwrite_title'),
+        description: t('confirm.paste_overwrite_desc'),
+        onConfirm: () => processPasteSubmit(),
+      })
+    } else {
+      processPasteSubmit()
+    }
   }
 
   async function handleStart() {
@@ -514,6 +559,14 @@ export function MultiStopPanel({
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   )
 }

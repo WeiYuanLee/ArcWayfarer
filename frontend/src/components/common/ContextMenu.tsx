@@ -30,6 +30,18 @@ export function ContextMenu({ x, y, title, items, onClose }: Props) {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         onClose()
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+        if (!buttons || buttons.length === 0) return
+        const activeIndex = Array.from(buttons).indexOf(document.activeElement as HTMLButtonElement)
+        let nextIndex = 0
+        if (e.key === 'ArrowDown') {
+          nextIndex = activeIndex < buttons.length - 1 ? activeIndex + 1 : 0
+        } else {
+          nextIndex = activeIndex > 0 ? activeIndex - 1 : buttons.length - 1
+        }
+        buttons[nextIndex]?.focus()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -40,6 +52,14 @@ export function ContextMenu({ x, y, title, items, onClose }: Props) {
     }
   }, [onClose])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const firstButton = menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')
+      firstButton?.focus()
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Prevent menu from clipping outside viewport
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
@@ -49,18 +69,22 @@ export function ContextMenu({ x, y, title, items, onClose }: Props) {
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
+      aria-label={title || 'Context Menu'}
       className="custom-context-menu"
       style={{ left: `${posX}px`, top: `${posY}px` }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
       {title && <div className="context-menu-header">{title}</div>}
-      <div className="context-menu-body">
+      <div className="context-menu-body" role="none">
         {items.map((item) => (
           <button
             key={item.id}
+            role="menuitem"
             className={`context-menu-item ${item.danger ? 'danger' : ''}`}
             disabled={item.disabled}
+            aria-disabled={item.disabled}
             onClick={() => {
               if (item.disabled) return
               item.onClick()

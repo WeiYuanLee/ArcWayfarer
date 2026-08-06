@@ -30,6 +30,8 @@ async def _build_multistop_playback(
         leg_playback = interpolate(leg_route, speed_mps, tick_seconds)
         if playback and leg_playback:
             leg_playback = leg_playback[1:]  # drop the point shared with the previous leg's end
+        if not leg_playback:
+            leg_playback = [end]
         playback.extend(leg_playback)
         is_last_leg = i == num_legs - 1
         if playback:

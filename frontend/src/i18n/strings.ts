@@ -165,6 +165,26 @@ export const STRINGS = {
   'multistop.gpx_no_points': { zh: 'GPX 檔案裡沒有可用的座標點。', en: 'The GPX file has no usable points.' },
   'multistop.import_partial': { zh: '已匯入，部分行數無法解析。', en: 'Imported, but some lines could not be parsed.' },
 
+  // Context menu
+  'contextmenu.teleport': { zh: '⚡ 瞬移至此點 (Teleport)', en: '⚡ Teleport to point' },
+  'contextmenu.copy_coords': { zh: '📋 複製經緯度 (Copy)', en: '📋 Copy coordinates' },
+  'contextmenu.delete_waypoint': { zh: '🗑️ 刪除此點位 (Remove)', en: '🗑️ Remove waypoint' },
+  'contextmenu.set_start': { zh: '📍 設為路線起點', en: '📍 Set as start point' },
+  'contextmenu.add_wp_here': { zh: '➕ 在此處新增路徑點', en: '➕ Add waypoint here' },
+  'contextmenu.select_circle_center': { zh: '🎯 設為圓形路徑中心點', en: '🎯 Set as circle center' },
+  'contextmenu.teleport_here': { zh: '⚡ 瞬移裝置至此', en: '⚡ Teleport device here' },
+  'contextmenu.copy_coords_short': { zh: '📋 複製座標', en: '📋 Copy coordinates' },
+
+  // Confirm dialogs
+  'confirm.clear_all_title': { zh: '確認清空所有點位？', en: 'Clear all waypoints?' },
+  'confirm.clear_all_desc': { zh: '此操作將清除目前設定的所有路徑點，無法復原。', en: 'This will clear all current waypoints. This action cannot be undone.' },
+  'confirm.gpx_overwrite_title': { zh: '匯入 GPX 並覆蓋現有路線？', en: 'Overwrite current route with GPX?' },
+  'confirm.gpx_overwrite_desc': { zh: '匯入 GPX 檔案將會替換現有的所有路徑點。', en: 'Importing a GPX file will replace all existing waypoints.' },
+  'confirm.paste_overwrite_title': { zh: '貼上並覆蓋現有路線？', en: 'Overwrite current route with pasted coordinates?' },
+  'confirm.paste_overwrite_desc': { zh: '套用貼上座標將會替換現有的所有路徑點。', en: 'Applying pasted coordinates will replace all existing waypoints.' },
+  'confirm.confirm': { zh: '確認', en: 'Confirm' },
+  'confirm.cancel': { zh: '取消', en: 'Cancel' },
+
   // Random walk panel
   'randomwalk.title': { zh: '隨機漫遊', en: 'Random Walk' },
   'randomwalk.description': {

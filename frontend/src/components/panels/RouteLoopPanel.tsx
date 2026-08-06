@@ -116,7 +116,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                     items: [
                       {
                         id: 'teleport',
-                        label: '⚡ 瞬移至此點 (Teleport)',
+                        label: t('contextmenu.teleport'),
                         disabled: deviceState !== 'idle' || !deviceId,
                         onClick: async () => {
                           if (!deviceId || !item.point) return
@@ -129,13 +129,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                       },
                       {
                         id: 'set-start',
-                        label: '📍 設為路線起點',
+                        label: t('contextmenu.set_start'),
                         disabled: isLocked || idx === 0,
                         onClick: () => setAsStart(idx),
                       },
                       {
                         id: 'copy-coords',
-                        label: '📋 複製經緯度 (Copy)',
+                        label: t('contextmenu.copy_coords'),
                         onClick: () => {
                           if (!item.point) return
                           navigator.clipboard.writeText(`${item.point.lat.toFixed(6)}, ${item.point.lng.toFixed(6)}`)
@@ -143,7 +143,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                       },
                       {
                         id: 'delete',
-                        label: '🗑️ 刪除此點位 (Remove)',
+                        label: t('contextmenu.delete_waypoint'),
                         danger: true,
                         disabled: isLocked || items.length <= 2 || subMode === 'circle',
                         onClick: () => removeWaypoint(idx),
@@ -171,13 +171,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           items: [
             {
               id: 'add-wp-here',
-              label: '➕ 在此處新增路徑點',
+              label: t('contextmenu.add_wp_here'),
               disabled: isLocked || subMode === 'circle',
               onClick: () => addWaypoint({ lat, lng }),
             },
             {
               id: 'select-circle-center',
-              label: '🎯 設為圓形路徑中心點',
+              label: t('contextmenu.select_circle_center'),
               disabled: isLocked,
               onClick: () => {
                 const pt = { lat, lng }
@@ -190,7 +190,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             },
             {
               id: 'teleport-here',
-              label: '⚡ 瞬移裝置至此',
+              label: t('contextmenu.teleport_here'),
               disabled: deviceState !== 'idle' || !deviceId,
               onClick: async () => {
                 if (!deviceId) return
@@ -203,7 +203,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             },
             {
               id: 'copy-map-coords',
-              label: '📋 複製座標',
+              label: t('contextmenu.copy_coords_short'),
               onClick: () => {
                 navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
               },
@@ -212,7 +212,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         })
       },
     })
-  }, [items, effectivePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint])
+  }, [items, effectivePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint, t])
 
   function handlePickCircleCenter() {
     requestPoint((lat, lng) => {
