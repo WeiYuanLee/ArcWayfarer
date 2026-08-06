@@ -141,6 +141,7 @@ export default function App() {
       livePosition: position ? { lat: position.lat, lng: position.lng } : null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
+      connected,
       requestPoint,
       clearPoint: () => setPointByDevice((prev) => ({ ...prev, [udid]: null })),
       setOverlay: getSetOverlayForDevice(udid),

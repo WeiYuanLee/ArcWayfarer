@@ -18,8 +18,8 @@ async def _build_loop_playback(
     stop_at: dict[int, int] = {0: 1}  # tick 0 = arrived at stop 1 (starting waypoint)
     n = len(waypoints)
     for i in range(n):
-        start = waypoints[i]
-        end = waypoints[(i + 1) % n]
+        start = route_service.normalize_coordinate(*waypoints[i])
+        end = route_service.normalize_coordinate(*waypoints[(i + 1) % n])
         if straight_line:
             leg_route = [start, end]
         else:

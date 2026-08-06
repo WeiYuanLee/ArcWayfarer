@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Transport = Literal["lockdown", "rsd"]
 DeviceStatus = Literal["ready", "mounting", "tunnel_required", "error"]
@@ -17,8 +17,8 @@ class DeviceInfo(BaseModel):
 
 class SetLocationRequest(BaseModel):
     udid: str
-    lat: float
-    lng: float
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lng: float = Field(..., ge=-180.0, le=180.0)
 
 
 class ClearLocationRequest(BaseModel):
@@ -27,13 +27,13 @@ class ClearLocationRequest(BaseModel):
 
 class GoldDittoRequest(BaseModel):
     udid: str
-    lat: float
-    lng: float
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lng: float = Field(..., ge=-180.0, le=180.0)
 
 
 class LatLng(BaseModel):
-    lat: float
-    lng: float
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lng: float = Field(..., ge=-180.0, le=180.0)
 
 
 NavMode = Literal["walk", "bike", "drive"]

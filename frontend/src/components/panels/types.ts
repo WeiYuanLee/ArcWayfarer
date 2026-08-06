@@ -1,7 +1,19 @@
 import type { Device } from '../../services/api'
 
 export type LatLng = { lat: number; lng: number }
-export type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
+
+export type DeviceState =
+  | 'idle'
+  | 'teleporting'
+  | 'navigating'
+  | 'looping'
+  | 'random_walk'
+  | 'joystick'
+  | 'paused'
+  | 'paused:navigating'
+  | 'paused:looping'
+  | 'paused:random_walk'
+  | 'paused:joystick'
 
 export type OverlayMarker = {
   id: string
@@ -35,6 +47,7 @@ export type PanelProps = {
   livePosition: LatLng | null
   liveEtaSeconds: number | null
   liveStopIndex: number | null
+  connected?: boolean
   requestPoint: (onPick: (lat: number, lng: number) => void) => void
   clearPoint?: () => void
   setOverlay: (overlay: MapOverlay) => void

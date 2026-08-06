@@ -76,7 +76,10 @@ def get_state(udid: str) -> SimulationState:
 async def set_state(udid: str, state: SimulationState) -> None:
     session = get_navigation_session(udid)
     session.state = state
-    await events.emit_state_change(udid, state.value)
+    state_str = state.value
+    if state == SimulationState.PAUSED and session.paused_from:
+        state_str = f"paused:{session.paused_from.value}"
+    await events.emit_state_change(udid, state_str)
 
 
 def is_running(udid: str) -> bool:
@@ -303,6 +306,27 @@ async def _run_dynamic(
         session.task = None
 
 
+async def _sleep_with_eta_countdown(
+    session: NavigationSession,
+    lat: float,
+    lng: float,
+    stop_idx: int,
+    total_eta: float,
+    sleep_duration: float,
+) -> float:
+    """Sleeps for sleep_duration while broadcasting updated ETA every second."""
+    elapsed = 0.0
+    remaining_eta = total_eta
+    while elapsed < sleep_duration:
+        await session.pause_event.wait()
+        step = min(1.0, sleep_duration - elapsed)
+        await asyncio.sleep(step)
+        elapsed += step
+        remaining_eta = max(0.0, remaining_eta - step)
+        await events.emit_position(session.udid, lat, lng, 0.0, remaining_eta, stop_idx)
+    return remaining_eta
+
+
 async def _run_jump(
     session: NavigationSession,
     points: list[tuple[float, float]],
@@ -310,18 +334,26 @@ async def _run_jump(
     post_delay: float,
 ) -> None:
     await set_state(session.udid, SimulationState.NAVIGATING)
+    total_points = len(points)
     try:
         dev_session = await device_session.get_session(session.udid)
         for idx, (lat, lng) in enumerate(points):
+            remaining_stops = total_points - 1 - idx
+            current_eta = remaining_stops * pre_delay + max(0, remaining_stops - 1) * post_delay
+
             await session.pause_event.wait()
             if pre_delay > 0:
-                await asyncio.sleep(pre_delay)
+                current_eta = await _sleep_with_eta_countdown(
+                    session, lat, lng, idx + 1, current_eta + pre_delay, pre_delay
+                )
             await session.pause_event.wait()
             await dev_session.set(lat, lng)
-            await events.emit_position(session.udid, lat, lng, 0.0, 0.0, idx + 1)
-            if idx < len(points) - 1 and post_delay > 0:
+            await events.emit_position(session.udid, lat, lng, 0.0, current_eta, idx + 1)
+            if idx < total_points - 1 and post_delay > 0:
                 await session.pause_event.wait()
-                await asyncio.sleep(post_delay)
+                current_eta = await _sleep_with_eta_countdown(
+                    session, lat, lng, idx + 1, current_eta, post_delay
+                )
     except asyncio.CancelledError:
         pass
     except Exception:

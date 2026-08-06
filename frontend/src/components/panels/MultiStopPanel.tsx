@@ -34,6 +34,7 @@ export function MultiStopPanel({
   livePosition,
   liveEtaSeconds,
   liveStopIndex,
+  connected,
   requestPoint,
   requestFlyTo,
   setOverlay,
@@ -69,7 +70,7 @@ export function MultiStopPanel({
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
-  const isPaused = deviceState === 'paused'
+  const isPaused = deviceState === 'paused' || deviceState === 'paused:navigating'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
   const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy
@@ -309,6 +310,7 @@ export function MultiStopPanel({
           routePath={routePath}
           waypoints={items.map((i) => i.point)}
           isLoop={false}
+          connected={connected}
           onPauseResume={handlePauseResume}
           onStop={handleStop}
         />

@@ -14,6 +14,7 @@ type Props = {
   routePath?: LatLng[]
   waypoints?: (LatLng | null)[]
   isLoop?: boolean
+  connected?: boolean
   onPauseResume: () => void
   onStop: () => void
 }
@@ -30,6 +31,7 @@ export function ActiveFlightHUD({
   routePath,
   waypoints,
   isLoop = false,
+  connected = true,
   onPauseResume,
   onStop,
 }: Props) {
@@ -41,6 +43,12 @@ export function ActiveFlightHUD({
 
   return (
     <div className="active-flight-hud">
+      {!connected && (
+        <p className="panel-status error" style={{ margin: '0 0 10px 0' }}>
+          ⚠️ 網路連線中斷，正在自動嘗試重連...
+        </p>
+      )}
+
       <div className="hud-status-badge">
         <span className={`hud-dot ${isPaused ? 'paused' : 'running'}`} />
         <span className="hud-mode-title">{modeName}</span>
