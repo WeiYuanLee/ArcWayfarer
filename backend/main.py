@@ -1,3 +1,4 @@
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -43,6 +44,15 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
+    if "--tunneld" in sys.argv:
+        # The packaged application invokes this mode from the same PyInstaller
+        # executable, so pymobiledevice3 and its tunnel dependencies are always
+        # available on both Windows and macOS.
+        from pymobiledevice3.cli.remote import cli_tunneld
+
+        cli_tunneld()
+        raise SystemExit(0)
+
     import uvicorn
 
     uvicorn.run(app, host=API_HOST, port=API_PORT)

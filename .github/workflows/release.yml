@@ -1,4 +1,4 @@
-name: Release macOS builds
+name: Release macOS & Windows builds
 
 on:
   push:
@@ -11,8 +11,13 @@ jobs:
       matrix:
         include:
           - runner: macos-14
+            os: mac
             arch: arm64
           - runner: macos-13
+            os: mac
+            arch: x64
+          - runner: windows-latest
+            os: win
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
@@ -26,13 +31,27 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build ${{ matrix.arch }} dmg
+      - name: Build macOS ${{ matrix.arch }} dmg
+        if: matrix.os == 'mac'
         run: bash scripts/build-mac.sh --arch ${{ matrix.arch }}
 
-      - uses: actions/upload-artifact@v4
+      - name: Build Windows exe
+        if: matrix.os == 'win'
+        run: powershell scripts/build-win.ps1
+
+      - name: Upload macOS artifact
+        if: matrix.os == 'mac'
+        uses: actions/upload-artifact@v4
         with:
-          name: dmg-${{ matrix.arch }}
+          name: package-mac-${{ matrix.arch }}
           path: frontend/release/*.dmg
+
+      - name: Upload Windows artifact
+        if: matrix.os == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-win-${{ matrix.arch }}
+          path: frontend/release/*.exe
 
   release:
     needs: build
@@ -49,15 +68,24 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.dmg
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
           body: |
-            ## 下載
+            ## 下載指南
 
-            - **Apple Silicon (M 系列晶片)**：下載檔名包含 `arm64` 的 `.dmg`
-            - **Intel 晶片**：下載檔名包含 `x64` 的 `.dmg`
+            - **Windows 使用者**：下載 `ArcWayfarer Setup x.x.x.exe` 安裝檔。
+            - **macOS (Apple Silicon M 系列晶片)**：下載檔名包含 `arm64` 的 `.dmg`。
+            - **macOS (Intel 晶片)**：下載檔名包含 `x64` 的 `.dmg`。
 
-            不確定自己是哪種晶片：點左上角 蘋果選單 → 關於此 Mac，看「晶片」或「處理器」欄位。
+            ---
 
-            ## 第一次開啟
+            ## 使用注意事項
 
-            這個版本沒有 Apple 開發者簽章，macOS Gatekeeper 會擋下第一次開啟。請在「應用程式」資料夾裡對 ArcWayfarer **按右鍵 → 開啟**（不要用雙擊），跳出的警告視窗再點一次「開啟」即可，之後就能正常雙擊啟動。
+            ### 💻 Windows
+            1. **Apple 驅動需求**：請確保電腦已安裝 **iTunes**（桌面版或 Windows Store 版）或 Apple Mobile Device Support 驅動，以確保系統能辨識 USB 連接的 iPhone。
+            2. **管理員權限**：本程式開啟時會自動請求系統管理員權限 (UAC Prompt)，以確保 iOS 17+ 的 RemoteXPC Tunnel 與網路適配器能順利運行。
+
+            ### 🍎 macOS 第一次開啟
+            由於沒有 Apple 開發者簽章，macOS Gatekeeper 會擋下第一次開啟。請在「應用程式」資料夾中對 ArcWayfarer **按右鍵 → 開啟**（或至「系統設定 → 隱私權與安全性」點擊「強制開啟」）。
+

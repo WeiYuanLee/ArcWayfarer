@@ -1,7 +1,7 @@
 # PyInstaller spec for the ArcWayfarer FastAPI backend.
 # Build with: pyinstaller arcwayfarer-backend.spec --noconfirm --distpath ../dist-py --workpath ../build-py/backend
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 datas = []
 binaries = []
@@ -22,6 +22,7 @@ hiddenimports = [
     "gpxpy",
     "httpx",
     "multipart",
+    "pyimg4",
 ]
 
 for pkg in ("pymobiledevice3", "pytun_pmd3", "developer_disk_image", "pyimg4"):
@@ -30,6 +31,12 @@ for pkg in ("pymobiledevice3", "pytun_pmd3", "developer_disk_image", "pyimg4"):
         datas += pkg_datas
         binaries += pkg_binaries
         hiddenimports += pkg_hiddenimports
+    except Exception:
+        pass
+
+for package in ("pyimg4", "readchar"):
+    try:
+        datas += copy_metadata(package)
     except Exception:
         pass
 

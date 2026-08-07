@@ -1,7 +1,7 @@
 {
   "name": "arcwayfarer",
   "version": "0.1.0",
-  "description": "iOS location simulator for macOS (Intel + Apple Silicon)",
+  "description": "iOS location simulator for macOS and Windows",
   "author": "",
   "license": "MIT",
   "main": "electron/main.js",
@@ -10,7 +10,9 @@
     "build": "tsc && vite build",
     "electron": "electron .",
     "start": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "dist": "electron-builder --mac"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
   },
   "dependencies": {
     "leaflet": "^1.9.4",
@@ -29,7 +31,9 @@
     "vite": "^5.3.0",
     "wait-on": "^7.2.0"
   },
+
   "build": {
+
     "appId": "com.arcwayfarer.app",
     "productName": "ArcWayfarer",
     "directories": {
@@ -41,7 +45,7 @@
     ],
     "extraResources": [
       {
-        "from": "../dist-py/arcwayfarer-backend",
+        "from": "../dist-py/arcwayfarer-backend/",
         "to": "backend",
         "filter": ["**/*"]
       }
@@ -53,9 +57,26 @@
           "arch": ["arm64", "x64"]
         }
       ],
-      "icon": "build/icon.icns",
+      "icon": "build/arcwayfarer-icon.icns",
       "category": "public.app-category.utilities",
       "identity": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/arcwayfarer-icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
     }
   }
 }
+
+
