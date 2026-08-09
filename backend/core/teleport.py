@@ -10,8 +10,7 @@ async def set_location(udid: str, lat: float, lng: float) -> None:
     await simulation_engine.ensure_stopped(udid)
     await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
     try:
-        session = await device_session.get_session(udid)
-        await session.set(lat, lng)
+        await device_session.set_location(udid, lat, lng)
         await events.emit_position(udid, lat, lng)
     finally:
         await simulation_engine.set_state(udid, SimulationState.IDLE)
@@ -19,9 +18,7 @@ async def set_location(udid: str, lat: float, lng: float) -> None:
 
 async def clear_location(udid: str) -> None:
     await simulation_engine.ensure_stopped(udid)
-    if device_session.has_session(udid):
-        session = await device_session.get_session(udid)
-        await session.clear()
+    await device_session.clear_location(udid)
     await events.emit_position(udid, None, None)
 
 
@@ -34,11 +31,10 @@ async def gold_ditto(udid: str, lat: float, lng: float) -> None:
     await simulation_engine.ensure_stopped(udid)
     await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
     try:
-        session = await device_session.get_session(udid)
-        await session.set(lat, lng)
+        await device_session.set_location(udid, lat, lng)
         await events.emit_position(udid, lat, lng)
         await asyncio.sleep(GOLD_DITTO_HOLD_SECONDS)
-        await session.clear()
+        await device_session.clear_location(udid)
         await events.emit_position(udid, None, None)
     finally:
         await simulation_engine.set_state(udid, SimulationState.IDLE)
