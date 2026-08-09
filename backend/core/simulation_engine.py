@@ -249,12 +249,11 @@ async def _run(
     pause_lo, pause_hi = sorted(station_pause_range)
     current_stop = stop_at.get(0) if stop_at else None
     try:
-        dev_session = await device_session.get_session(session.udid)
         total_ticks = len(points)
         while True:
             for idx, (lat, lng) in enumerate(points):
                 await session.pause_event.wait()
-                await dev_session.set(lat, lng)
+                await device_session.set_location(session.udid, lat, lng)
                 if stop_at is not None and idx in stop_at:
                     current_stop = stop_at[idx]
                 eta_seconds = (total_ticks - 1 - idx) * tick_seconds
@@ -281,7 +280,6 @@ async def _run_dynamic(
 ) -> None:
     await set_state(session.udid, SimulationState.RANDOM_WALK)
     try:
-        dev_session = await device_session.get_session(session.udid)
         current: Optional[tuple[float, float]] = None
         while True:
             leg = await next_leg_fn(current)
@@ -290,7 +288,7 @@ async def _run_dynamic(
             points, pause_seconds = leg
             for lat, lng in points:
                 await session.pause_event.wait()
-                await dev_session.set(lat, lng)
+                await device_session.set_location(session.udid, lat, lng)
                 current = (lat, lng)
                 await events.emit_position(session.udid, lat, lng, speed_mps, 0.0)
                 await asyncio.sleep(tick_seconds)
@@ -336,7 +334,6 @@ async def _run_jump(
     await set_state(session.udid, SimulationState.NAVIGATING)
     total_points = len(points)
     try:
-        dev_session = await device_session.get_session(session.udid)
         for idx, (lat, lng) in enumerate(points):
             remaining_stops = total_points - 1 - idx
             current_eta = remaining_stops * pre_delay + max(0, remaining_stops - 1) * post_delay
@@ -347,7 +344,7 @@ async def _run_jump(
                     session, lat, lng, idx + 1, current_eta + pre_delay, pre_delay
                 )
             await session.pause_event.wait()
-            await dev_session.set(lat, lng)
+            await device_session.set_location(session.udid, lat, lng)
             await events.emit_position(session.udid, lat, lng, 0.0, current_eta, idx + 1)
             if idx < total_points - 1 and post_delay > 0:
                 await session.pause_event.wait()
@@ -370,7 +367,6 @@ async def _run_joystick(
 ) -> None:
     await set_state(session.udid, SimulationState.JOYSTICK)
     try:
-        dev_session = await device_session.get_session(session.udid)
         while True:
             tick_start = time.monotonic()
             await session.pause_event.wait()
@@ -380,7 +376,7 @@ async def _run_joystick(
                 distance = speed_mps * inp["intensity"] * tick_seconds
                 lat, lng = move_point(lat, lng, inp["direction"], distance)
                 session.joystick_position = (lat, lng)
-                await dev_session.set(lat, lng)
+                await device_session.set_location(session.udid, lat, lng)
                 await events.emit_position(session.udid, lat, lng, speed_mps * inp["intensity"], 0.0)
             elapsed = time.monotonic() - tick_start
             await asyncio.sleep(max(tick_seconds - elapsed, 0.0))

@@ -10,7 +10,12 @@ export function useDevices() {
     setLoading(true)
     try {
       const result = await listDevices()
-      if (!cancelledRef.current) setDevices(result)
+      if (!cancelledRef.current) {
+        const unique = result.filter(
+          (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
+        )
+        setDevices(unique)
+      }
     } catch {
       if (!cancelledRef.current) setDevices([])
     } finally {

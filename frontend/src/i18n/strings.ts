@@ -29,8 +29,8 @@ export const STRINGS = {
   'panel.hint.device_not_ready': { zh: '裝置尚未就緒。', en: 'Device is not ready yet.' },
   'panel.hint.teleporting': { zh: '裝置正在瞬移中。', en: 'Device is currently teleporting.' },
   'panel.pause_toggle': { zh: '每站暫停', en: 'Pause at each stop' },
-  'panel.add_waypoint': { zh: '+ 新增路徑點', en: '+ Add Waypoint' },
-  'panel.remove_waypoint': { zh: '移除路徑點', en: 'Remove waypoint' },
+  'panel.add_waypoint': { zh: '+ 新增路徑', en: '+ Add' },
+  'panel.remove_waypoint': { zh: '移除路徑', en: 'Remove' },
   'panel.sec_label': { zh: '秒', en: 'Sec' },
   'panel.paused': { zh: '已暫停。', en: 'Paused.' },
 
@@ -156,7 +156,7 @@ export const STRINGS = {
   'multistop.jump_post_delay': { zh: '站後延遲（秒）', en: 'Post-arrival delay (sec)' },
   'multistop.custom_speed': { zh: '自訂速度 (km/h)', en: 'Custom speed (km/h)' },
   'multistop.import_gpx': { zh: '匯入 GPX', en: 'Import GPX' },
-  'multistop.import_file': { zh: '匯入檔案 (.gpx / .json)', en: 'Import file (.gpx / .json)' },
+  'multistop.import_file': { zh: '匯入檔案', en: 'Import file' },
   'multistop.export_template': { zh: '匯出範本', en: 'Export JSON' },
   'multistop.import_template': { zh: '載入範本', en: 'Import JSON' },
   'multistop.import_template_success': { zh: '已成功載入 JSON 路線範本！', en: 'Loaded JSON route template successfully!' },
@@ -242,11 +242,19 @@ export const STRINGS = {
   'navigate.est_time': { zh: '預估時間', en: 'Est. Time' },
   'navigate.minutes': { zh: '分', en: 'min' },
   'routeloop.action.reverse': { zh: '翻轉路線', en: 'Reverse Path' },
-  'multistop.action.clear_all': { zh: '清空全部點位', en: 'Clear All' },
+  'multistop.action.clear_all': { zh: '全清點位', en: 'Clear All' },
   'joystick.action.start': { zh: '啟動搖桿', en: 'Start Joystick' },
   'joystick.action.stop': { zh: '停止搖桿', en: 'Stop Joystick' },
   'topbar.search': { zh: '搜尋…', en: 'Search…' },
   'hud.current_leg': { zh: '當前航段', en: 'Current Leg' },
+  'topbar.sponsor': { zh: '請作者喝杯咖啡', en: 'Buy the author a coffee' },
+  'sponsor.title': { zh: '請作者喝杯咖啡 ☕', en: 'Buy the author a coffee ☕' },
+  'sponsor.description': {
+    zh: '如果 ArcWayfarer 對你有幫助，歡迎透過 PayPal 請作者喝杯咖啡，你的支持是持續開發的動力。',
+    en: 'If ArcWayfarer has been useful to you, consider supporting the author with a coffee via PayPal. Your support keeps development going.',
+  },
+  'sponsor.cta': { zh: '前往 PayPal 贊助', en: 'Sponsor via PayPal' },
+  'sponsor.close': { zh: '關閉', en: 'Close' },
 } as const satisfies Record<string, Record<Lang, string>>
 
 export type StringKey = keyof typeof STRINGS

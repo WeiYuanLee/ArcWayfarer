@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from pymobiledevice3.exceptions import ConnectionTerminatedError
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
@@ -7,6 +8,8 @@ from pymobiledevice3.services.simulate_location import DtSimulateLocation
 
 from config import MOUNT_TIMEOUT_SECONDS
 from core import device_manager
+
+logger = logging.getLogger(__name__)
 
 _DEAD_CONNECTION_ERRORS = (ConnectionTerminatedError, ConnectionError, OSError, asyncio.TimeoutError, TimeoutError)
 
@@ -72,10 +75,6 @@ class LockdownSimulateLocationWrapper:
 
     async def set(self, lat: float, lng: float) -> None:
         lockdown = await device_manager.get_lockdown(self.udid)
-        try:
-            await device_manager.ensure_mounted(lockdown)
-        except Exception:
-            pass
         backend = DtSimulateLocation(lockdown)
         await backend.set(lat, lng)
 
@@ -131,3 +130,43 @@ async def close_session(udid: str) -> None:
 
 def has_session(udid: str) -> bool:
     return udid in _sessions
+
+
+async def set_location(udid: str, lat: float, lng: float, max_retries: int = 3, retry_delay: float = 2.0) -> None:
+    """Sets location on device with auto-retry and reconnection support on connection failures."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            session = await get_session(udid)
+            await session.set(lat, lng)
+            return
+        except Exception as e:
+            await close_session(udid)
+            if attempt == max_retries:
+                raise
+            logger.warning(
+                "Location simulation set failed for %s (attempt %d/%d), retrying in %.1fs... Error: %s",
+                udid,
+                attempt,
+                max_retries,
+                retry_delay,
+                e,
+            )
+            await asyncio.sleep(retry_delay)
+
+
+async def clear_location(udid: str, max_retries: int = 2) -> None:
+    """Stops location simulation on the device and restores real GPS location."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            session = await get_session(udid)
+            await session.clear()
+            await close_session(udid)
+            return
+        except Exception as e:
+            await close_session(udid)
+            if attempt == max_retries:
+                logger.warning("Failed to clear location for %s (attempt %d/%d): %s", udid, attempt, max_retries, e)
+                raise
+            await asyncio.sleep(1.0)
+
+

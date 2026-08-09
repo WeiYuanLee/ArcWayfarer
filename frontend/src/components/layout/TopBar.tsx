@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { DeviceTabs } from './DeviceTabs'
 import { ConnectionStatus } from '../ConnectionStatus'
 import { DevMenuButton } from './DevMenuButton'
+import { SponsorModal } from '../common/SponsorModal'
 import type { Device } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -35,10 +37,19 @@ export function TopBar({
   onOpenCmdPalette,
 }: Props) {
   const t = useT()
+  const [sponsorOpen, setSponsorOpen] = useState(false)
   return (
     <div className="top-bar">
       <DevMenuButton deviceId={focusedDeviceId} />
-      <h1>ArcWayfarer</h1>
+      <h1>{t('topbar.title')}</h1>
+      <button
+        className="topbar-sponsor-btn"
+        onClick={() => setSponsorOpen(true)}
+        title={t('topbar.sponsor')}
+      >
+        ☕
+      </button>
+      <SponsorModal isOpen={sponsorOpen} onClose={() => setSponsorOpen(false)} />
       <button className="topbar-cmd-palette-btn" onClick={onOpenCmdPalette} title="Command Palette (Cmd+K)">
         <span className="search-icon">🔍</span>
         <span className="search-text">{t('topbar.search')}</span>

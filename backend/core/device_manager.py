@@ -20,9 +20,14 @@ async def list_devices() -> list[DeviceInfo]:
     except Exception:
         mux_devices = []
 
+    # Sort USB connections before Network connections so USB is preferred if both exist
+    mux_devices = sorted(mux_devices, key=lambda d: 0 if getattr(d, "connection_type", "") == "USB" else 1)
+
     for mux_device in mux_devices:
         udid = mux_device.serial
-        seen_udids.add(udid)
+        if not udid or udid.lower() in seen_udids:
+            continue
+        seen_udids.add(udid.lower())
         try:
             devices.append(await _describe_device(udid))
         except Exception as e:  # noqa: BLE001 - surface any pairing/lockdown failure to the UI
@@ -41,8 +46,8 @@ async def list_devices() -> list[DeviceInfo]:
         tunnels = await get_tunneld_devices()
         for rsd in tunnels:
             udid = rsd.udid
-            if udid not in seen_udids:
-                seen_udids.add(udid)
+            if udid and udid.lower() not in seen_udids:
+                seen_udids.add(udid.lower())
                 name = rsd.all_values.get("DeviceName") if hasattr(rsd, "all_values") else None
                 if not name:
                     name = getattr(rsd, "product_type", udid)
