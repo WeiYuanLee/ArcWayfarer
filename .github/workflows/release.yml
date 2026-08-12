@@ -37,7 +37,8 @@ jobs:
       - name: Set package version from release tag
         working-directory: frontend
         shell: bash
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --ignore-scripts
+        run: |
+          node -e 'const fs = require("fs"); const file = "package.json"; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = process.env.GITHUB_REF_NAME.replace(/^v/, ""); fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);'
 
       - name: Build macOS ${{ matrix.arch }} dmg
         if: matrix.os == 'mac'
