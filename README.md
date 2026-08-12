@@ -125,6 +125,10 @@ PyInstaller does **not** cross-compile — each platform must be built on its na
 
 **GitHub Actions (recommended)** — push a version tag and CI builds macOS (`arm64`, `x64`) and Windows (`x64`) installers automatically:
 
+Each GitHub Release is automatically published with bilingual release notes: Traditional Chinese first, followed by English, including download and first-install instructions.
+
+Before creating a tag, add a non-empty Markdown file at `docs/releases/vX.Y.Z.md` (for example, `docs/releases/v0.1.3.md`). This file is required and becomes the version-specific "What's new" section at the top of the release notes; without it, the workflow will not publish a Release.
+
 ```bash
 git tag v1.0.0
 git push origin v1.0.0

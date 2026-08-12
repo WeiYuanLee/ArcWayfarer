@@ -66,6 +66,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -74,14 +76,45 @@ jobs:
       - name: List artifacts
         run: ls -la artifacts
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/*.dmg
-            artifacts/*.exe
-          body: |
+      - name: Require release notes for this version
+        run: |
+          NOTES_FILE="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "Release notes are required: $NOTES_FILE" >&2
+            exit 1
+          fi
+
+      - name: Build release notes
+        run: |
+          cat "docs/releases/${GITHUB_REF_NAME}.md" > release-notes.md
+          cat >> release-notes.md <<'EOF'
+
+            ---
+
             ## ArcWayfarer
+
+            ArcWayfarer 是一款專為 iPhone 設計的 GPS 位置模擬工具，讓你能在 macOS 或 Windows 上精準設定與控制 iPhone 的定位位置。無論是瞬間切換地點、依路線移動，或進行位置相關測試，都能自由、直覺地完成。
+
+            ## 下載
+
+            - **Windows** — 下載 Windows `.exe` 安裝程式。
+            - **macOS（Apple Silicon）** — 下載檔名包含 `arm64` 的 `.dmg`。
+            - **macOS（Intel）** — 下載檔名包含 `x64` 的 `.dmg`。
+
+            ---
+
+            ## 安裝前須知
+
+            ### Windows
+            1. 請安裝 **iTunes**（桌面版或 Microsoft Store 版）或 Apple Mobile Device Support，讓 Windows 能透過 USB 辨識你的 iPhone。
+            2. ArcWayfarer 啟動時會要求系統管理員權限，以支援 iOS 17+ 的 RemoteXPC tunnel。
+
+            ### macOS — 首次開啟
+            此版本尚未使用 Apple Developer 憑證簽署。若 Gatekeeper 阻擋開啟，請在「應用程式」中對 ArcWayfarer **按右鍵 → 開啟**，再確認開啟；也可前往「系統設定 → 隱私權與安全性」允許開啟。
+
+            ---
+
+            ## English
 
             ArcWayfarer lets you precisely simulate and control an iPhone's GPS location from macOS or Windows. Teleport to any place, navigate along a route, and test location-aware experiences with ease.
 
@@ -101,3 +134,12 @@ jobs:
 
             ### macOS — first launch
             This build is not signed with an Apple Developer certificate. If Gatekeeper blocks it, right-click ArcWayfarer in Applications, select **Open**, and confirm. You can also allow it in **System Settings → Privacy & Security**.
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
+          body_path: release-notes.md
