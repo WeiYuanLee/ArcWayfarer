@@ -1,3 +1,5 @@
+import asyncio
+
 from packaging.version import Version
 from pymobiledevice3.exceptions import AlreadyMountedError, TunneldConnectionError
 from pymobiledevice3.lockdown import UsbmuxLockdownClient, create_using_usbmux
@@ -9,6 +11,8 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 from models.schemas import DeviceInfo
 
 IOS_17 = Version("17.0")
+DEVICE_LIST_TIMEOUT_SECONDS = 5.0
+DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
 
 
 async def list_devices() -> list[DeviceInfo]:
@@ -16,7 +20,7 @@ async def list_devices() -> list[DeviceInfo]:
     seen_udids: set[str] = set()
 
     try:
-        mux_devices = await usbmux_list_devices()
+        mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
     except Exception:
         mux_devices = []
 
@@ -29,7 +33,7 @@ async def list_devices() -> list[DeviceInfo]:
             continue
         seen_udids.add(udid.lower())
         try:
-            devices.append(await _describe_device(udid))
+            devices.append(await asyncio.wait_for(_describe_device(udid), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS))
         except Exception as e:  # noqa: BLE001 - surface any pairing/lockdown failure to the UI
             devices.append(
                 DeviceInfo(
@@ -43,7 +47,7 @@ async def list_devices() -> list[DeviceInfo]:
             )
 
     try:
-        tunnels = await get_tunneld_devices()
+        tunnels = await asyncio.wait_for(get_tunneld_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
         for rsd in tunnels:
             udid = rsd.udid
             if udid and udid.lower() not in seen_udids:

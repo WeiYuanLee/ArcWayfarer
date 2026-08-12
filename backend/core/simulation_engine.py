@@ -188,8 +188,14 @@ async def _joystick_start_async(
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
+        previous_task = session.task
         session.stop_task()
-        session.joystick_positions = (lat, lng)
+        if previous_task is not None and not previous_task.done():
+            try:
+                await previous_task
+            except asyncio.CancelledError:
+                pass
+        session.joystick_position = (lat, lng)
         session.joystick_input = {"direction": 0.0, "intensity": 0.0}
         session.task = asyncio.create_task(_run_joystick(session, speed_mps, tick_seconds))
 
@@ -205,7 +211,18 @@ def joystick_move(udid: str, direction: float, intensity: float) -> None:
 
 
 async def joystick_stop(udid: str) -> bool:
-    return stop(udid)
+    session = get_navigation_session(udid)
+    async with session.lock:
+        task = session.task
+        stopped = session.stop_task()
+        if task is not None and not task.done():
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        if session.state != SimulationState.IDLE:
+            await set_state(udid, SimulationState.IDLE)
+        return stopped
 
 
 async def pause(udid: str) -> bool:
@@ -386,4 +403,5 @@ async def _run_joystick(
         logger.exception("Joystick simulation for %s stopped unexpectedly", session.udid)
     finally:
         await set_state(session.udid, SimulationState.IDLE)
-        session.task = None
+        if session.task is asyncio.current_task():
+            session.task = None
