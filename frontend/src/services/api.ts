@@ -1,5 +1,13 @@
-export const API_BASE_URL = 'http://127.0.0.1:8787'
-export const WS_URL = 'ws://127.0.0.1:8787/ws/status'
+const isMobileRemote = typeof window !== 'undefined' && window.location.pathname.startsWith('/mobile')
+export const API_BASE_URL = isMobileRemote ? window.location.origin : 'http://127.0.0.1:8787'
+export const WS_URL = isMobileRemote
+  ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/mobile`
+  : 'ws://127.0.0.1:8787/ws/status'
+
+function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
+  const session = isMobileRemote ? sessionStorage.getItem('arcwayfarer.mobile.session') : null
+  return session ? { ...headers, Authorization: `Bearer ${session}` } : headers
+}
 
 export type DeviceStatus = 'ready' | 'mounting' | 'tunnel_required' | 'error'
 
@@ -12,6 +20,21 @@ export type Device = {
   detail: string | null
 }
 
+export type MobilePairing = { url: string; pin: string; expires_in: number; qr_data_url: string }
+export type MobileRemoteStatus = { paired_sessions: number; connected_phones: number }
+
+export async function createMobilePairing(): Promise<MobilePairing> {
+  return postJsonWithResponse('/api/mobile/pairings', {})
+}
+
+export function getMobileRemoteStatus(): Promise<MobileRemoteStatus> {
+  return getJson('/api/mobile/status')
+}
+
+export function revokeMobileSessions(): Promise<void> {
+  return deleteJson('/api/mobile/sessions')
+}
+
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE_URL}/health`)
@@ -22,19 +45,19 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 export async function listDevices(): Promise<Device[]> {
-  const res = await fetch(`${API_BASE_URL}/api/devices`)
+  const res = await fetch(`${API_BASE_URL}/api/devices`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
   return res.json()
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`)
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`Request failed (${res.status})`)
   return res.json()
 }
 
 async function deleteJson(path: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'DELETE' })
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'DELETE', headers: authHeaders() })
   const payload = await res.json().catch(() => null)
   if (!res.ok) {
     throw new Error(payload?.detail ?? `Request failed (${res.status})`)
@@ -51,7 +74,7 @@ async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> 
   try {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal: controller.signal,
     })
@@ -74,6 +97,17 @@ async function postJson(path: string, body: unknown): Promise<void> {
   await postJsonWithResponse(path, body)
 }
 
+async function putJsonWithResponse<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  const payload = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+  return payload as T
+}
+
 export function setLocation(udid: string, lat: number, lng: number): Promise<void> {
   return postJson('/api/location/set', { udid, lat, lng })
 }
@@ -90,7 +124,7 @@ export type NavMode = 'walk' | 'bike' | 'drive'
 export type LatLng = { lat: number; lng: number }
 
 export async function getNavModeSpeeds(): Promise<Record<NavMode, number>> {
-  const res = await fetch(`${API_BASE_URL}/api/navigate/modes`)
+  const res = await fetch(`${API_BASE_URL}/api/navigate/modes`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`Failed to load nav modes (${res.status})`)
   return res.json()
 }
@@ -281,14 +315,25 @@ export type Favorite = {
   lat: number
   lng: number
   created_at: number
+  group: string
+  notes: string
+  order: number
 }
 
 export function listFavorites(): Promise<Favorite[]> {
   return getJson('/api/favorites')
 }
 
-export function addFavorite(input: { name: string; lat: number; lng: number }): Promise<Favorite> {
+export function addFavorite(input: { name: string; lat: number; lng: number; group?: string; notes?: string }): Promise<Favorite> {
   return postJsonWithResponse('/api/favorites', input)
+}
+
+export function updateFavorite(id: string, input: { name?: string; group?: string; notes?: string }): Promise<Favorite> {
+  return putJsonWithResponse(`/api/favorites/${id}`, input)
+}
+
+export function reorderFavorites(items: { id: string; order: number }[]): Promise<Favorite[]> {
+  return putJsonWithResponse('/api/favorites/reorder', { items })
 }
 
 export function deleteFavorite(id: string): Promise<void> {

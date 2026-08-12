@@ -15,9 +15,28 @@ export const STRINGS = {
   // Favorites
   'favorites.title': { zh: '我的最愛', en: 'Favorites' },
   'favorites.empty': { zh: '尚無收藏。', en: 'No favorites yet.' },
+  'favorites.empty_search': { zh: '沒有符合的結果', en: 'No matching favorites.' },
   'favorites.add': { zh: '加入最愛', en: 'Add to favorites' },
   'favorites.delete': { zh: '刪除', en: 'Delete' },
   'favorites.added': { zh: '已加入最愛', en: 'Added to favorites' },
+  'favorites.name_title': { zh: '為此座標命名', en: 'Name this location' },
+  'favorites.name_placeholder': { zh: '例如：台北 101、補給點', en: 'e.g. Taipei 101, Supply stop' },
+  'favorites.rename': { zh: '重新命名', en: 'Rename' },
+  'favorites.save': { zh: '儲存', en: 'Save' },
+  'favorites.cancel': { zh: '取消', en: 'Cancel' },
+  'favorites.search_placeholder': { zh: '搜尋最愛…', en: 'Search favorites…' },
+  'favorites.sort.manual': { zh: '自訂排序', en: 'Custom order' },
+  'favorites.sort.name': { zh: '依名稱', en: 'By name' },
+  'favorites.sort.date': { zh: '依日期', en: 'By date' },
+  'favorites.group_placeholder': { zh: '分組名稱（可留空）', en: 'Group name (optional)' },
+  'favorites.notes_placeholder': { zh: '備忘說明（可留空）', en: 'Notes (optional)' },
+  'favorites.ungrouped': { zh: '未分組', en: 'Ungrouped' },
+  'favorites.new_group': { zh: '新增分組', en: 'New group' },
+  'favorites.undo_delete': { zh: '已刪除', en: 'Deleted' },
+  'favorites.undo': { zh: '復原', en: 'Undo' },
+  'favorites.drag_hint': { zh: '拖曳調整順序', en: 'Drag to reorder' },
+  'favorites.edit_title': { zh: '編輯最愛', en: 'Edit favorite' },
+  'favorites.count': { zh: '個最愛', en: 'favorites' },
 
   // Search
   'search.placeholder': { zh: '搜尋地名關鍵字 (例如: 台北101, 駁二藝術特區)…', en: 'Search place keyword (e.g. Taipei 101)…' },
@@ -36,6 +55,24 @@ export const STRINGS = {
 
   // Top bar
   'topbar.title': { zh: 'ArcWayfarer', en: 'ArcWayfarer' },
+
+  // Version & Auto Update
+  'version.title': { zh: '版本與更新', en: 'Version & Updates' },
+  'version.current': { zh: '目前版本', en: 'Current Version' },
+  'version.latest': { zh: '最新版本', en: 'Latest Version' },
+  'version.up_to_date': { zh: '目前已是最新版本', en: 'You are using the latest version' },
+  'version.new_available': { zh: '發現新版本！', en: 'New Version Available!' },
+  'version.check_btn': { zh: '檢查更新', en: 'Check for Updates' },
+  'version.checking': { zh: '檢查中…', en: 'Checking…' },
+  'version.download_now': { zh: '下載新版本', en: 'Download New Version' },
+  'version.download_for_env': { zh: '下載適用於您的系統之版本', en: 'Download installer for your system' },
+  'version.all_platforms': { zh: '所有環境下載選項 (3 種架構)', en: 'All Environments Download Options (3 Architectures)' },
+  'version.env.mac_arm64': { zh: 'macOS (Apple Silicon M1/M2/M3/M4)', en: 'macOS (Apple Silicon M1/M2/M3/M4)' },
+  'version.env.mac_x64': { zh: 'macOS (Intel 晶片)', en: 'macOS (Intel Processor)' },
+  'version.env.win_x64': { zh: 'Windows (64-位元)', en: 'Windows (64-bit)' },
+  'version.release_notes': { zh: '更新說明 (Changelog)', en: 'Release Notes (Changelog)' },
+  'version.view_github': { zh: '在 GitHub 查看 Release 頁面', en: 'View Release on GitHub' },
+
 
   // Dev menu
   'devmenu.title': { zh: '開發者模式選單', en: 'Developer Menu' },
@@ -151,7 +188,7 @@ export const STRINGS = {
   'multistop.status.failed_stop': { zh: '多點巡迴停止失敗。', en: 'Failed to stop multi-stop.' },
   'multistop.status.failed_update': { zh: '多點巡迴更新失敗。', en: 'Failed to update multi-stop.' },
   'multistop.straight_line': { zh: '直線順飛', en: 'Straight line' },
-  'multistop.jump_mode': { zh: 'Jump Mode（點對點瞬移）', en: 'Jump mode (instant teleport)' },
+  'multistop.jump_mode': { zh: '瞬移前往', en: 'Jump mode (instant teleport)' },
   'multistop.jump_pre_delay': { zh: '站前延遲（秒）', en: 'Pre-arrival delay (sec)' },
   'multistop.jump_post_delay': { zh: '站後延遲（秒）', en: 'Post-arrival delay (sec)' },
   'multistop.custom_speed': { zh: '自訂速度 (km/h)', en: 'Custom speed (km/h)' },
@@ -222,6 +259,19 @@ export const STRINGS = {
   },
   'joystick.status.failed_start': { zh: '搖桿啟動失敗。', en: 'Failed to start joystick.' },
   'joystick.status.failed_stop': { zh: '搖桿停止失敗。', en: 'Failed to stop joystick.' },
+  'joystick.tab.basic': { zh: '固定速度', en: 'Fixed Speed' },
+  'joystick.tab.dynamic': { zh: '動態模式', en: 'Dynamic Mode' },
+  'joystick.dynamic.speed_range': { zh: '搖桿速度範圍', en: 'Joystick Speed Range' },
+  'joystick.dynamic.description': {
+    zh: '從中心的 0 km/h 開始，搖桿拉得越遠速度越快，拉至邊緣達到最高速度。',
+    en: 'Speed starts at 0 km/h in the center and increases with stick distance, reaching maximum speed at the edge.',
+  },
+  'joystick.dynamic.toggle': { zh: '啟用動態變速模式', en: 'Enable Dynamic Speed' },
+  'joystick.dynamic.curve_mode': { zh: '響應曲線模式', en: 'Response Curve' },
+  'joystick.dynamic.curve.power': { zh: '指數曲線 (Power Curve)', en: 'Power Curve' },
+  'joystick.dynamic.curve.progressive': { zh: '分段檔位 (Progressive Multi-Tier)', en: 'Progressive Multi-Tier' },
+  'joystick.dynamic.exponent': { zh: '曲線指數 (p)', en: 'Exponent (p)' },
+  'joystick.dynamic.keyboard_ramp': { zh: '鍵盤按住漸進加速', en: 'Keyboard Hold-to-Accelerate' },
 
   // Command Palette & HUD
   'cmdpalette.title': { zh: '快速指令 / 搜尋', en: 'Command Palette' },

@@ -11,6 +11,7 @@ type Props = {
   onFlyTo: (lat: number, lng: number) => void
   onSelectPlace?: (lat: number, lng: number, placeName?: string) => void
   onRefreshDevices: () => void
+  onOpenUpdateModal?: () => void
 }
 
 type PaletteItem = {
@@ -21,7 +22,7 @@ type PaletteItem = {
   action: () => void
 }
 
-export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelectPlace, onRefreshDevices }: Props) {
+export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelectPlace, onRefreshDevices, onOpenUpdateModal }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -73,6 +74,9 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelec
 
   const actionItems: PaletteItem[] = [
     { id: 'act-refresh', section: 'actions', title: t('device.rescan'), subtitle: 'Action', action: () => onRefreshDevices() },
+    ...(onOpenUpdateModal
+      ? [{ id: 'act-update', section: 'actions' as const, title: t('version.check_btn'), subtitle: 'Action', action: () => onOpenUpdateModal() }]
+      : []),
   ]
 
   const favItems: PaletteItem[] = favorites.map((f) => ({
@@ -99,8 +103,12 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelec
     action: () => handlePlaceSelect(p.lat, p.lng, p.name),
   }))
 
-  const allItems = [...modeItems, ...actionItems, ...favItems, ...histItems, ...placeItems]
-  const q = query.trim().toLowerCase()
+  // "@" prefix filters to favorites only
+  const atMode = query.startsWith('@')
+  const allItems = atMode
+    ? favItems
+    : [...modeItems, ...actionItems, ...favItems, ...histItems, ...placeItems]
+  const q = (atMode ? query.slice(1) : query).trim().toLowerCase()
   const filtered = q
     ? allItems.filter((item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q))
     : allItems
