@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
-import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePoint } from './coords'
 import { FavoriteButton } from './FavoriteButton'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
@@ -9,7 +8,7 @@ import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
 
-export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setOverlay, requestFlyTo }: PanelProps) {
+export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo }: PanelProps) {
   const t = useT()
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
@@ -24,43 +23,25 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setTargetText(formatPoint(point))
   }, [point])
 
-  useEffect(() => {
-    if (target) {
-      setOverlay({
-        markers: [
-          {
-            id: 'teleport-target',
-            lat: target.lat,
-            lng: target.lng,
-            color: '#4a4af0',
-            label: '📍',
-            draggable: !isOtherModeActive && status.kind !== 'busy',
-            onDragEnd: (lat: number, lng: number) => {
-              setTarget({ lat, lng })
-              setTargetText(formatPoint({ lat, lng }))
-            },
-          },
-        ],
-        path: [],
-      })
-    } else {
-      setOverlay(EMPTY_OVERLAY)
-    }
-    return () => setOverlay(EMPTY_OVERLAY)
-  }, [target, isOtherModeActive, status.kind, setOverlay])
-
   function handleTextChange(value: string) {
     setStatus({ kind: 'idle' })
     setTargetText(value)
-    const parsed = parsePoint(value)
-    setTarget(parsed)
+    setTarget(parsePoint(value))
+  }
+
+  function handleInputBlur() {
+    const parsed = parsePoint(targetText)
+    if (parsed) setPoint(parsed)
+    else if (targetText.trim() === '') setPoint(null)
   }
 
   function handleFocusInput() {
     setStatus({ kind: 'idle' })
     requestPoint((lat, lng) => {
-      setTarget({ lat, lng })
-      setTargetText(formatPoint({ lat, lng }))
+      const nextPoint = { lat, lng }
+      setTarget(nextPoint)
+      setTargetText(formatPoint(nextPoint))
+      setPoint(nextPoint)
     })
   }
 
@@ -69,6 +50,8 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     navigator.clipboard.readText().then((text) => {
       if (!text) return
       handleTextChange(text)
+      const parsed = parsePoint(text)
+      if (parsed) setPoint(parsed)
     }).catch(() => {})
   }
 
@@ -77,6 +60,7 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setStatus({ kind: 'idle' })
     setTarget(livePosition)
     setTargetText(formatPoint(livePosition))
+    setPoint(livePosition)
   }
 
   function handlePreview() {
@@ -102,9 +86,9 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setStatus({ kind: 'busy' })
     try {
       await clearLocation(deviceId)
-      setOverlay(EMPTY_OVERLAY)
       setTarget(null)
       setTargetText('')
+      setPoint(null)
       clearPoint?.()
       setStatus({ kind: 'success', message: t('teleport.status.clear_success') })
     } catch (e) {
@@ -146,6 +130,7 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
           value={targetText}
           onFocus={handleFocusInput}
           onChange={(e) => handleTextChange(e.target.value)}
+          onBlur={handleInputBlur}
         />
         <div className="inside-favorite-action">
           <FavoriteButton point={target} />

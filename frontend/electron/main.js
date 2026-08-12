@@ -1,8 +1,23 @@
-const { app, BrowserWindow, dialog, shell } = require('electron')
+const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
 const net = require('net')
+
+ipcMain.handle('get-platform-info', () => {
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    version: app.getVersion(),
+  }
+})
+
+ipcMain.handle('open-external', async (_, url) => {
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url)
+  }
+})
+
 
 const isDev = !app.isPackaged
 let backendProc = null
@@ -122,7 +137,10 @@ function startBackend() {
   if (isDev) return Promise.resolve()
   const exe = backendExecutablePath()
   console.log('[electron] spawning backend:', exe)
-  backendProc = spawn(exe, [], { cwd: path.dirname(exe) })
+  backendProc = spawn(exe, [], {
+    cwd: path.dirname(exe),
+    env: { ...process.env, ARCWAYFARER_WEB_DIR: path.join(process.resourcesPath, 'mobile-web') },
+  })
   backendProc.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`))
   backendProc.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`))
   backendProc.on('exit', (code) => {

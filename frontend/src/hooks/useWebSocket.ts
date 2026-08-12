@@ -34,6 +34,12 @@ export function useWebSocket() {
       socket.onopen = () => {
         setConnected(true)
         reconnectAttemptRef.current = 0
+        if (window.location.pathname.startsWith('/mobile')) {
+          socket.send(JSON.stringify({
+            type: 'auth',
+            data: { session: sessionStorage.getItem('arcwayfarer.mobile.session') },
+          }))
+        }
       }
 
       socket.onclose = () => {

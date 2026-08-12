@@ -45,9 +45,23 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 export async function listDevices(): Promise<Device[]> {
-  const res = await fetch(`${API_BASE_URL}/api/devices`, { headers: authHeaders() })
-  if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
-  return res.json()
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/devices`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
+    return res.json()
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Device scan timed out (15s). Please check device connection.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 async function getJson<T>(path: string): Promise<T> {

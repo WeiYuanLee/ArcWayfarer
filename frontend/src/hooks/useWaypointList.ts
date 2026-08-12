@@ -41,14 +41,25 @@ export function useWaypointList(initialCount = 2) {
   }, [])
 
   const addWaypoint = useCallback((pt?: LatLng) => {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        point: pt ?? null,
-        rawText: pt ? formatPoint(pt) : '',
-      },
-    ])
+    setItems((prev) => {
+      if (pt) {
+        const emptyIndex = prev.findIndex((item) => item.point === null && item.rawText.trim() === '')
+        if (emptyIndex !== -1) {
+          return prev.map((item, index) =>
+            index === emptyIndex ? { ...item, point: pt, rawText: formatPoint(pt) } : item
+          )
+        }
+      }
+
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          point: pt ?? null,
+          rawText: pt ? formatPoint(pt) : '',
+        },
+      ]
+    })
   }, [])
 
   const insertWaypointAfter = useCallback((idx: number, pt: LatLng) => {

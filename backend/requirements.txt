@@ -7,3 +7,4 @@ pymobiledevice3>=9.15.1
 packaging>=23.0
 gpxpy>=1.6.0
 pyimg4>=0.1.0
+qrcode[pil]>=7.4

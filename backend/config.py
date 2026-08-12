@@ -1,6 +1,7 @@
 from pathlib import Path
 
-API_HOST = "127.0.0.1"
+# The HTTP middleware keeps all non-loopback callers behind QR pairing.
+API_HOST = "0.0.0.0"
 API_PORT = 8787
 
 APP_DATA_DIR = Path.home() / ".arcwayfarer"

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as api from '../../services/api'
 import { useI18n } from '../../i18n'
+import { MobileRemoteModal } from '../common/MobileRemoteModal'
+import { SponsorModal } from '../common/SponsorModal'
 
 type Props = {
   deviceId: string | null
@@ -11,6 +13,8 @@ export function DevMenuButton({ deviceId }: Props) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [remoteOpen, setRemoteOpen] = useState(false)
+  const [sponsorOpen, setSponsorOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -68,6 +72,16 @@ export function DevMenuButton({ deviceId }: Props) {
 
           <hr className="dev-menu-divider" />
 
+          <button type="button" onClick={() => { setOpen(false); setRemoteOpen(true) }}>
+            手機遙控
+          </button>
+
+          <button type="button" onClick={() => { setOpen(false); setSponsorOpen(true) }}>
+            支持開發者
+          </button>
+
+          <hr className="dev-menu-divider" />
+
           <div className="dev-menu-lang">
             <span>{t('devmenu.lang_label')}</span>
             <button type="button" className={lang === 'zh' ? 'active' : ''} onClick={() => setLang('zh')}>
@@ -79,6 +93,8 @@ export function DevMenuButton({ deviceId }: Props) {
           </div>
         </div>
       )}
+      <MobileRemoteModal isOpen={remoteOpen} onClose={() => setRemoteOpen(false)} />
+      <SponsorModal isOpen={sponsorOpen} onClose={() => setSponsorOpen(false)} />
     </div>
   )
 }

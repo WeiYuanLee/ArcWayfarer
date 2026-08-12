@@ -1,11 +1,7 @@
-import { useRef, useState } from 'react'
-import { FloatingCard } from './FloatingCard'
-import { HistoryPanel } from './HistoryPanel'
+import { useState } from 'react'
 import { FavoritesDrawer } from './FavoritesDrawer'
-import { useClickOutside } from '../../hooks/useClickOutside'
+import { HistoryDrawer } from './HistoryDrawer'
 import { useT } from '../../i18n'
-
-type FlyoutKind = 'history'
 
 type Props = {
   onFlyTo: (lat: number, lng: number) => void
@@ -14,28 +10,15 @@ type Props = {
 
 export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
   const t = useT()
-  const [open, setOpen] = useState<FlyoutKind | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [favDrawerOpen, setFavDrawerOpen] = useState(false)
-  const railRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-
-  useClickOutside([railRef, panelRef], () => setOpen(null), open !== null)
-
-  function toggle(kind: FlyoutKind) {
-    setOpen((current) => (current === kind ? null : kind))
-  }
-
-  function handleFlyTo(lat: number, lng: number) {
-    onFlyTo(lat, lng)
-    setOpen(null)
-  }
 
   return (
     <>
-      <div className="icon-rail" ref={railRef}>
+      <div className="icon-rail">
         <button
-          className={open === 'history' ? 'active' : ''}
-          onClick={() => toggle('history')}
+          className={historyOpen ? 'active' : ''}
+          onClick={() => setHistoryOpen(true)}
           title={t('history.title')}
         >
           🕒
@@ -49,13 +32,11 @@ export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
         </button>
       </div>
 
-      {open === 'history' && (
-        <div className="flyout-panel" ref={panelRef}>
-          <FloatingCard>
-            <HistoryPanel onFlyTo={handleFlyTo} />
-          </FloatingCard>
-        </div>
-      )}
+      <HistoryDrawer
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onFlyTo={onFlyTo}
+      />
 
       <FavoritesDrawer
         isOpen={favDrawerOpen}

@@ -53,33 +53,6 @@ function bearingDegrees(a: LatLng, b: LatLng): number {
 
 const ARROW_SPACING_METERS = 180
 
-function sampleArrowPoints(path: LatLng[]): { pos: LatLng; bearing: number }[] {
-  const arrows: { pos: LatLng; bearing: number }[] = []
-  let distanceSinceLastArrow = ARROW_SPACING_METERS / 2 // first arrow doesn't sit right on top of the start marker
-
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1]
-    const b = path[i]
-    const segLen = haversineMeters(a, b)
-    if (segLen === 0) continue
-    const segBearing = bearingDegrees(a, b)
-
-    let coveredInSegment = 0
-    while (distanceSinceLastArrow + (segLen - coveredInSegment) >= ARROW_SPACING_METERS) {
-      coveredInSegment += ARROW_SPACING_METERS - distanceSinceLastArrow
-      const t = coveredInSegment / segLen
-      arrows.push({
-        pos: { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t },
-        bearing: segBearing,
-      })
-      distanceSinceLastArrow = 0
-    }
-    distanceSinceLastArrow += segLen - coveredInSegment
-  }
-
-  return arrows
-}
-
 function makeLiveMarkerIcon(isFocused: boolean): L.DivIcon {
   const coreColor = isFocused ? '#00e676' : '#3b82f6'
   const pulseColor = isFocused ? 'rgba(0, 230, 118, 0.45)' : 'rgba(59, 130, 246, 0.45)'
@@ -94,29 +67,50 @@ function makeLiveMarkerIcon(isFocused: boolean): L.DivIcon {
   })
 }
 
+function makeSelectedPointIcon(): L.DivIcon {
+  return L.divIcon({
+    html: `<div style="position:relative;width:30px;height:38px;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.55));">
+      <div style="position:absolute;left:3px;top:1px;width:24px;height:24px;background:#ff5e36;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-sizing:border-box;"></div>
+      <div style="position:absolute;left:12px;top:10px;width:6px;height:6px;background:#fff;border-radius:50%;"></div>
+    </div>`,
+    className: '',
+    iconSize: [30, 38],
+    iconAnchor: [15, 35],
+  })
+}
+
 type FlyTarget = { lat: number; lng: number; id: number }
 
 type Props = {
   onMapClick?: (lat: number, lng: number) => void
   focusedDeviceId?: string | null
   selectedPoint?: LatLng | null
+  onSelectedPointDragEnd?: (lat: number, lng: number) => void
   livePositions?: Record<string, LatLng>
   overlays?: Record<string, MapOverlay>
   flyTo?: FlyTarget | null
   children?: ReactNode
 }
 
-export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositions, overlays, flyTo, children }: Props) {
+export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelectedPointDragEnd, livePositions, overlays, flyTo, children }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const selectedPointMarkerRef = useRef<L.Marker | null>(null)
   const liveMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayMarkersRef = useRef<Map<string, L.Marker>>(new Map())
+  const overlayMarkerIconKeysRef = useRef<Map<string, string>>(new Map())
+  const draggingMarkerIdsRef = useRef<Set<string>>(new Set())
+  const draggingOverlayIdsRef = useRef<Set<string>>(new Set())
   const overlayPathCasingsRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlayPathsRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlayArrowsRef = useRef<Map<string, L.Marker[]>>(new Map())
+  const overlayActivePathsRef = useRef<Map<string, L.Polyline>>(new Map())
+  const overlayActivePathKeysRef = useRef<Map<string, string>>(new Map())
+  const arrowAnimationFramesRef = useRef<Map<string, number>>(new Map())
   const overlayCirclesRef = useRef<Map<string, L.Circle>>(new Map())
   const onMapClickRef = useRef(onMapClick)
   onMapClickRef.current = onMapClick
+  const onMapContextMenuRef = useRef<((e: { lat: number; lng: number; clientX: number; clientY: number }) => void) | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -134,6 +128,7 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
     // otherwise let whichever marker type was added most recently paint on top).
     map.createPane('routeLinePane').style.zIndex = '410'
     map.createPane('routeArrowPane').style.zIndex = '420'
+    map.createPane('selectedPointPane').style.zIndex = '625'
     map.createPane('livePositionPane').style.zIndex = '650'
 
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -142,11 +137,57 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
       onMapClickRef.current?.(lat, lng)
     })
 
+    map.on('contextmenu', (e: L.LeafletMouseEvent) => {
+      e.originalEvent.preventDefault()
+      const wrapped = e.latlng.wrap()
+      onMapContextMenuRef.current?.({
+        lat: wrapped.lat,
+        lng: wrapped.lng,
+        clientX: e.originalEvent.clientX,
+        clientY: e.originalEvent.clientY,
+      })
+    })
+
     return () => {
       map.remove()
       mapRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (!selectedPoint) {
+      selectedPointMarkerRef.current?.remove()
+      selectedPointMarkerRef.current = null
+      return
+    }
+
+    let marker = selectedPointMarkerRef.current
+    if (marker) {
+      marker.setLatLng(selectedPoint)
+    } else {
+      marker = L.marker(selectedPoint, {
+        icon: makeSelectedPointIcon(),
+        pane: 'selectedPointPane',
+        draggable: Boolean(onSelectedPointDragEnd),
+        keyboard: false,
+      }).addTo(map)
+      selectedPointMarkerRef.current = marker
+    }
+
+    marker.off('dragend')
+    if (onSelectedPointDragEnd) {
+      marker.dragging?.enable()
+      marker.on('dragend', (e: L.LeafletEvent) => {
+        const ll = (e.target as L.Marker).getLatLng().wrap()
+        onSelectedPointDragEnd(ll.lat, ll.lng)
+      })
+    } else {
+      marker.dragging?.disable()
+    }
+  }, [selectedPoint, onSelectedPointDragEnd])
 
   useEffect(() => {
     const map = mapRef.current
@@ -186,9 +227,13 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
     if (!map) return
 
     const markers = overlayMarkersRef.current
+    const markerIconKeys = overlayMarkerIconKeysRef.current
     const casings = overlayPathCasingsRef.current
     const paths = overlayPathsRef.current
     const arrows = overlayArrowsRef.current
+    const activePaths = overlayActivePathsRef.current
+    const activePathKeys = overlayActivePathKeysRef.current
+    const arrowAnimationFrames = arrowAnimationFramesRef.current
     const circles = overlayCirclesRef.current
 
     const nextMarkerIds = new Set<string>()
@@ -196,64 +241,126 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
     const nextCircleUdids = new Set<string>()
 
     for (const [udid, overlay] of Object.entries(overlays ?? {})) {
-      // Draw the path + direction arrows first, then the numbered waypoint badges on top,
+      const isOverlayDragging = draggingOverlayIdsRef.current.has(udid)
+      // Draw the path first, then the numbered waypoint badges on top,
       // so the thick route line never covers the badges that show trip progress.
       if (overlay.path.length >= 2) {
         nextPathUdids.add(udid)
         const latlngs = overlay.path.map((p) => [p.lat, p.lng] as [number, number])
 
         const existingCasing = casings.get(udid)
-        if (existingCasing) {
+        if (existingCasing && !isOverlayDragging) {
           existingCasing.setLatLngs(latlngs)
         } else {
-          casings.set(
-            udid,
-            L.polyline(latlngs, {
-              pane: 'routeLinePane',
-              color: '#1c2451',
-              weight: 12,
-              opacity: 0.55,
-              lineCap: 'round',
-              lineJoin: 'round',
-            }).addTo(map)
-          )
+          if (!existingCasing) {
+            casings.set(
+              udid,
+              L.polyline(latlngs, {
+                pane: 'routeLinePane',
+                color: '#1c2451',
+                weight: 12,
+                opacity: 0.55,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }).addTo(map)
+            )
+          }
         }
 
         const existing = paths.get(udid)
-        if (existing) {
+        if (existing && !isOverlayDragging) {
           existing.setLatLngs(latlngs)
         } else {
-          paths.set(
-            udid,
-            L.polyline(latlngs, {
-              pane: 'routeLinePane',
-              color: '#5b6bff',
-              weight: 8,
-              opacity: 0.95,
-              lineCap: 'round',
-              lineJoin: 'round',
-            }).addTo(map)
-          )
+          if (!existing) {
+            paths.set(
+              udid,
+              L.polyline(latlngs, {
+                pane: 'routeLinePane',
+                color: '#5b6bff',
+                weight: 8,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }).addTo(map)
+            )
+          }
         }
 
+      }
+
+      // Only the leg being travelled receives arrows. Keeping the complete route as a
+      // plain blue line makes the current Point N → Point N+1 leg immediately obvious.
+      const activePath = overlay.activePath
+      const activePathKey = activePath && activePath.length >= 2 ? activePath.map((point) => `${point.lat},${point.lng}`).join('|') : null
+      const activePathChanged = activePathKeys.get(udid) !== activePathKey
+      if (activePathChanged) {
+        cancelAnimationFrame(arrowAnimationFrames.get(udid) ?? 0)
+        arrowAnimationFrames.delete(udid)
         arrows.get(udid)?.forEach((marker) => marker.remove())
-        arrows.set(
+        arrows.delete(udid)
+        activePaths.get(udid)?.remove()
+        activePaths.delete(udid)
+        activePathKeys.delete(udid)
+      }
+
+      if (!isOverlayDragging && activePath && activePath.length >= 2 && activePathChanged) {
+        const activeLatLngs = activePath.map((p) => [p.lat, p.lng] as [number, number])
+        activePaths.set(
           udid,
-          sampleArrowPoints(overlay.path).map(({ pos, bearing }) =>
-            L.marker([pos.lat, pos.lng], { icon: makeArrowIcon(bearing), interactive: false, pane: 'routeArrowPane' }).addTo(map)
-          )
+          L.polyline(activeLatLngs, {
+            pane: 'routeLinePane',
+            color: '#93c5fd',
+            weight: 10,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }).addTo(map)
         )
+        activePathKeys.set(udid, activePathKey!)
+
+        const arrowCount = Math.max(1, Math.ceil(haversineMeters(activePath[0], activePath[activePath.length - 1]) / ARROW_SPACING_METERS))
+        const bearing = bearingDegrees(activePath[0], activePath[activePath.length - 1])
+        const activeArrows = Array.from({ length: arrowCount }, () =>
+          L.marker(activeLatLngs[0], { icon: makeArrowIcon(bearing), interactive: false, pane: 'routeArrowPane' }).addTo(map)
+        )
+        arrows.set(udid, activeArrows)
+
+        const animateArrows = (now: number) => {
+          const phase = (now % 1600) / 1600
+          activeArrows.forEach((arrow, index) => {
+            const progress = (phase + index / arrowCount) % 1
+            const start = activePath[0]
+            const end = activePath[activePath.length - 1]
+            arrow.setLatLng([start.lat + (end.lat - start.lat) * progress, start.lng + (end.lng - start.lng) * progress])
+          })
+          arrowAnimationFrames.set(udid, requestAnimationFrame(animateArrows))
+        }
+        arrowAnimationFrames.set(udid, requestAnimationFrame(animateArrows))
       }
 
       for (const m of overlay.markers) {
         const id = `${udid}:${m.id}`
         nextMarkerIds.add(id)
+        // React may publish an otherwise unchanged overlay while a Leaflet drag is in
+        // progress (for example after a live-position update). Do not let that stale
+        // model coordinate snap the marker back or replace its active drag listeners.
+        if (draggingMarkerIdsRef.current.has(id) && markers.has(id)) continue
         const isDraggable = m.draggable ?? (m.onDragEnd !== undefined)
+        const iconKey = `${m.color}\u0000${m.label ?? ''}\u0000${isDraggable ? 'draggable' : 'fixed'}`
         let existing = markers.get(id)
+
+        // Leaflet's MarkerDrag keeps a reference to the icon DOM node that existed when
+        // dragging was first enabled. Calling setIcon() replaces that node, but toggling
+        // dragging does not update the internal reference. Recreate the marker only when
+        // its icon actually changes; ordinary overlay/path updates must preserve its DOM.
+        if (existing && markerIconKeys.get(id) !== iconKey) {
+          existing.remove()
+          markers.delete(id)
+          existing = undefined
+        }
 
         if (existing) {
           existing.setLatLng([m.lat, m.lng])
-          existing.setIcon(makeBadgeIcon(m.color, m.label, isDraggable))
           if (isDraggable) {
             existing.dragging?.enable()
           } else {
@@ -265,22 +372,113 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
             draggable: isDraggable,
           }).addTo(map)
           markers.set(id, existing)
+          markerIconKeys.set(id, iconKey)
         }
 
-        existing.off('dragend')
+        existing.off('dragstart')
         existing.off('drag')
-        if (m.onDrag) {
-          const onDrag = m.onDrag
+        existing.off('dragend')
+        existing.off('contextmenu')
+
+        if (m.pathIndex !== undefined && overlay.path.length >= 2) {
+          const pathIndex = m.pathIndex
+          const path = overlay.path
+          const isClosedLoop =
+            path.length >= 3 &&
+            path[0].lat === path[path.length - 1].lat &&
+            path[0].lng === path[path.length - 1].lng
+
+          let dragLatest: { lat: number; lng: number } | null = null
+          let dragRafId: number | null = null
+          let originalLatLng: L.LatLng | null = null
+
+          const applyDragPosition = ({ lat, lng }: LatLng) => {
+            const newLatLngs: [number, number][] = path.map((p, j) => {
+              if (j === pathIndex) return [lat, lng]
+              if (isClosedLoop && j === path.length - 1 && pathIndex === 0) return [lat, lng]
+              return [p.lat, p.lng]
+            })
+            casings.get(udid)?.setLatLngs(newLatLngs)
+            paths.get(udid)?.setLatLngs(newLatLngs)
+          }
+
+          existing.on('dragstart', () => {
+            draggingMarkerIdsRef.current.add(id)
+            draggingOverlayIdsRef.current.add(udid)
+            originalLatLng = existing!.getLatLng()
+            dragLatest = null
+            dragRafId = null
+            arrows.get(udid)?.forEach((a) => a.setOpacity(0))
+          })
+
           existing.on('drag', (e: L.LeafletEvent) => {
             const ll = (e.target as L.Marker).getLatLng().wrap()
-            onDrag(ll.lat, ll.lng)
+            dragLatest = { lat: ll.lat, lng: ll.lng }
+            if (dragRafId !== null) return
+            dragRafId = requestAnimationFrame(() => {
+              dragRafId = null
+              if (!dragLatest) return
+              applyDragPosition(dragLatest)
+            })
           })
-        }
-        if (m.onDragEnd) {
-          const onDragEnd = m.onDragEnd
+
           existing.on('dragend', (e: L.LeafletEvent) => {
+            if (dragRafId !== null) {
+              cancelAnimationFrame(dragRafId)
+              dragRafId = null
+            }
             const ll = (e.target as L.Marker).getLatLng().wrap()
-            onDragEnd(ll.lat, ll.lng)
+            const finalPosition = { lat: ll.lat, lng: ll.lng }
+            // Commit the final preview before React receives the coordinate. Keep the
+            // drag guard through the next frame so an intermediate overlay containing
+            // the new marker but the previous route cannot flash on screen.
+            applyDragPosition(finalPosition)
+            dragLatest = null
+            const orig = originalLatLng
+            const rollback = () => {
+              if (!orig) return
+              existing!.setLatLng(orig)
+              const casingPoly = casings.get(udid)
+              const pathPoly = paths.get(udid)
+              if (casingPoly && pathPoly) {
+                const lls = casingPoly.getLatLngs() as L.LatLng[]
+                lls[pathIndex] = orig
+                if (isClosedLoop && pathIndex === 0) lls[path.length - 1] = orig
+                casingPoly.setLatLngs(lls)
+                pathPoly.setLatLngs(lls)
+              }
+            }
+            m.onDragEnd?.(finalPosition.lat, finalPosition.lng, rollback)
+            requestAnimationFrame(() => {
+              draggingMarkerIdsRef.current.delete(id)
+              draggingOverlayIdsRef.current.delete(udid)
+              arrows.get(udid)?.forEach((a) => a.setOpacity(1))
+            })
+          })
+        } else {
+          if (m.onDrag) {
+            const onDrag = m.onDrag
+            existing.on('drag', (e: L.LeafletEvent) => {
+              const ll = (e.target as L.Marker).getLatLng().wrap()
+              onDrag(ll.lat, ll.lng)
+            })
+          }
+          if (m.onDragEnd) {
+            const onDragEnd = m.onDragEnd
+            existing.on('dragend', (e: L.LeafletEvent) => {
+              const ll = (e.target as L.Marker).getLatLng().wrap()
+              onDragEnd(ll.lat, ll.lng)
+            })
+          }
+        }
+
+        if (m.onContextMenu) {
+          const onContextMenu = m.onContextMenu
+          existing.on('contextmenu', (e: L.LeafletMouseEvent) => {
+            e.originalEvent.preventDefault()
+            e.originalEvent.stopPropagation()
+            const ll = e.latlng.wrap()
+            onContextMenu({ lat: ll.lat, lng: ll.lng, clientX: e.originalEvent.clientX, clientY: e.originalEvent.clientY })
           })
         }
       }
@@ -307,6 +505,7 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
       if (!nextMarkerIds.has(id)) {
         marker.remove()
         markers.delete(id)
+        markerIconKeys.delete(id)
       }
     }
     for (const [udid, path] of paths) {
@@ -317,6 +516,11 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
         casings.delete(udid)
         arrows.get(udid)?.forEach((marker) => marker.remove())
         arrows.delete(udid)
+        cancelAnimationFrame(arrowAnimationFrames.get(udid) ?? 0)
+        arrowAnimationFrames.delete(udid)
+        activePaths.get(udid)?.remove()
+        activePaths.delete(udid)
+        activePathKeys.delete(udid)
       }
     }
     for (const [udid, circle] of circles) {
@@ -325,6 +529,11 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, livePositi
         circles.delete(udid)
       }
     }
+
+    // Update map-level contextmenu handler — last overlay with one wins
+    const mapContextMenuHandlers = Object.values(overlays ?? {}).map((o) => o.onMapContextMenu).filter(Boolean)
+    const mapContextMenu = mapContextMenuHandlers[mapContextMenuHandlers.length - 1]
+    onMapContextMenuRef.current = mapContextMenu ?? null
   }, [overlays])
 
   useEffect(() => {

@@ -9,17 +9,21 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type SubTab = 'basic' | 'dynamic'
+const DYNAMIC_MAX_SPEED_KMH = 60
 
 export function JoystickPanel({ deviceId, device, deviceState, point, livePosition, sendWs }: PanelProps) {
   const t = useT()
+  const [subTab, setSubTab] = useState<SubTab>('basic')
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   const deviceReady = device?.status === 'ready'
   const isActive = deviceState === 'joystick'
+  const isDynamic = subTab === 'dynamic'
   const isBusy = status.kind === 'busy'
-  
+
   // Auto fallback to livePosition if point is null
   const startPoint = point ?? livePosition
   const canStart = deviceReady && !isActive && startPoint !== null && !isBusy
@@ -32,13 +36,19 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
     [deviceId, sendWs]
   )
 
-  useJoystickKeyboard(handleMove, isActive)
+  useJoystickKeyboard(handleMove, isActive, isDynamic)
 
   async function handleStart() {
     if (!deviceId || !startPoint) return
     setStatus({ kind: 'busy' })
     try {
-      await startJoystick(deviceId, navMode, startPoint.lat, startPoint.lng, speedKmh)
+      await startJoystick(
+        deviceId,
+        navMode,
+        startPoint.lat,
+        startPoint.lng,
+        isDynamic ? DYNAMIC_MAX_SPEED_KMH : speedKmh
+      )
       pushHistory({ lat: startPoint.lat, lng: startPoint.lng, kind: 'joystick' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
@@ -72,13 +82,41 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
         <p className="panel-hint warning">{t('joystick.hint.need_anchor')}</p>
       )}
 
-      <SpeedSlider
-        valueKmh={speedKmh}
-        navMode={navMode}
-        onChange={setSpeedKmh}
-        onNavModeChange={setNavMode}
-        disabled={isActive}
-      />
+      {/* Sub-Tab Bar for Basic vs Dynamic mode setup */}
+      <div className="panel-sub-tabs">
+        <button
+          className={`sub-tab ${subTab === 'basic' ? 'active' : ''}`}
+          onClick={() => setSubTab('basic')}
+          disabled={isActive}
+        >
+          {t('joystick.tab.basic')}
+        </button>
+        <button
+          className={`sub-tab ${subTab === 'dynamic' ? 'active' : ''}`}
+          onClick={() => setSubTab('dynamic')}
+          disabled={isActive}
+        >
+          {t('joystick.tab.dynamic')}
+        </button>
+      </div>
+
+      {subTab === 'basic' ? (
+        <SpeedSlider
+          valueKmh={speedKmh}
+          navMode={navMode}
+          onChange={setSpeedKmh}
+          onNavModeChange={setNavMode}
+          disabled={isActive}
+        />
+      ) : (
+        <div className="dynamic-settings-group">
+          <div className="setting-row">
+            <span className="setting-label">{t('joystick.dynamic.speed_range')}</span>
+            <span className="setting-val-badge">0–{DYNAMIC_MAX_SPEED_KMH} km/h</span>
+          </div>
+          <p className="panel-hint">{t('joystick.dynamic.description')}</p>
+        </div>
+      )}
 
       <div className="panel-actions icon-actions">
         {!isActive ? (
@@ -99,7 +137,11 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
       {isActive &&
         createPortal(
           <div className="joystick-float-dock">
-            <JoystickPad onMove={handleMove} />
+            <JoystickPad
+              onMove={handleMove}
+              dynamic={isDynamic}
+              maxSpeedKmh={isDynamic ? DYNAMIC_MAX_SPEED_KMH : speedKmh}
+            />
           </div>,
           document.body
         )}
