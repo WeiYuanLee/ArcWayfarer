@@ -1,6 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from core import joystick
+from services import mobile_auth
+from services.mobile_auth import valid_session
 
 router = APIRouter()
 
@@ -9,6 +11,9 @@ _connections: set[WebSocket] = set()
 
 @router.websocket("/ws/status")
 async def ws_status(websocket: WebSocket) -> None:
+    if websocket.client and websocket.client.host not in {"127.0.0.1", "::1", "localhost"}:
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     _connections.add(websocket)
     try:
@@ -19,6 +24,35 @@ async def ws_status(websocket: WebSocket) -> None:
         pass
     finally:
         _connections.discard(websocket)
+
+
+@router.websocket("/ws/mobile")
+async def ws_mobile(websocket: WebSocket) -> None:
+    """LAN-only socket: the first message must authenticate the QR session."""
+    await websocket.accept()
+    session_token: str | None = None
+    try:
+        auth = await websocket.receive_json()
+        session_token = auth.get("data", {}).get("session")
+        if auth.get("type") != "auth" or not isinstance(session_token, str) or not valid_session(session_token):
+            await websocket.close(code=1008)
+            return
+        if not mobile_auth.mark_connected(session_token):
+            await websocket.close(code=1008)
+            return
+        _connections.add(websocket)
+        await websocket.send_json({"type": "authenticated"})
+        while True:
+            raw = await websocket.receive_json()
+            if not valid_session(session_token):
+                await websocket.close(code=1008)
+                return
+            await _handle_message(raw)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _connections.discard(websocket)
+        mobile_auth.mark_disconnected(session_token)
 
 
 async def _handle_message(raw: dict) -> None:
