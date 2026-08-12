@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from core.favorites import favorite_manager
-from models.schemas import Favorite, FavoriteCreateRequest, FavoriteUpdateRequest
+from models.schemas import Favorite, FavoriteCreateRequest, FavoriteReorderRequest, FavoriteUpdateRequest
 
 router = APIRouter(prefix="/api/favorites")
 
@@ -13,13 +13,18 @@ async def get_favorites() -> list[Favorite]:
 
 @router.post("")
 async def post_favorite(body: FavoriteCreateRequest) -> Favorite:
-    return favorite_manager.add(body.name, body.lat, body.lng)
+    return favorite_manager.add(body.name, body.lat, body.lng, body.group, body.notes)
+
+
+@router.put("/reorder")
+async def put_reorder(body: FavoriteReorderRequest) -> list[Favorite]:
+    return favorite_manager.reorder(body.items)
 
 
 @router.put("/{favorite_id}")
 async def put_favorite(favorite_id: str, body: FavoriteUpdateRequest) -> Favorite:
     try:
-        return favorite_manager.update(favorite_id, body.name)
+        return favorite_manager.update(favorite_id, body.name, body.group, body.notes)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

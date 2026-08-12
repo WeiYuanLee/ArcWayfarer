@@ -1,19 +1,21 @@
 import { useRef, useState } from 'react'
 import { FloatingCard } from './FloatingCard'
 import { HistoryPanel } from './HistoryPanel'
-import { FavoritesPanel } from './FavoritesPanel'
+import { FavoritesDrawer } from './FavoritesDrawer'
 import { useClickOutside } from '../../hooks/useClickOutside'
 import { useT } from '../../i18n'
 
-type FlyoutKind = 'history' | 'favorites'
+type FlyoutKind = 'history'
 
 type Props = {
   onFlyTo: (lat: number, lng: number) => void
+  onSelectFavorite: (lat: number, lng: number) => void
 }
 
-export function IconRail({ onFlyTo }: Props) {
+export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
   const t = useT()
   const [open, setOpen] = useState<FlyoutKind | null>(null)
+  const [favDrawerOpen, setFavDrawerOpen] = useState(false)
   const railRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -39,21 +41,27 @@ export function IconRail({ onFlyTo }: Props) {
           🕒
         </button>
         <button
-          className={open === 'favorites' ? 'active' : ''}
-          onClick={() => toggle('favorites')}
+          className={favDrawerOpen ? 'active' : ''}
+          onClick={() => setFavDrawerOpen(true)}
           title={t('favorites.title')}
         >
           ⭐
         </button>
       </div>
 
-      {open && (
+      {open === 'history' && (
         <div className="flyout-panel" ref={panelRef}>
           <FloatingCard>
-            {open === 'history' ? <HistoryPanel onFlyTo={handleFlyTo} /> : <FavoritesPanel onFlyTo={handleFlyTo} />}
+            <HistoryPanel onFlyTo={handleFlyTo} />
           </FloatingCard>
         </div>
       )}
+
+      <FavoritesDrawer
+        isOpen={favDrawerOpen}
+        onClose={() => setFavDrawerOpen(false)}
+        onSelectFavorite={onSelectFavorite}
+      />
     </>
   )
 }

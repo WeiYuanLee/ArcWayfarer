@@ -124,13 +124,29 @@ class Favorite(BaseModel):
     lat: float
     lng: float
     created_at: int
+    group: str = ""
+    notes: str = ""
+    order: int = 0
 
 
 class FavoriteCreateRequest(BaseModel):
     name: str
     lat: float
     lng: float
+    group: str = ""
+    notes: str = ""
 
 
 class FavoriteUpdateRequest(BaseModel):
-    name: str
+    name: Optional[str] = None
+    group: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class FavoriteReorderItem(BaseModel):
+    id: str
+    order: int
+
+
+class FavoriteReorderRequest(BaseModel):
+    items: list[FavoriteReorderItem]
