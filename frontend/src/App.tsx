@@ -14,7 +14,6 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
 import { UpdateModal } from './components/common/UpdateModal'
 
-
 export default function App() {
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
   const [modeByDevice, setModeByDevice] = useState<Record<string, Mode>>({})

@@ -11,6 +11,7 @@ export const STRINGS = {
   // History
   'history.title': { zh: '操作記錄', en: 'History' },
   'history.empty': { zh: '尚無記錄。', en: 'No history yet.' },
+  'history.count': { zh: '筆記錄', en: 'entries' },
 
   // Favorites
   'favorites.title': { zh: '我的最愛', en: 'Favorites' },
@@ -297,13 +298,14 @@ export const STRINGS = {
   'joystick.action.stop': { zh: '停止搖桿', en: 'Stop Joystick' },
   'topbar.search': { zh: '搜尋…', en: 'Search…' },
   'hud.current_leg': { zh: '當前航段', en: 'Current Leg' },
-  'topbar.sponsor': { zh: '請作者喝杯咖啡', en: 'Buy the author a coffee' },
-  'sponsor.title': { zh: '請作者喝杯咖啡 ☕', en: 'Buy the author a coffee ☕' },
+  'topbar.sponsor': { zh: '支持開發者', en: 'Support the Developer' },
+  'sponsor.title': { zh: '支持開發者 ❤️', en: 'Support the Developer ❤️' },
   'sponsor.description': {
-    zh: '如果 ArcWayfarer 對你有幫助，歡迎透過 PayPal 請作者喝杯咖啡，你的支持是持續開發的動力。',
-    en: 'If ArcWayfarer has been useful to you, consider supporting the author with a coffee via PayPal. Your support keeps development going.',
+    zh: '如果 ArcWayfarer 對你有幫助，歡迎請作者喝杯咖啡！你的支持是持續開發的動力。',
+    en: 'If ArcWayfarer has been useful to you, consider buying the author a coffee! Your support keeps development going.',
   },
-  'sponsor.cta': { zh: '前往 PayPal 贊助', en: 'Sponsor via PayPal' },
+  'sponsor.cta_tw': { zh: '信用卡贊助（台灣 & 海外）', en: 'Support via Credit Card (Taiwan & Worldwide)' },
+  'sponsor.cta_intl': { zh: '海外用戶贊助（Ko-fi）', en: 'Support via Ko-fi (International)' },
   'sponsor.close': { zh: '關閉', en: 'Close' },
 } as const satisfies Record<string, Record<Lang, string>>
 
