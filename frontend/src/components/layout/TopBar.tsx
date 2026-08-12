@@ -1,8 +1,7 @@
-import { useState } from 'react'
 import { DeviceTabs } from './DeviceTabs'
 import { ConnectionStatus } from '../ConnectionStatus'
 import { DevMenuButton } from './DevMenuButton'
-import { SponsorModal } from '../common/SponsorModal'
+import { VersionBadge } from '../common/VersionBadge'
 import type { Device } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -21,6 +20,11 @@ type Props = {
   devicesLoading: boolean
   onRefreshDevices: () => void
   onOpenCmdPalette?: () => void
+  version: string
+  hasUpdate: boolean
+  latestVersion?: string
+  loadingUpdate: boolean
+  onOpenUpdateModal: () => void
 }
 
 export function TopBar({
@@ -35,26 +39,34 @@ export function TopBar({
   devicesLoading,
   onRefreshDevices,
   onOpenCmdPalette,
+  version,
+  hasUpdate,
+  latestVersion,
+  loadingUpdate,
+  onOpenUpdateModal,
 }: Props) {
   const t = useT()
-  const [sponsorOpen, setSponsorOpen] = useState(false)
+
   return (
     <div className="top-bar">
       <DevMenuButton deviceId={focusedDeviceId} />
-      <h1>{t('topbar.title')}</h1>
-      <button
-        className="topbar-sponsor-btn"
-        onClick={() => setSponsorOpen(true)}
-        title={t('topbar.sponsor')}
-      >
-        ☕
-      </button>
-      <SponsorModal isOpen={sponsorOpen} onClose={() => setSponsorOpen(false)} />
+      <div className="topbar-title-group">
+        <h1>{t('topbar.title')}</h1>
+        <VersionBadge
+          version={version}
+          hasUpdate={hasUpdate}
+          latestVersion={latestVersion}
+          loading={loadingUpdate}
+          onClick={onOpenUpdateModal}
+        />
+      </div>
+
       <button className="topbar-cmd-palette-btn" onClick={onOpenCmdPalette} title="Command Palette (Cmd+K)">
         <span className="search-icon">🔍</span>
         <span className="search-text">{t('topbar.search')}</span>
         <kbd className="cmd-k-kbd">⌘K</kbd>
       </button>
+
       <DeviceTabs
         devices={devices}
         focusedDeviceId={focusedDeviceId}
