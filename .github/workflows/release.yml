@@ -16,7 +16,7 @@ jobs:
           - runner: macos-14
             os: mac
             arch: arm64
-          - runner: macos-13
+          - runner: macos-15-intel
             os: mac
             arch: x64
           - runner: windows-latest
