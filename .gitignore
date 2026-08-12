@@ -8,7 +8,10 @@ backend/**/__pycache__/
 # Node / frontend
 frontend/node_modules/
 frontend/dist/
+frontend/mobile-dist/
 frontend/release/
+frontend/playwright-report/
+frontend/test-results/
 
 # Packaging output
 dist-py/
@@ -25,3 +28,6 @@ build-py/
 # Editors
 .vscode/
 .idea/
+
+# Internal planning docs
+docs/*_plan.md
