@@ -11,6 +11,8 @@ import type { Mode } from './components/ModeSelector'
 import { type MapOverlay, type PanelProps } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useUpdateChecker } from './hooks/useUpdateChecker'
+import { UpdateModal } from './components/common/UpdateModal'
 
 export default function App() {
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
@@ -21,6 +23,17 @@ export default function App() {
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const { connected, positions, states, send } = useWebSocket()
   const { devices, loading: devicesLoading, refresh: refreshDevices } = useDevices()
+  const {
+    checkResult,
+    loading: loadingUpdate,
+    modalOpen: updateModalOpen,
+    performCheck: recheckUpdates,
+    openUpdateModal,
+    closeUpdateModal,
+    hasUpdate,
+    currentVersion,
+    latestVersion,
+  } = useUpdateChecker()
 
   const pendingPickRef = useRef<((lat: number, lng: number) => void) | null>(null)
   const flyIdRef = useRef(0)
@@ -31,6 +44,16 @@ export default function App() {
     flyIdRef.current += 1
     setFlyTo({ lat, lng, id: flyIdRef.current })
   }, [])
+  const handleFavoriteSelect = useCallback((lat: number, lng: number) => {
+    requestFlyTo(lat, lng)
+    if (focusedDeviceId) {
+      setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
+    }
+  }, [focusedDeviceId, requestFlyTo])
+  const handleSelectedPointDragEnd = useCallback((lat: number, lng: number) => {
+    if (!focusedDeviceId) return
+    setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
+  }, [focusedDeviceId])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -143,6 +166,7 @@ export default function App() {
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
       connected,
+      setPoint: (point) => setPointByDevice((prev) => ({ ...prev, [udid]: point })),
       requestPoint,
       clearPoint: () => setPointByDevice((prev) => ({ ...prev, [udid]: null })),
       setOverlay: getSetOverlayForDevice(udid),
@@ -169,12 +193,18 @@ export default function App() {
         devicesLoading={devicesLoading}
         onRefreshDevices={refreshDevices}
         onOpenCmdPalette={() => setCmdPaletteOpen(true)}
+        version={currentVersion}
+        hasUpdate={hasUpdate}
+        latestVersion={latestVersion}
+        loadingUpdate={loadingUpdate}
+        onOpenUpdateModal={openUpdateModal}
       />
       <div className="app-body">
         <MapView
           onMapClick={handleMapClick}
           focusedDeviceId={focusedDeviceId}
           selectedPoint={focusedPoint}
+          onSelectedPointDragEnd={handleSelectedPointDragEnd}
           livePositions={livePositions}
           overlays={overlaysByDevice}
           flyTo={flyTo}
@@ -186,7 +216,7 @@ export default function App() {
             onModeChange={handleModeChange}
             panelPropsFor={panelPropsFor}
           />
-          <IconRail onFlyTo={requestFlyTo} />
+          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} />
           <div className="overlay-status-dock">
             <PlaceSearchBar onSelectPlace={handlePlaceSelect} />
             <StatusBar
@@ -209,6 +239,14 @@ export default function App() {
         onFlyTo={requestFlyTo}
         onSelectPlace={handlePlaceSelect}
         onRefreshDevices={refreshDevices}
+        onOpenUpdateModal={openUpdateModal}
+      />
+      <UpdateModal
+        isOpen={updateModalOpen}
+        onClose={closeUpdateModal}
+        checkResult={checkResult}
+        loading={loadingUpdate}
+        onRecheck={recheckUpdates}
       />
       <ToastContainer />
     </div>

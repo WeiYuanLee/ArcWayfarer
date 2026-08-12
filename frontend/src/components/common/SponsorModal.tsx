@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useT } from '../../i18n'
 
-const SPONSOR_PAYPAL_LINK = 'https://paypal.me/REPLACE_ME'
+const LINK_TW   = 'https://portaly.cc/lence0620/support'
+const LINK_INTL = 'https://ko-fi.com/arcwayfarer'
 
 type Props = {
   isOpen: boolean
@@ -36,22 +37,31 @@ export function SponsorModal({ isOpen, onClose }: Props) {
         <h3 id="sponsor-modal-title" style={{ margin: '0 0 8px 0', fontSize: '16px' }}>
           {t('sponsor.title')}
         </h3>
-        <p id="sponsor-modal-desc" style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#a0a0a0', lineHeight: 1.4 }}>
+        <p id="sponsor-modal-desc" style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#a0a0a0', lineHeight: 1.4 }}>
           {t('sponsor.description')}
         </p>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <button className="swap-button" onClick={onClose}>
-            {t('sponsor.close')}
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <a
             className="swap-button"
-            href={SPONSOR_PAYPAL_LINK}
+            href={LINK_TW}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ backgroundColor: '#0070ba', color: '#fff', border: 'none', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+            style={ctaTwStyle}
           >
-            {t('sponsor.cta')}
+            🇹🇼 {t('sponsor.cta_tw')}
           </a>
+          <a
+            className="swap-button"
+            href={LINK_INTL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={ctaIntlStyle}
+          >
+            ☕ {t('sponsor.cta_intl')}
+          </a>
+          <button className="swap-button" onClick={onClose} style={{ marginTop: '4px' }}>
+            {t('sponsor.close')}
+          </button>
         </div>
       </div>
     </div>,
@@ -82,4 +92,26 @@ const cardStyle: React.CSSProperties = {
   width: '90%',
   boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
   color: '#f0f0f0',
+}
+
+const ctaTwStyle: React.CSSProperties = {
+  backgroundColor: '#16a34a',
+  color: '#fff',
+  border: 'none',
+  textDecoration: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '6px',
+}
+
+const ctaIntlStyle: React.CSSProperties = {
+  backgroundColor: '#ff5f5f',
+  color: '#fff',
+  border: 'none',
+  textDecoration: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '6px',
 }
