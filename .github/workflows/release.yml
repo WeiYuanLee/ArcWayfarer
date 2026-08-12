@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -30,6 +33,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Set package version from release tag
+        working-directory: frontend
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --ignore-scripts
 
       - name: Build macOS ${{ matrix.arch }} dmg
         if: matrix.os == 'mac'
@@ -72,20 +80,23 @@ jobs:
             artifacts/*.dmg
             artifacts/*.exe
           body: |
-            ## 下載指南
+            ## ArcWayfarer
 
-            - **Windows 使用者**：下載 `ArcWayfarer Setup x.x.x.exe` 安裝檔。
-            - **macOS (Apple Silicon M 系列晶片)**：下載檔名包含 `arm64` 的 `.dmg`。
-            - **macOS (Intel 晶片)**：下載檔名包含 `x64` 的 `.dmg`。
+            ArcWayfarer lets you precisely simulate and control an iPhone's GPS location from macOS or Windows. Teleport to any place, navigate along a route, and test location-aware experiences with ease.
+
+            ## Downloads
+
+            - **Windows** — Download the Windows `.exe` installer.
+            - **macOS (Apple Silicon)** — Download the `.dmg` whose filename contains `arm64`.
+            - **macOS (Intel)** — Download the `.dmg` whose filename contains `x64`.
 
             ---
 
-            ## 使用注意事項
+            ## Before you install
 
-            ### 💻 Windows
-            1. **Apple 驅動需求**：請確保電腦已安裝 **iTunes**（桌面版或 Windows Store 版）或 Apple Mobile Device Support 驅動，以確保系統能辨識 USB 連接的 iPhone。
-            2. **管理員權限**：本程式開啟時會自動請求系統管理員權限 (UAC Prompt)，以確保 iOS 17+ 的 RemoteXPC Tunnel 與網路適配器能順利運行。
+            ### Windows
+            1. Install **iTunes** (desktop or Microsoft Store) or Apple Mobile Device Support so Windows can detect your iPhone over USB.
+            2. ArcWayfarer requests Administrator privileges at launch to support the iOS 17+ RemoteXPC tunnel.
 
-            ### 🍎 macOS 第一次開啟
-            由於沒有 Apple 開發者簽章，macOS Gatekeeper 會擋下第一次開啟。請在「應用程式」資料夾中對 ArcWayfarer **按右鍵 → 開啟**（或至「系統設定 → 隱私權與安全性」點擊「強制開啟」）。
-
+            ### macOS — first launch
+            This build is not signed with an Apple Developer certificate. If Gatekeeper blocks it, right-click ArcWayfarer in Applications, select **Open**, and confirm. You can also allow it in **System Settings → Privacy & Security**.

@@ -13,11 +13,9 @@ ArcWayfarer lets you teleport, navigate, or jog along any route on the map witho
 
 ## Download
 
-> Releases coming soon. Star the repo to get notified.
+[![Download](https://img.shields.io/github/v/release/WeiYuanLee/ArcWayfarer?label=Download&style=for-the-badge)](https://github.com/WeiYuanLee/ArcWayfarer/releases/latest)
 
-<!-- Once releases are available, replace the above with:
-[![Download](https://img.shields.io/github/v/release/lencelee/arcwayfarer?label=Download&style=for-the-badge)](https://github.com/lencelee/arcwayfarer/releases/latest)
--->
+Download the latest version from [GitHub Releases](https://github.com/WeiYuanLee/ArcWayfarer/releases/latest).
 
 Supports **macOS** (Apple Silicon + Intel) and **Windows 10/11**.
 
