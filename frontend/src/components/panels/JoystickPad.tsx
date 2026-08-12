@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { DEFAULT_DEADZONE } from '../../utils/joystickPhysics'
 
 const PAD_RADIUS = 75
 const HANDLE_RADIUS = 24
@@ -6,9 +7,11 @@ const MAX_DISTANCE = PAD_RADIUS - HANDLE_RADIUS
 
 type Props = {
   onMove: (direction: number, intensity: number) => void
+  dynamic?: boolean
+  maxSpeedKmh?: number
 }
 
-export function JoystickPad({ onMove }: Props) {
+export function JoystickPad({ onMove, dynamic = false, maxSpeedKmh }: Props) {
   const padRef = useRef<HTMLDivElement>(null)
   const [handlePos, setHandlePos] = useState({ x: 0, y: 0 })
   const [compassAngle, setCompassAngle] = useState(0)
@@ -23,7 +26,7 @@ export function JoystickPad({ onMove }: Props) {
   const animFrameRef = useRef<number | null>(null)
   const pendingInputRef = useRef<{ dir: number; int: number } | null>(null)
 
-  // Listen to keyboard keys for WASD visual feedback ring
+  // Listen to keyboard keys for WASD visual feedback overlay
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const k = e.key.toLowerCase()
@@ -72,7 +75,12 @@ export function JoystickPad({ onMove }: Props) {
     const dy = centerY - clientY // invert Y so up is positive
     const distance = Math.hypot(dx, dy)
     const clamped = Math.min(distance, MAX_DISTANCE)
-    const currentIntensity = clamped / MAX_DISTANCE
+
+    const rawIntensity = clamped / MAX_DISTANCE
+    // Basic mode uses the configured speed as soon as the stick leaves the deadzone.
+    // Dynamic mode maps the stick's full travel directly to 0–60 km/h.
+    const currentIntensity = rawIntensity <= DEFAULT_DEADZONE ? 0 : dynamic ? rawIntensity : 1
+
     const compassDeg = (Math.atan2(dx, dy) * 180) / Math.PI
     const direction = Math.round(((compassDeg % 360) + 360) % 360)
 
@@ -99,11 +107,19 @@ export function JoystickPad({ onMove }: Props) {
     scheduleEmit(0, 0)
   }
 
+  const effectiveSpeed = maxSpeedKmh !== undefined ? (maxSpeedKmh * intensity).toFixed(1) : null
+
   return (
     <div className="cyber-joystick-wrapper">
       <div className="joystick-telemetry-header">
         <span className="telemetry-angle">{intensity > 0 ? `${compassAngle}°` : '0° N'}</span>
-        <span className="telemetry-intensity">{intensity > 0 ? `${Math.round(intensity * 100)}% POWER` : 'IDLE'}</span>
+        <span className="telemetry-intensity">
+          {intensity > 0
+            ? effectiveSpeed
+              ? `${effectiveSpeed} km/h${dynamic ? ` (${Math.round(intensity * 100)}%)` : ''}`
+              : `${Math.round(intensity * 100)}% POWER`
+            : 'IDLE'}
+        </span>
       </div>
 
       <div

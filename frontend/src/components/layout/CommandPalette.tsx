@@ -113,12 +113,6 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelec
     ? allItems.filter((item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q))
     : allItems
 
-  useEffect(() => {
-    if (selectedIndex >= filtered.length && filtered.length > 0) {
-      setSelectedIndex(filtered.length - 1)
-    }
-  }, [filtered.length, selectedIndex])
-
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.nativeEvent.isComposing) return
     if (e.key === 'Escape') {

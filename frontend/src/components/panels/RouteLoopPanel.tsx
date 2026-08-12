@@ -68,6 +68,12 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     : (validWaypoints.length >= 2 ? [...validWaypoints, validWaypoints[0]] : [])
 
   const isLocked = isActive || isBusy
+  const activePath = isRunning && validWaypoints.length >= 2
+    ? (() => {
+        const startIndex = Math.max(0, Math.min((liveStopIndex ?? 1) - 1, validWaypoints.length - 1))
+        return [validWaypoints[startIndex], validWaypoints[(startIndex + 1) % validWaypoints.length]]
+      })()
+    : null
 
   // Clean up overlay on unmount only
   useEffect(() => {
@@ -105,10 +111,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 label: String(idx + 1),
                 title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
                 draggable: !isLocked && subMode === 'manual',
-                onDrag: (lat: number, lng: number) => {
-                  if (isLocked || subMode === 'circle') return
-                  updateWaypoint(idx, { lat, lng })
-                },
+                pathIndex: idx,
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked || subMode === 'circle') return
                   updateWaypoint(idx, { lat, lng })
@@ -162,6 +165,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         )
         .filter((m): m is NonNullable<typeof m> => m !== null),
       path: effectivePath,
+      activePath,
       circle: subMode === 'circle' && circleCenter && circleRadiusKm > 0
         ? { lat: circleCenter.lat, lng: circleCenter.lng, radiusMeters: circleRadiusKm * 1000 }
         : null,
@@ -219,7 +223,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         })
       },
     })
-  }, [items, effectivePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint, t])
+  }, [items, effectivePath, activePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint, t])
 
   function handlePickCircleCenter() {
     requestPoint((lat, lng) => {
@@ -317,16 +321,16 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
             )}
 
-            <div className="panel-quick-actions" style={{ marginBottom: 10 }}>
+            <div className="panel-sub-tabs">
               <button
-                className={`swap-button ${subMode === 'manual' ? 'active' : ''}`}
+                className={`sub-tab ${subMode === 'manual' ? 'active' : ''}`}
                 onClick={() => setSubMode('manual')}
                 disabled={isActive}
               >
                 {t('routeloop.mode.manual')}
               </button>
               <button
-                className={`swap-button ${subMode === 'circle' ? 'active' : ''}`}
+                className={`sub-tab ${subMode === 'circle' ? 'active' : ''}`}
                 onClick={() => {
                   setSubMode('circle')
                   if (circleCenter) {
@@ -392,15 +396,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   />
                 </div>
 
-                <div className="panel-quick-actions" style={{ marginTop: 4 }}>
-                  <button
-                    className="swap-button"
-                    onClick={handlePickCircleCenter}
-                    disabled={isActive}
-                  >
-                    {t('routeloop.circle.select_center_map')}
-                  </button>
-                  {livePosition && (
+                {livePosition && (
+                  <div className="panel-quick-actions" style={{ marginTop: 4 }}>
                     <button
                       className="swap-button"
                       onClick={() => {
@@ -411,8 +408,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                     >
                       {t('routeloop.circle.use_current_location')}
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div className="coord-row" style={{ marginTop: 10 }}>
                   <span>{t('routeloop.circle.radius')}</span>

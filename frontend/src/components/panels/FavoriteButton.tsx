@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { addFavorite } from '../../services/api'
+import { addFavorite, listFavorites } from '../../services/api'
 import { useT } from '../../i18n'
 import type { LatLng } from './types'
 
@@ -13,22 +13,33 @@ export function FavoriteButton({ point }: Props) {
   const [added, setAdded] = useState(false)
   const [isNaming, setIsNaming] = useState(false)
   const [name, setName] = useState('')
+  const [group, setGroup] = useState('')
+  const [existingGroups, setExistingGroups] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (isNaming) inputRef.current?.focus()
+    if (isNaming) {
+      inputRef.current?.focus()
+      listFavorites()
+        .then((favs) => {
+          const groups = Array.from(new Set(favs.map((f) => f.group).filter(Boolean))).sort()
+          setExistingGroups(groups)
+        })
+        .catch(() => {})
+    }
   }, [isNaming])
 
   function handleOpenNaming() {
     if (!point) return
     setName('')
+    setGroup('')
     setIsNaming(true)
   }
 
   async function handleAdd() {
     if (!point || !name.trim()) return
     try {
-      await addFavorite({ name: name.trim(), lat: point.lat, lng: point.lng })
+      await addFavorite({ name: name.trim(), lat: point.lat, lng: point.lng, group: group.trim() })
       setAdded(true)
       setIsNaming(false)
       setTimeout(() => setAdded(false), 1500)
@@ -70,6 +81,17 @@ export function FavoriteButton({ point }: Props) {
             onChange={(event) => setName(event.target.value)}
             placeholder={t('favorites.name_placeholder')}
           />
+          <input
+            value={group}
+            maxLength={40}
+            list="fav-add-groups"
+            onChange={(event) => setGroup(event.target.value)}
+            placeholder={t('favorites.group_placeholder')}
+            className="favorite-name-modal-group"
+          />
+          <datalist id="fav-add-groups">
+            {existingGroups.map((g) => <option key={g} value={g} />)}
+          </datalist>
           <div className="favorite-name-actions">
             <button type="button" className="swap-button" onClick={() => setIsNaming(false)}>{t('favorites.cancel')}</button>
             <button type="submit" className="swap-button" disabled={!name.trim()}>{t('favorites.save')}</button>

@@ -19,6 +19,7 @@ import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
+import { PasteCoordinatesModal } from '../common/PasteCoordinatesModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
@@ -107,6 +108,13 @@ export function MultiStopPanel({
   }, [validWaypoints, isActive])
 
   const isLocked = isActive || isBusy
+  const activePath = isRunning && validWaypoints.length >= 2
+    ? (() => {
+        const startIndex = Math.max(0, Math.min((liveStopIndex ?? 1) - 1, validWaypoints.length - 1))
+        const endIndex = startIndex + 1
+        return endIndex < validWaypoints.length ? [validWaypoints[startIndex], validWaypoints[endIndex]] : null
+      })()
+    : null
 
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -133,10 +141,7 @@ export function MultiStopPanel({
                 label: String(idx + 1),
                 title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
                 draggable: !isLocked,
-                onDrag: (lat: number, lng: number) => {
-                  if (isLocked) return
-                  updateWaypoint(idx, { lat, lng })
-                },
+                pathIndex: idx,
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked) return
                   updateWaypoint(idx, { lat, lng })
@@ -184,6 +189,7 @@ export function MultiStopPanel({
         )
         .filter((m): m is NonNullable<typeof m> => m !== null),
       path: routePath,
+      activePath,
       onPathClick: (lat, lng) => {
         if (isLocked) return
         addWaypoint({ lat, lng })
@@ -225,7 +231,7 @@ export function MultiStopPanel({
         })
       },
     })
-  }, [items, routePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint, t])
+  }, [items, routePath, activePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint, t])
 
   function handleClearAllWaypoints() {
     setConfirmModal({
@@ -420,7 +426,7 @@ export function MultiStopPanel({
           onStop={handleStop}
         />
       ) : (
-        <div className="panel-scroll-body">
+        <div className="panel-scroll-body multistop-panel-scroll">
           {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
           {deviceId && !deviceReady && (
             <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
@@ -429,51 +435,54 @@ export function MultiStopPanel({
             <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
           )}
 
-          {gpxFileName && (
-            <div className="route-preflight-badge">
-              <span>GPX: {gpxFileName}</span>
-              <span>·</span>
-              <span>{validWaypoints.length} Points</span>
-            </div>
-          )}
-
-          <div className="waypoint-list">
-            {items.map((item, idx) => (
-              <div className="coord-row" key={item.id}>
-                <span>{idx + 1}</span>
-                <input
-                  type="text"
-                  placeholder="lat, lng or URL"
-                  value={item.rawText}
-                  onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-                  onChange={(e) => handleTextChange(idx, e.target.value)}
-                />
-                <div className="waypoint-row-actions">
-                  <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                  <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                  <button
-                    className="waypoint-remove"
-                    disabled={isLocked || items.length <= 2}
-                    onClick={() => removeWaypoint(idx)}
-                    title={t('panel.remove_waypoint')}
-                  >
-                    ✕
-                  </button>
-                </div>
+          <section className="multistop-section">
+            {gpxFileName && (
+              <div className="route-preflight-badge">
+                <span>GPX: {gpxFileName}</span>
+                <span>·</span>
+                <span>{validWaypoints.length} Points</span>
               </div>
-            ))}
-          </div>
+            )}
 
-          <div className="panel-quick-actions">
-            <button className="swap-button" onClick={() => addWaypoint()}>
-              {t('panel.add_waypoint')}
-            </button>
-            <button className="swap-button" onClick={handleClearAllWaypoints}>
-              {t('multistop.action.clear_all')}
-            </button>
-          </div>
+            <div className="waypoint-list">
+              {items.map((item, idx) => (
+                <div className="coord-row" key={item.id}>
+                  <span>{idx + 1}</span>
+                  <input
+                    type="text"
+                    placeholder="lat, lng or URL"
+                    value={item.rawText}
+                    onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
+                    onChange={(e) => handleTextChange(idx, e.target.value)}
+                  />
+                  <div className="waypoint-row-actions">
+                    <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
+                    <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
+                    <button
+                      className="waypoint-remove"
+                      disabled={isLocked || items.length <= 2}
+                      onClick={() => removeWaypoint(idx)}
+                      title={t('panel.remove_waypoint')}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-          <div className="import-actions">
+            <div className="panel-quick-actions">
+              <button className="swap-button" onClick={() => addWaypoint()}>
+                {t('panel.add_waypoint')}
+              </button>
+              <button className="swap-button" onClick={handleClearAllWaypoints}>
+                {t('multistop.action.clear_all')}
+              </button>
+            </div>
+          </section>
+
+          <section className="multistop-section">
+            <div className="import-actions">
             <label className="swap-button">
               {t('multistop.import_file')}
               <input
@@ -490,42 +499,38 @@ export function MultiStopPanel({
             <button className="swap-button" onClick={handleExportTemplate} disabled={validWaypoints.length === 0}>
               {t('multistop.export_template')}
             </button>
-            <button className="swap-button" onClick={() => setPasteOpen((open) => !open)}>
+            <button className="swap-button" onClick={() => setPasteOpen(true)}>
               {t('multistop.paste_coords')}
             </button>
-          </div>
+            </div>
 
-          {pasteOpen && (
-            <>
-              <textarea
-                className="paste-textarea"
-                placeholder={t('multistop.paste_placeholder')}
-                value={pasteText}
-                onChange={(e) => setPasteText(e.target.value)}
-              />
-              <div className="import-actions">
-                <button className="swap-button" onClick={handlePasteSubmit}>
-                  {t('multistop.paste_submit')}
-                </button>
-                <button className="swap-button" onClick={() => setPasteOpen(false)}>
-                  {t('multistop.paste_cancel')}
-                </button>
-              </div>
-            </>
-          )}
+            {importMessage && (
+              <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
+            )}
+          </section>
 
-          {importMessage && (
-            <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
-          )}
+          <section className="multistop-section">
+            <div className="panel-sub-tabs">
+            <button
+              className={`sub-tab ${jumpMode ? 'active' : ''}`}
+              onClick={() => setJumpMode(true)}
+              disabled={isActive}
+            >
+              {t('multistop.jump_mode')}
+            </button>
+            <button
+              className={`sub-tab ${!jumpMode ? 'active' : ''}`}
+              onClick={() => {
+                setJumpMode(false)
+                setStraightLine(true)
+              }}
+              disabled={isActive}
+            >
+              {t('multistop.straight_line')}
+            </button>
+            </div>
 
-          <SwitchBar
-            label={t('multistop.jump_mode')}
-            checked={jumpMode}
-            onChange={setJumpMode}
-            disabled={isActive}
-          />
-
-          {jumpMode ? (
+            {jumpMode ? (
             <>
               <div className="coord-row">
                 <span>{t('multistop.jump_pre_delay')}</span>
@@ -550,15 +555,8 @@ export function MultiStopPanel({
                 />
               </div>
             </>
-          ) : (
+            ) : (
             <>
-              <SwitchBar
-                label={t('multistop.straight_line')}
-                checked={straightLine}
-                onChange={setStraightLine}
-                disabled={isActive}
-              />
-
               <SwitchBar
                 label={t('panel.pause_toggle')}
                 checked={pauseEnabled}
@@ -596,7 +594,8 @@ export function MultiStopPanel({
                 disabled={isActive}
               />
             </>
-          )}
+            )}
+          </section>
 
           <PlaybackControls
             canStart={canStart}
@@ -622,6 +621,14 @@ export function MultiStopPanel({
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      <PasteCoordinatesModal
+        isOpen={pasteOpen}
+        value={pasteText}
+        onChange={setPasteText}
+        onSubmit={handlePasteSubmit}
+        onClose={() => setPasteOpen(false)}
+      />
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}

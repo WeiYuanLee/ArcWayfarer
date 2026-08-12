@@ -24,14 +24,17 @@ export type OverlayMarker = {
   title?: string
   draggable?: boolean
   isHovered?: boolean
+  pathIndex?: number
   onDrag?: (lat: number, lng: number) => void
-  onDragEnd?: (lat: number, lng: number) => void
+  onDragEnd?: (lat: number, lng: number, rollback?: () => void) => void
   onContextMenu?: (e: { lat: number; lng: number; clientX: number; clientY: number }) => void
 }
 export type OverlayCircle = { lat: number; lng: number; radiusMeters: number }
 export type MapOverlay = {
   markers: OverlayMarker[]
   path: LatLng[]
+  /** The leg currently being travelled. It is highlighted and receives animated arrows. */
+  activePath?: LatLng[] | null
   circle?: OverlayCircle | null
   onPathClick?: (lat: number, lng: number) => void
   onMapContextMenu?: (e: { lat: number; lng: number; clientX: number; clientY: number }) => void
@@ -48,6 +51,7 @@ export type PanelProps = {
   liveEtaSeconds: number | null
   liveStopIndex: number | null
   connected?: boolean
+  setPoint: (point: LatLng | null) => void
   requestPoint: (onPick: (lat: number, lng: number) => void) => void
   clearPoint?: () => void
   setOverlay: (overlay: MapOverlay) => void
