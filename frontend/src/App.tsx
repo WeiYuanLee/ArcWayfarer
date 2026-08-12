@@ -35,6 +35,7 @@ export default function App() {
     latestVersion,
   } = useUpdateChecker()
 
+
   const pendingPickRef = useRef<((lat: number, lng: number) => void) | null>(null)
   const flyIdRef = useRef(0)
   const requestPoint = useCallback((onPick: (lat: number, lng: number) => void) => {
@@ -126,9 +127,13 @@ export default function App() {
       requestFlyTo(lat, lng)
       if (pendingPickRef.current) {
         handleMapClick(lat, lng)
+        return
+      }
+      if (focusedDeviceId) {
+        setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
       }
     },
-    [requestFlyTo]
+    [requestFlyTo, focusedDeviceId]
   )
 
   const connectedIds = new Set(devices.map((d) => d.udid))
