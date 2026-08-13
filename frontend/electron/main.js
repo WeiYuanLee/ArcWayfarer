@@ -10,7 +10,8 @@ function getHardwareArch() {
       const result = execSync('sysctl -n hw.optional.arm64', { timeout: 1000 }).toString().trim()
       return result === '1' ? 'arm64' : 'x64'
     } catch {
-      // fallback: trust process.arch
+      // hw.optional.arm64 doesn't exist on Intel Macs → not Apple Silicon
+      return 'x64'
     }
   }
   return process.arch
