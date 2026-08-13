@@ -1,8 +1,9 @@
+import os
 from pathlib import Path
 
 # The HTTP middleware keeps all non-loopback callers behind QR pairing.
 API_HOST = "0.0.0.0"
-API_PORT = 8787
+API_PORT = int(os.environ.get("ARCWAYFARER_API_PORT", "8787"))
 
 APP_DATA_DIR = Path.home() / ".arcwayfarer"
 SETTINGS_FILE = APP_DATA_DIR / "settings.json"

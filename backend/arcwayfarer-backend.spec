@@ -25,7 +25,7 @@ hiddenimports = [
     "pyimg4",
 ]
 
-for pkg in ("pymobiledevice3", "pytun_pmd3", "developer_disk_image", "pyimg4"):
+for pkg in ("pymobiledevice3", "pytun_pmd3", "developer_disk_image", "pyimg4", "apple_compress"):
     try:
         pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(pkg)
         datas += pkg_datas
@@ -34,11 +34,15 @@ for pkg in ("pymobiledevice3", "pytun_pmd3", "developer_disk_image", "pyimg4"):
     except Exception:
         pass
 
-for package in ("pyimg4", "readchar"):
-    try:
-        datas += copy_metadata(package)
-    except Exception:
-        pass
+# These packages query their own installed version at import time. Preserve
+# their .dist-info directories in the frozen app or importlib.metadata raises
+# PackageNotFoundError before the backend can start.
+for package in ("apple_compress", "apple-compress", "pyimg4", "readchar", "click", "prompt_toolkit", "tqdm", "pydantic"):
+    for name in (package, package.replace("_", "-"), package.replace("-", "_")):
+        try:
+            datas += copy_metadata(name)
+        except Exception:
+            pass
 
 hiddenimports += collect_submodules("uvicorn")
 hiddenimports += collect_submodules("fastapi")
