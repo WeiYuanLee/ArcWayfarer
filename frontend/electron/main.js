@@ -1,13 +1,25 @@
 const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron')
-const { spawn } = require('child_process')
+const { spawn, execSync } = require('child_process')
 const path = require('path')
 const http = require('http')
 const net = require('net')
 
+function getHardwareArch() {
+  if (process.platform === 'darwin') {
+    try {
+      const result = execSync('sysctl -n hw.optional.arm64', { timeout: 1000 }).toString().trim()
+      return result === '1' ? 'arm64' : 'x64'
+    } catch {
+      // fallback: trust process.arch
+    }
+  }
+  return process.arch
+}
+
 ipcMain.handle('get-platform-info', () => {
   return {
     platform: process.platform,
-    arch: process.arch,
+    arch: getHardwareArch(),
     version: app.getVersion(),
   }
 })
