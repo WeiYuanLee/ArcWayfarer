@@ -68,7 +68,6 @@ export function UpdateModal({ isOpen, onClose, checkResult, loading, onRecheck }
 
         {/* System Environment Detected Badge */}
         <div style={envBadgeStyle}>
-          <span style={{ fontSize: '14px' }}>{envLabels[currentEnv].icon}</span>
           <span>辨識目前系統：<strong>{envLabels[currentEnv].name}</strong></span>
         </div>
 
@@ -101,8 +100,7 @@ export function UpdateModal({ isOpen, onClose, checkResult, loading, onRecheck }
                 style={primaryDownloadBtnStyle}
                 onClick={() => openDownloadLink(primaryDownloadUrl)}
               >
-                <span>📥</span>
-                <span>{t('version.download_now')} (v{latestRelease.version}) - {envLabels[currentEnv].icon} {envLabels[currentEnv].name}</span>
+                <span>{t('version.download_now')} (v{latestRelease.version}) - {envLabels[currentEnv].name}</span>
               </button>
 
               {/* Release Notes */}
@@ -186,7 +184,7 @@ export function UpdateModal({ isOpen, onClose, checkResult, loading, onRecheck }
               style={textBtnStyle}
               onClick={() => openDownloadLink(latestRelease.htmlUrl)}
             >
-              🌐 {t('version.view_github')}
+              {t('version.view_github')}
             </button>
           )}
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -194,9 +192,9 @@ export function UpdateModal({ isOpen, onClose, checkResult, loading, onRecheck }
               className="swap-button"
               onClick={onRecheck}
               disabled={loading}
-              style={{ backgroundColor: '#2b2b36', color: '#eee' }}
+              style={{ backgroundColor: '#2b2b36', color: '#eee', minWidth: '100px' }}
             >
-              🔄 {t('version.check_btn')}
+              {t('version.check_btn')}
             </button>
             <button className="swap-button" onClick={onClose}>
               關閉
