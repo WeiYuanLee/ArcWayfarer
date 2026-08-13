@@ -43,6 +43,8 @@ echo "==> Building frontend"
 )
 
 echo "==> Packaging .dmg (arch: $ARCH)"
+# Disable Spotlight indexing to prevent hdiutil "Resource busy" on GitHub runners
+sudo mdutil -a -i off 2>/dev/null || true
 (
   cd "$ROOT_DIR/frontend"
   CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --"$ARCH"
