@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
-import { pauseNavigate, pushHistory, resumeNavigate, startNavigate, stopNavigate, type NavMode } from '../../services/api'
+import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { estimateDurationMinutes, formatEta, formatPoint, haversineDistanceKm, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { FavoriteButton } from './FavoriteButton'
+import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
+import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -21,6 +23,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [routePath, setRoutePath] = useState<LatLng[]>([])
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; title?: string; items: ContextMenuItem[] } | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -47,9 +50,33 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         ...(end ? [{ id: 'nav-end', lat: end.lat, lng: end.lng, color: '#e05555', label: 'E', draggable: !isLocked, onDragEnd: (lat: number, lng: number) => { if (isLocked) return; setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) } }] : []),
       ],
       path: routePath,
+      onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
+        const clickedPoint = { lat, lng }
+        setContextMenu({
+          x: clientX,
+          y: clientY,
+          title: `地圖位置 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          items: [
+            { id: 'set-start', label: t('contextmenu.set_start'), disabled: isLocked, onClick: () => { setStart(clickedPoint); setStartText(formatPoint(clickedPoint)) } },
+            { id: 'set-end', label: t('contextmenu.set_end'), disabled: isLocked, onClick: () => { setEnd(clickedPoint); setEndText(formatPoint(clickedPoint)) } },
+            {
+              id: 'teleport-here', label: t('contextmenu.teleport_here'), disabled: deviceState !== 'idle' || !deviceId,
+              onClick: async () => {
+                if (!deviceId) return
+                try { await setLocation(deviceId, lat, lng) }
+                catch (e) { setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_start') }) }
+              },
+            },
+            {
+              id: 'copy-map-coords', label: t('contextmenu.copy_coords_short'),
+              onClick: () => { navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`); showToast(t('toast.copied_coords')) },
+            },
+          ],
+        })
+      },
     })
     return () => setOverlay(EMPTY_OVERLAY)
-  }, [start, end, routePath, isLocked, setOverlay])
+  }, [start, end, routePath, isLocked, deviceId, deviceState, setOverlay, t])
 
   async function handleStart() {
     if (!deviceId || !start || !end) return
@@ -211,6 +238,15 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       )}
       {isPaused && <p className="panel-status warning">{t('panel.paused')}</p>}
       {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={contextMenu.title}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }

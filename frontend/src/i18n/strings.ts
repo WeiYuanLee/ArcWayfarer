@@ -219,6 +219,10 @@ export const STRINGS = {
   'contextmenu.set_start': { zh: '📍 設為路線起點', en: '📍 Set as start point' },
   'contextmenu.add_wp_here': { zh: '➕ 在此處新增路徑點', en: '➕ Add waypoint here' },
   'contextmenu.select_circle_center': { zh: '🎯 設為圓形路徑中心點', en: '🎯 Set as circle center' },
+  'contextmenu.set_target': { zh: '🎯 設為目標點', en: '🎯 Set as target point' },
+  'contextmenu.set_end': { zh: '🏁 設為導航終點', en: '🏁 Set as destination' },
+  'contextmenu.set_random_center': { zh: '🎯 設為隨機漫步中心', en: '🎯 Set as random-walk center' },
+  'contextmenu.set_joystick_anchor': { zh: '🎮 設為搖桿起點', en: '🎮 Set as joystick anchor' },
   'contextmenu.teleport_here': { zh: '⚡ 瞬移裝置至此', en: '⚡ Teleport device here' },
   'contextmenu.copy_coords_short': { zh: '📋 複製座標', en: '📋 Copy coordinates' },
 

@@ -47,14 +47,19 @@ body {
 .dev-menu-trigger {
   background: transparent;
   border: none;
-  font-size: 18px;
+  color: #ccc;
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .dev-menu-trigger:hover {
   background: #2a2a2a;
+  color: #fff;
 }
 
 .dev-menu-dropdown {

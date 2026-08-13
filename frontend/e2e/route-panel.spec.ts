@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test.describe('MultiStop Panel', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('arcwayfarer.lang', 'zh'))
     await page.goto('/')
     await page.locator('.leaflet-container').waitFor({ timeout: 10_000 })
 
@@ -31,8 +32,8 @@ test.describe('MultiStop Panel', () => {
     await expect(page.locator('.coord-row')).toHaveCount(initialRows + 1)
   })
 
-  test('應顯示清除全部按鈕', async ({ page }) => {
-    const clearBtn = page.locator('.swap-button', { hasText: '清除' })
+  test('應顯示全清點位按鈕', async ({ page }) => {
+    const clearBtn = page.locator('.swap-button', { hasText: '全清點位' })
     await expect(clearBtn.first()).toBeVisible()
   })
 })

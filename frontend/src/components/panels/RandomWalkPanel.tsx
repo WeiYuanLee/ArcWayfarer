@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
-import { pauseRandomWalk, pushHistory, resumeRandomWalk, startRandomWalk, stopRandomWalk, type NavMode } from '../../services/api'
+import { pauseRandomWalk, pushHistory, resumeRandomWalk, setLocation, startRandomWalk, stopRandomWalk, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { SwitchBar } from '../common/SwitchBar'
+import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
+import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -25,6 +27,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
   const [pauseMin, setPauseMin] = useState(5)
   const [pauseMax, setPauseMax] = useState(20)
   const [straightLine, setStraightLine] = useState(true)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; title?: string; items: ContextMenuItem[] } | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'random_walk'
@@ -44,12 +47,47 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
 
   useEffect(() => {
     setOverlay({
-      markers: center ? [{ id: 'random-walk-center', lat: center.lat, lng: center.lng, color: CENTER_COLOR, label: 'C' }] : [],
+      markers: center ? [{
+        id: 'random-walk-center', lat: center.lat, lng: center.lng, color: CENTER_COLOR, label: 'C',
+        draggable: !isActive,
+        onDragEnd: (lat: number, lng: number) => {
+          if (isActive) return
+          const nextCenter = { lat, lng }
+          setCenter(nextCenter)
+          setCenterText(formatPoint(nextCenter))
+        },
+      }] : [],
       path: [],
       circle: center ? { lat: center.lat, lng: center.lng, radiusMeters: radius } : null,
+      onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
+        const clickedPoint = { lat, lng }
+        setContextMenu({
+          x: clientX,
+          y: clientY,
+          title: `地圖位置 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          items: [
+            {
+              id: 'set-random-center', label: t('contextmenu.set_random_center'), disabled: isActive,
+              onClick: () => { setCenter(clickedPoint); setCenterText(formatPoint(clickedPoint)) },
+            },
+            {
+              id: 'teleport-here', label: t('contextmenu.teleport_here'), disabled: deviceState !== 'idle' || !deviceId,
+              onClick: async () => {
+                if (!deviceId) return
+                try { await setLocation(deviceId, lat, lng) }
+                catch (e) { setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('randomwalk.status.failed_start') }) }
+              },
+            },
+            {
+              id: 'copy-map-coords', label: t('contextmenu.copy_coords_short'),
+              onClick: () => { navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`); showToast(t('toast.copied_coords')) },
+            },
+          ],
+        })
+      },
     })
     return () => setOverlay(EMPTY_OVERLAY)
-  }, [center, radius, setOverlay])
+  }, [center, radius, isActive, deviceId, deviceState, setOverlay, t])
 
   function handleCenterTextChange(value: string) {
     setCenterText(value)
@@ -217,6 +255,15 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
       {isRunning && <p className="panel-status ok">{t('randomwalk.status.wandering')}</p>}
       {isPaused && <p className="panel-status warning">{t('panel.paused')}</p>}
       {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={contextMenu.title}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
 }
