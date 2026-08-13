@@ -78,8 +78,9 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
         <div className="fav-drawer-header">
           <div className="fav-drawer-title-row">
             <h2 className="fav-drawer-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="fav-drawer-title-icon">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="fav-drawer-title-icon">
+                <path d="M12 20.25s-7-4.24-7-10.16C5 7.81 6.7 6.25 8.86 6.25c1.32 0 2.56.68 3.14 1.72a3.59 3.59 0 0 1 3.14-1.72C17.3 6.25 19 7.81 19 10.09c0 5.92-7 10.16-7 10.16Z" />
+                <path d="M12 7.97v8.28" />
               </svg>
               {t('favorites.title')}
             </h2>

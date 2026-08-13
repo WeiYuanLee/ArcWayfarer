@@ -377,14 +377,14 @@ body {
 
 .overlay-panel-dock {
   position: absolute;
-  top: 90px;
+  top: 16px;
   left: 16px;
   pointer-events: auto;
   width: 300px;
 }
 
 .overlay-panel-card {
-  max-height: calc(100vh - 128px);
+  max-height: calc(100vh - 54px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -479,26 +479,121 @@ body {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   pointer-events: auto;
 }
 
 .icon-rail button {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(30, 30, 30, 0.82);
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(167, 196, 224, 0.25);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(39, 54, 72, 0.78), rgba(18, 26, 38, 0.72));
   backdrop-filter: blur(10px);
-  color: #eee;
-  font-size: 18px;
+  color: #dcecff;
   cursor: pointer;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
+.icon-rail button::before,
+.map-view-wrapper .leaflet-control-zoom a::before {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgba(196, 225, 255, 0.65), transparent);
+}
+
+.icon-rail button:hover,
+.map-view-wrapper .leaflet-control-zoom a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(133, 202, 255, 0.75);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.icon-rail button:focus-visible,
+.map-view-wrapper .leaflet-control-zoom a:focus-visible {
+  outline: 2px solid #8bd5ff;
+  outline-offset: 2px;
+}
+
+.icon-rail button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-rail .history-action { color: #91d8ff; }
+.icon-rail .favorites-action { color: #ffd37a; }
+
 .icon-rail button.active {
-  background: #4a4af0;
-  border-color: #4a4af0;
+  border-color: rgba(143, 213, 255, 0.85);
+  background: linear-gradient(145deg, rgba(48, 112, 151, 0.84), rgba(26, 63, 98, 0.8));
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(37, 149, 218, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Keep Leaflet's native zoom behaviour while visually joining it to the action rail. */
+.map-view-wrapper .leaflet-top.leaflet-left {
+  top: 120px;
+  left: auto;
+  right: 16px;
+}
+
+.map-view-wrapper .leaflet-control-zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.map-view-wrapper .leaflet-control-zoom a {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(167, 196, 224, 0.25);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(39, 54, 72, 0.78), rgba(18, 26, 38, 0.72));
+  color: #dcecff;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 300;
+  line-height: 1;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.map-view-wrapper .leaflet-control-zoom a + a {
+  border-top: 1px solid rgba(167, 196, 224, 0.25);
+}
+
+.map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-in,
+.map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-out {
+  border-radius: 14px;
+}
+
+.map-view-wrapper .leaflet-control-zoom a.leaflet-disabled {
+  color: rgba(220, 236, 255, 0.35);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .flyout-panel {
@@ -778,7 +873,30 @@ body {
   .icon-rail button {
     width: 38px;
     height: 38px;
-    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  .icon-rail button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .map-view-wrapper .leaflet-top.leaflet-left {
+    top: 96px;
+    left: auto;
+    right: 16px;
+  }
+
+  .map-view-wrapper .leaflet-control-zoom a {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    font-size: 21px;
+  }
+
+  .map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-in,
+  .map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-out {
+    border-radius: 11px;
   }
 
   .flyout-panel {
