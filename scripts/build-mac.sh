@@ -50,4 +50,11 @@ sudo mdutil -a -i off 2>/dev/null || true
   CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --"$ARCH"
 )
 
+echo "==> Removing quarantine attributes from app bundle"
+# Prevents macOS Gatekeeper from blocking the backend binary on first launch
+APP_BUNDLE="$ROOT_DIR/frontend/release/mac$([ "$ARCH" = "arm64" ] && echo "-arm64" || echo "")/ArcWayfarer.app"
+if [ -d "$APP_BUNDLE" ]; then
+  xattr -cr "$APP_BUNDLE" || true
+fi
+
 echo "==> Done. Output in frontend/release/"

@@ -117,7 +117,7 @@ async function startTunneld() {
   await waitForPort(TUNNELD_HOST, TUNNELD_PORT)
 }
 
-function waitForBackend(url, timeoutMs = 15000) {
+function waitForBackend(url, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const start = Date.now()
     const interval = 500
@@ -215,9 +215,12 @@ app.whenReady().then(async () => {
     await startBackend()
   } catch (err) {
     console.error('[electron] Failed to start backend:', err.message)
+    const gatekeeperHint = process.platform === 'darwin'
+      ? '\n\n如果這是首次開啟 ArcWayfarer：\n1. 關閉此視窗\n2. 前往「系統設定 → 隱私權與安全性」\n3. 找到「已阻擋 ArcWayfarer」→ 點「仍要打開」\n4. 重新啟動 ArcWayfarer\n\nIf this is your first launch, macOS may be scanning the app.\nGo to System Settings → Privacy & Security → click "Open Anyway", then relaunch.'
+      : ''
     dialog.showErrorBox(
       'Startup Error',
-      'The backend server failed to start.\n\n' + err.message
+      'The backend server failed to start.\n\n' + err.message + gatekeeperHint
     )
   }
   createWindow()
