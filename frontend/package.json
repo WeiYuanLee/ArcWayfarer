@@ -76,6 +76,9 @@
       "category": "public.app-category.utilities",
       "identity": null
     },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.dmg"
+    },
     "win": {
       "target": [
         {
