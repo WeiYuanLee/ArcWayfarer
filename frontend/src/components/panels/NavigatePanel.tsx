@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, TextInput } from '@mantine/core'
 import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -167,48 +168,26 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
 
       <div className="coord-row">
         <span>S</span>
-        <div className="input-favorite-wrapper">
-          <input
-            type="text"
-            className="coord-input-large"
-            placeholder="lat, lng or URL"
-            value={startText}
-            onFocus={() =>
-              requestPoint((lat, lng) => {
-                setStart({ lat, lng })
-                setStartText(formatPoint({ lat, lng }))
-              })
-            }
-            onChange={(e) => handleStartTextChange(e.target.value)}
-          />
-          <div className="inside-favorite-action">
-            <FavoriteButton point={start} />
-          </div>
-        </div>
+        <TextInput
+          placeholder="lat, lng or URL"
+          value={startText}
+          onFocus={() => requestPoint((lat, lng) => { setStart({ lat, lng }); setStartText(formatPoint({ lat, lng })) })}
+          onChange={(event) => handleStartTextChange(event.currentTarget.value)}
+          rightSection={<FavoriteButton point={start} />}
+        />
       </div>
-      <button className="swap-button" onClick={handleSwap} title={t('navigate.swap')}>
+      <Button size="compact-sm" variant="default" onClick={handleSwap} title={t('navigate.swap')}>
         {t('navigate.swap')}
-      </button>
+      </Button>
       <div className="coord-row">
         <span>E</span>
-        <div className="input-favorite-wrapper">
-          <input
-            type="text"
-            className="coord-input-large"
-            placeholder="lat, lng or URL"
-            value={endText}
-            onFocus={() =>
-              requestPoint((lat, lng) => {
-                setEnd({ lat, lng })
-                setEndText(formatPoint({ lat, lng }))
-              })
-            }
-            onChange={(e) => handleEndTextChange(e.target.value)}
-          />
-          <div className="inside-favorite-action">
-            <FavoriteButton point={end} />
-          </div>
-        </div>
+        <TextInput
+          placeholder="lat, lng or URL"
+          value={endText}
+          onFocus={() => requestPoint((lat, lng) => { setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) })}
+          onChange={(event) => handleEndTextChange(event.currentTarget.value)}
+          rightSection={<FavoriteButton point={end} />}
+        />
       </div>
 
       <SpeedSlider
