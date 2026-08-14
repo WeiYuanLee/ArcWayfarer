@@ -1,37 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ActionIcon, Alert, Button, Group, Menu, Text } from '@mantine/core'
+import { IconHeart, IconMenu2, IconPhone, IconTool } from '@tabler/icons-react'
 import * as api from '../../services/api'
 import { useI18n } from '../../i18n'
 import { MobileRemoteModal } from '../common/MobileRemoteModal'
 import { SponsorModal } from '../common/SponsorModal'
 
-type Props = {
-  deviceId: string | null
-}
+type Props = { deviceId: string | null }
 
 export function DevMenuButton({ deviceId }: Props) {
   const { lang, setLang, t } = useI18n()
-  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [remoteOpen, setRemoteOpen] = useState(false)
   const [sponsorOpen, setSponsorOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onDocClick(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [open])
 
   useEffect(() => {
     if (!message) return
-    const timer = setTimeout(() => setMessage(null), 3000)
-    return () => clearTimeout(timer)
+    const timer = window.setTimeout(() => setMessage(null), 3000)
+    return () => window.clearTimeout(timer)
   }, [message])
 
   async function handleRevealDeveloperMode() {
@@ -49,52 +36,35 @@ export function DevMenuButton({ deviceId }: Props) {
   }
 
   return (
-    <div className="dev-menu" ref={rootRef}>
-      <button
-        type="button"
-        className="dev-menu-trigger"
-        onClick={() => setOpen((v) => !v)}
-        title={t('devmenu.title')}
-      >
-        ⚙️
-      </button>
-      {open && (
-        <div className="dev-menu-dropdown">
-          <button
-            type="button"
-            disabled={!deviceId || busy}
-            title={deviceId ? undefined : t('devmenu.select_device_first')}
-            onClick={handleRevealDeveloperMode}
-          >
+    <>
+      <Menu shadow="md" width={280} position="bottom-start">
+        <Menu.Target>
+          <ActionIcon aria-label={t('devmenu.title')} size="md">
+            <IconMenu2 size={18} stroke={1.8} />
+          </ActionIcon>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Label>{t('devmenu.title')}</Menu.Label>
+          <Menu.Item leftSection={<IconTool size={16} />} disabled={!deviceId || busy} onClick={handleRevealDeveloperMode}>
             {busy ? t('generic.working') : t('devmenu.amfi_reveal')}
-          </button>
-          {message && <div className="dev-menu-message">{message}</div>}
-
-          <hr className="dev-menu-divider" />
-
-          <button type="button" onClick={() => { setOpen(false); setRemoteOpen(true) }}>
-            {t('devmenu.remote')}
-          </button>
-
-          <button type="button" onClick={() => { setOpen(false); setSponsorOpen(true) }}>
-            {t('devmenu.sponsor')}
-          </button>
-
-          <hr className="dev-menu-divider" />
-
-          <div className="dev-menu-lang">
-            <span>{t('devmenu.lang_label')}</span>
-            <button type="button" className={lang === 'zh' ? 'active' : ''} onClick={() => setLang('zh')}>
-              中文
-            </button>
-            <button type="button" className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>
-              EN
-            </button>
-          </div>
-        </div>
-      )}
+          </Menu.Item>
+          {!deviceId && <Text size="xs" c="dimmed" px="sm" pt={4}>{t('devmenu.select_device_first')}</Text>}
+          {message && <Alert color="blue" variant="light" mt="sm" mx="xs" py="xs">{message}</Alert>}
+          <Menu.Divider />
+          <Menu.Item leftSection={<IconPhone size={16} />} onClick={() => setRemoteOpen(true)}>{t('devmenu.remote')}</Menu.Item>
+          <Menu.Item leftSection={<IconHeart size={16} />} onClick={() => setSponsorOpen(true)}>{t('devmenu.sponsor')}</Menu.Item>
+          <Menu.Divider />
+          <Group justify="space-between" px="sm" py={4}>
+            <Text size="xs" c="dimmed">{t('devmenu.lang_label')}</Text>
+            <Group gap={4}>
+              <Button size="compact-xs" variant={lang === 'zh' ? 'filled' : 'default'} onClick={() => setLang('zh')}>中文</Button>
+              <Button size="compact-xs" variant={lang === 'en' ? 'filled' : 'default'} onClick={() => setLang('en')}>EN</Button>
+            </Group>
+          </Group>
+        </Menu.Dropdown>
+      </Menu>
       <MobileRemoteModal isOpen={remoteOpen} onClose={() => setRemoteOpen(false)} />
       <SponsorModal isOpen={sponsorOpen} onClose={() => setSponsorOpen(false)} />
-    </div>
+    </>
   )
 }

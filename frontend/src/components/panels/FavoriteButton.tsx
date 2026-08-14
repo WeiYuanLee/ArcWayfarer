@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
+import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Tooltip } from '@mantine/core'
+import { IconStar, IconStarFilled } from '@tabler/icons-react'
 import { addFavorite, listFavorites } from '../../services/api'
 import { useT } from '../../i18n'
 import type { LatLng } from './types'
@@ -15,11 +16,8 @@ export function FavoriteButton({ point }: Props) {
   const [name, setName] = useState('')
   const [group, setGroup] = useState('')
   const [existingGroups, setExistingGroups] = useState<string[]>([])
-  const inputRef = useRef<HTMLInputElement>(null)
-
   useEffect(() => {
     if (isNaming) {
-      inputRef.current?.focus()
       listFavorites()
         .then((favs) => {
           const groups = Array.from(new Set(favs.map((f) => f.group).filter(Boolean))).sort()
@@ -50,56 +48,22 @@ export function FavoriteButton({ point }: Props) {
 
   return (
     <>
-      <button
-        type="button"
-        className="favorite-add-button"
-        disabled={!point}
-        onClick={handleOpenNaming}
-        title={t('favorites.add')}
-      >
-        {added ? '★' : '☆'}
-      </button>
-      {isNaming && point && createPortal(
-      <div className="modal-backdrop" onMouseDown={() => setIsNaming(false)}>
-        <form
-          className="favorite-name-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="favorite-name-title"
-          onMouseDown={(event) => event.stopPropagation()}
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleAdd()
-          }}
-        >
-          <h3 id="favorite-name-title">{t('favorites.name_title')}</h3>
-          <p>{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>
-          <input
-            ref={inputRef}
-            value={name}
-            maxLength={80}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={t('favorites.name_placeholder')}
-          />
-          <input
-            value={group}
-            maxLength={40}
-            list="fav-add-groups"
-            onChange={(event) => setGroup(event.target.value)}
-            placeholder={t('favorites.group_placeholder')}
-            className="favorite-name-modal-group"
-          />
-          <datalist id="fav-add-groups">
-            {existingGroups.map((g) => <option key={g} value={g} />)}
-          </datalist>
-          <div className="favorite-name-actions">
-            <button type="button" className="swap-button" onClick={() => setIsNaming(false)}>{t('favorites.cancel')}</button>
-            <button type="submit" className="swap-button" disabled={!name.trim()}>{t('favorites.save')}</button>
-          </div>
-        </form>
-      </div>,
-      document.body
-      )}
+      <Tooltip label={t('favorites.add')}>
+        <ActionIcon variant="subtle" color="yellow" disabled={!point} onClick={handleOpenNaming} aria-label={t('favorites.add')}>
+          {added ? <IconStarFilled size={17} /> : <IconStar size={17} />}
+        </ActionIcon>
+      </Tooltip>
+      <Modal opened={isNaming && !!point} onClose={() => setIsNaming(false)} title={t('favorites.name_title')} centered size="sm">
+        {point && <form onSubmit={(event) => { event.preventDefault(); void handleAdd() }}>
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</Text>
+            <TextInput autoFocus value={name} maxLength={80} onChange={(event) => setName(event.currentTarget.value)} placeholder={t('favorites.name_placeholder')} />
+            <TextInput value={group} maxLength={40} onChange={(event) => setGroup(event.currentTarget.value)} placeholder={t('favorites.group_placeholder')} list="fav-add-groups" />
+            <datalist id="fav-add-groups">{existingGroups.map((item) => <option key={item} value={item} />)}</datalist>
+            <Group justify="flex-end"><Button variant="default" onClick={() => setIsNaming(false)}>{t('favorites.cancel')}</Button><Button type="submit" disabled={!name.trim()}>{t('favorites.save')}</Button></Group>
+          </Stack>
+        </form>}
+      </Modal>
     </>
   )
 }

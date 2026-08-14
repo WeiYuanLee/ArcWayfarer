@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ActionIcon, Badge, Button, FileButton, Group, NumberInput, SegmentedControl, Stack } from '@mantine/core'
+import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
   pauseMultiStop,
@@ -24,6 +26,15 @@ import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
+import {
+  CoordinateField,
+  ModePanelLayout,
+  NumberRangeField,
+  PanelFooter,
+  PanelNotice,
+  PanelSection,
+  PanelStatus,
+} from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type ImportMessage = { kind: 'ok' | 'error'; text: string }
@@ -81,6 +92,9 @@ export function MultiStopPanel({
     description: '',
     onConfirm: () => {},
   })
+  const lastWaypointRef = useRef<HTMLDivElement | null>(null)
+  const focusNewWaypointRef = useRef(false)
+  const suppressPointPickerRef = useRef(false)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -115,6 +129,24 @@ export function MultiStopPanel({
         return endIndex < validWaypoints.length ? [validWaypoints[startIndex], validWaypoints[endIndex]] : null
       })()
     : null
+
+  useEffect(() => {
+    if (!focusNewWaypointRef.current) return
+    focusNewWaypointRef.current = false
+    requestAnimationFrame(() => {
+      lastWaypointRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      const input = lastWaypointRef.current?.querySelector('input')
+      if (input) {
+        suppressPointPickerRef.current = true
+        input.focus()
+      }
+    })
+  }, [items.length])
+
+  function handleAddWaypoint() {
+    focusNewWaypointRef.current = true
+    addWaypoint()
+  }
 
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -401,16 +433,44 @@ export function MultiStopPanel({
     }
   }
 
+  const notices = (
+    <>
+      {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
+      {deviceId && !deviceReady && (
+        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+      )}
+      {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+    </>
+  )
+
+  const statusMessage = status.kind === 'busy'
+    ? <PanelStatus state="busy" message={t('generic.working')} />
+    : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined
+
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('multistop.title')}</h2>
-        <ModeInfoTooltip description={t('multistop.description')} />
-      </div>
-
+      <ModePanelLayout
+        title={t('multistop.title')}
+        titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
+        headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
+        notices={!isActive ? notices : undefined}
+        footer={!isActive ? (
+          <PanelFooter>
+            <PlaybackControls
+              canStart={canStart}
+              isActive={isActive}
+              isPaused={isPaused}
+              isBusy={isBusy}
+              onStart={handleStart}
+              onPauseResume={handlePauseResume}
+              onStop={handleStop}
+            />
+          </PanelFooter>
+        ) : undefined}
+        status={statusMessage}
+      >
       {isActive ? (
         <ActiveFlightHUD
-          modeName={t('multistop.title')}
           isRunning={isRunning}
           isPaused={isPaused}
           isBusy={isBusy}
@@ -426,67 +486,59 @@ export function MultiStopPanel({
           onStop={handleStop}
         />
       ) : (
-        <div className="panel-scroll-body multistop-panel-scroll">
-          {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-          {deviceId && !deviceReady && (
-            <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-          )}
-          {deviceState === 'teleporting' && (
-            <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-          )}
-
-          <section className="multistop-section">
+        <>
+          <PanelSection>
             {gpxFileName && (
-              <div className="route-preflight-badge">
+              <Group gap="xs" fz="xs" c="dimmed">
                 <span>GPX: {gpxFileName}</span>
                 <span>·</span>
                 <span>{validWaypoints.length} Points</span>
-              </div>
+              </Group>
             )}
 
-            <div className="waypoint-list">
+            <Stack gap="xs" className="route-loop-waypoint-list">
               {items.map((item, idx) => (
-                <div className="coord-row" key={item.id}>
-                  <span>{idx + 1}</span>
-                  <input
-                    type="text"
+                <Group className="route-loop-waypoint-row" key={item.id} wrap="nowrap" gap="xs" ref={idx === items.length - 1 ? lastWaypointRef : undefined}>
+                  <Badge variant="light" color="gray" circle>{idx + 1}</Badge>
+                  <CoordinateField size="xs"
                     placeholder="lat, lng or URL"
                     value={item.rawText}
-                    onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-                    onChange={(e) => handleTextChange(idx, e.target.value)}
+                    style={{ flex: 1 }}
+                    onFocus={() => {
+                      if (suppressPointPickerRef.current) {
+                        suppressPointPickerRef.current = false
+                        return
+                      }
+                      requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
+                    }}
+                    onChange={(value) => handleTextChange(idx, value)}
                   />
-                  <div className="waypoint-row-actions">
-                    <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                    <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                    <button
-                      className="waypoint-remove"
+                  <Group gap={2} wrap="nowrap">
+                    <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
+                    <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
+                    <ActionIcon color="red" variant="subtle"
                       disabled={isLocked || items.length <= 2}
                       onClick={() => removeWaypoint(idx)}
                       title={t('panel.remove_waypoint')}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+                    aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
+                  </Group>
+                </Group>
               ))}
-            </div>
+            </Stack>
 
-            <div className="panel-quick-actions">
-              <button className="swap-button" onClick={() => addWaypoint()}>
-                {t('panel.add_waypoint')}
-              </button>
-              <button className="swap-button" onClick={handleClearAllWaypoints}>
-                {t('multistop.action.clear_all')}
-              </button>
-            </div>
-          </section>
+            <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
+          </PanelSection>
 
-          <section className="multistop-section">
-            <div className="import-actions">
-            <label className="swap-button">
-              {t('multistop.import_file')}
-              <input
-                type="file"
+          <PanelSection title={t('multistop.section.import')}>
+            <Group gap="xs">
+            <FileButton accept=".gpx,.json,application/gpx+xml,application/json"
+              onChange={async (file) => {
+                if (file) await handleUnifiedImportFile(file)
+              }}>
+              {(props) => <Button {...props} size="xs" variant="default">{t('multistop.import_file')}</Button>}
+            </FileButton>
+            {/* native input retained only for browser file selection behavior */}
+            {false && <input type="file"
                 accept=".gpx,.json,application/gpx+xml,application/json"
                 style={{ display: 'none' }}
                 onChange={async (e) => {
@@ -494,98 +546,58 @@ export function MultiStopPanel({
                   if (file) await handleUnifiedImportFile(file)
                   e.target.value = ''
                 }}
-              />
-            </label>
-            <button className="swap-button" onClick={handleExportTemplate} disabled={validWaypoints.length === 0}>
-              {t('multistop.export_template')}
-            </button>
-            <button className="swap-button" onClick={() => setPasteOpen(true)}>
-              {t('multistop.paste_coords')}
-            </button>
-            </div>
+              />}
+            <Button size="xs" variant="default" onClick={handleExportTemplate} disabled={validWaypoints.length === 0}>{t('multistop.export_template')}</Button>
+            <Button size="xs" variant="default" onClick={() => setPasteOpen(true)}>{t('multistop.paste_coords')}</Button>
+            </Group>
 
-            {importMessage && (
-              <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
-            )}
-          </section>
+            {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
+          </PanelSection>
 
-          <section className="multistop-section">
-            <div className="panel-sub-tabs">
-            <button
-              className={`sub-tab ${jumpMode ? 'active' : ''}`}
-              onClick={() => setJumpMode(true)}
-              disabled={isActive}
-            >
-              {t('multistop.jump_mode')}
-            </button>
-            <button
-              className={`sub-tab ${!jumpMode ? 'active' : ''}`}
-              onClick={() => {
-                setJumpMode(false)
-                setStraightLine(true)
-              }}
-              disabled={isActive}
-            >
-              {t('multistop.straight_line')}
-            </button>
-            </div>
+          <PanelSection title={t('multistop.section.operation_mode')}>
+            <SegmentedControl fullWidth size="xs" disabled={isActive} value={jumpMode ? 'jump' : 'line'} onChange={(value) => { setJumpMode(value === 'jump'); if (value === 'line') setStraightLine(true) }} data={[{ label: t('multistop.jump_mode'), value: 'jump' }, { label: t('multistop.straight_line'), value: 'line' }]} />
 
             {jumpMode ? (
             <>
-              <div className="coord-row">
-                <span>{t('multistop.jump_pre_delay')}</span>
-                <input
-                  type="number"
+              <NumberInput label={t('multistop.jump_pre_delay')}
                   min={0}
                   value={jumpPreDelay}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setJumpPreDelay(Number(e.target.value))}
-                />
-              </div>
-              <div className="coord-row">
-                <span>{t('multistop.jump_post_delay')}</span>
-                <input
-                  type="number"
+                  onChange={(value) => setJumpPreDelay(Number(value) || 0)} />
+              <NumberInput label={t('multistop.jump_post_delay')}
                   min={0}
                   value={jumpPostDelay}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setJumpPostDelay(Number(e.target.value))}
-                />
-              </div>
+                  onChange={(value) => setJumpPostDelay(Number(value) || 0)} />
             </>
             ) : (
             <>
               <SwitchBar
                 label={t('panel.pause_toggle')}
+                subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
                 checked={pauseEnabled}
                 onChange={setPauseEnabled}
                 disabled={isActive}
-              />
-              {pauseEnabled && (
-                <div className="coord-row">
-                  <span>{t('panel.sec_label')}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={pauseMin}
-                    disabled={isActive}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setPauseMin(Number(e.target.value))}
-                  />
-                  <span>–</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={pauseMax}
-                    disabled={isActive}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setPauseMax(Number(e.target.value))}
-                  />
-                </div>
-              )}
+              >
+                {pauseEnabled && <NumberRangeField
+                  min={pauseMin}
+                  max={pauseMax}
+                  minLabel={t('panel.pause_min')}
+                  maxLabel={t('panel.pause_max')}
+                  onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                  onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                  minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                  maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                />}
+              </SwitchBar>
+            </>
+            )}
+          </PanelSection>
 
+          {!jumpMode && (
+            <PanelSection>
               <SpeedSlider
                 valueKmh={speedKmh}
                 navMode={navMode}
@@ -593,24 +605,11 @@ export function MultiStopPanel({
                 onNavModeChange={setNavMode}
                 disabled={isActive}
               />
-            </>
-            )}
-          </section>
-
-          <PlaybackControls
-            canStart={canStart}
-            isActive={isActive}
-            isPaused={isPaused}
-            isBusy={isBusy}
-            onStart={handleStart}
-            onPauseResume={handlePauseResume}
-            onStop={handleStop}
-          />
-        </div>
+            </PanelSection>
+          )}
+        </>
       )}
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      </ModePanelLayout>
 
       {contextMenu && (
         <ContextMenu

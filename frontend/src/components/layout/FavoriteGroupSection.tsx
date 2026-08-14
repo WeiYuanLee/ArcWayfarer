@@ -1,56 +1,36 @@
 import { useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { ActionIcon, Collapse, Group, Stack, Text, Tooltip } from '@mantine/core'
+import { IconChevronRight } from '@tabler/icons-react'
 import { useT } from '../../i18n'
 import type { Favorite } from '../../services/api'
 import { FavoriteItem } from './FavoriteItem'
 import type { SortMode } from '../../hooks/useFavorites'
 
-type Props = {
-  groupName: string
-  items: Favorite[]
-  sortMode: SortMode
-  allGroups: string[]
-  onSelect: (lat: number, lng: number) => void
-  onUpdate: (id: string, patch: { name?: string; group?: string; notes?: string }) => Promise<Favorite>
-  onDelete: (favorite: Favorite) => void
-}
+type Props = { groupName: string; items: Favorite[]; sortMode: SortMode; allGroups: string[]; onSelect: (lat: number, lng: number) => void; onUpdate: (id: string, patch: { name?: string; group?: string; notes?: string }) => Promise<Favorite>; onDelete: (favorite: Favorite) => void }
 
 export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, onSelect, onUpdate, onDelete }: Props) {
   const t = useT()
   const [collapsed, setCollapsed] = useState(false)
   const label = groupName || t('favorites.ungrouped')
-
   return (
-    <div className="fav-group">
-      <button className="fav-group-header" onClick={() => setCollapsed((v) => !v)}>
-        <svg
-          className={`fav-group-chevron ${collapsed ? '' : 'fav-group-chevron--open'}`}
-          width="12" height="12" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-        >
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-        <span className="fav-group-label">{label}</span>
-        <span className="fav-group-count">{items.length}</span>
-      </button>
-
-      {!collapsed && (
-        <SortableContext items={items.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-          <ul className="fav-list">
-            {items.map((f) => (
-              <FavoriteItem
-                key={f.id}
-                favorite={f}
-                sortMode={sortMode}
-                groups={allGroups}
-                onSelect={onSelect}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-              />
-            ))}
-          </ul>
+    <Stack gap="xs">
+      <Group gap="xs" wrap="nowrap">
+        <Tooltip label={label} openDelay={500}>
+          <ActionIcon variant="subtle" color="gray" size="sm" aria-label={label} onClick={() => setCollapsed((value) => !value)}>
+            <IconChevronRight size={16} style={{ transform: collapsed ? undefined : 'rotate(90deg)', transition: 'transform 150ms ease' }} />
+          </ActionIcon>
+        </Tooltip>
+        <Text size="sm" fw={600} lineClamp={1} style={{ cursor: 'pointer' }} onClick={() => setCollapsed((value) => !value)}>{label}</Text>
+        <Text size="xs" c="dimmed">{items.length}</Text>
+      </Group>
+      <Collapse in={!collapsed}>
+        <SortableContext items={items.map((favorite) => favorite.id)} strategy={verticalListSortingStrategy}>
+          <Stack gap="xs">
+            {items.map((favorite) => <FavoriteItem key={favorite.id} favorite={favorite} sortMode={sortMode} groups={allGroups} onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} />)}
+          </Stack>
         </SortableContext>
-      )}
-    </div>
+      </Collapse>
+    </Stack>
   )
 }

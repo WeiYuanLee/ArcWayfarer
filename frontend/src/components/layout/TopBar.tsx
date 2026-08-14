@@ -2,6 +2,7 @@ import { DeviceTabs } from './DeviceTabs'
 import { ConnectionStatus } from '../ConnectionStatus'
 import { DevMenuButton } from './DevMenuButton'
 import { VersionBadge } from '../common/VersionBadge'
+import { ColorSchemeControl } from './ColorSchemeControl'
 import type { Device } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -78,6 +79,7 @@ export function TopBar({
         loading={devicesLoading}
         onRefresh={onRefreshDevices}
       />
+      <ColorSchemeControl />
       <ConnectionStatus connected={connected} />
     </div>
   )

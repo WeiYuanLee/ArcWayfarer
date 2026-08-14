@@ -6,7 +6,6 @@ import { StatusBar } from './components/layout/StatusBar'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/common/Toast'
 import { MapView } from './components/map/MapView'
-import { PlaceSearchBar } from './components/map/PlaceSearchBar'
 import type { Mode } from './components/ModeSelector'
 import { type MapOverlay, type PanelProps } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
@@ -221,9 +220,8 @@ export default function App() {
             onModeChange={handleModeChange}
             panelPropsFor={panelPropsFor}
           />
-          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} />
+          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} />
           <div className="overlay-status-dock">
-            <PlaceSearchBar onSelectPlace={handlePlaceSelect} />
             <StatusBar
               deviceState={focusedDeviceState}
               livePosition={focusedPosition ? { lat: focusedPosition.lat, lng: focusedPosition.lng } : null}

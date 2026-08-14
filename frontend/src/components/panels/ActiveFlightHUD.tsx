@@ -1,9 +1,10 @@
 import { useT } from '../../i18n'
+import { ActionIcon, Alert, Button, Group, Paper, Progress, Stack, Text, Tooltip } from '@mantine/core'
+import { IconAlertCircle, IconPlayerPause, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react'
 import { calculateRouteProgressPct, formatEta } from './coords'
 import type { LatLng } from './types'
 
 type Props = {
-  modeName: string
   isRunning: boolean
   isPaused: boolean
   isBusy: boolean
@@ -14,13 +15,13 @@ type Props = {
   routePath?: LatLng[]
   waypoints?: (LatLng | null)[]
   isLoop?: boolean
+  legLabel?: string
   connected?: boolean
   onPauseResume: () => void
   onStop: () => void
 }
 
 export function ActiveFlightHUD({
-  modeName,
   isRunning,
   isPaused,
   isBusy,
@@ -31,6 +32,7 @@ export function ActiveFlightHUD({
   routePath,
   waypoints,
   isLoop = false,
+  legLabel,
   connected = true,
   onPauseResume,
   onStop,
@@ -42,55 +44,53 @@ export function ActiveFlightHUD({
 
 
   return (
-    <div className="active-flight-hud">
+    <Stack gap="md" className="active-flight-hud">
       {!connected && (
-        <p className="panel-status error" style={{ margin: '0 0 10px 0' }}>
-          ⚠️ 網路連線中斷，正在自動嘗試重連...
-        </p>
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+          {t('connection.reconnecting')}
+        </Alert>
       )}
 
-      <div className="hud-status-badge">
-        <span className={`hud-dot ${isPaused ? 'paused' : 'running'}`} />
-        <span className="hud-mode-title">{modeName}</span>
-        <span className="hud-state-label">({isPaused ? t('panel.paused') : t('generic.working')})</span>
-      </div>
+      <Paper withBorder p="sm" radius="md" bg="var(--aw-surface-raised)">
+        <Stack gap="sm">
+          <Group justify="space-between" gap="xs" wrap="nowrap">
+            <Text size="xs" c="dimmed">{t('hud.current_leg')}</Text>
+            <Text size="sm" fw={600} c="blue" ta="right">
+            {legLabel || `Point #${current} → Point #${next}`}
+            </Text>
+          </Group>
 
-      <div className="hud-card">
-        <div className="hud-leg-info">
-          <span className="hud-leg-title">{t('hud.current_leg')}</span>
-          <span className="hud-leg-nodes">
-            Point #{current} → Point #{next}
-          </span>
-        </div>
+          <Progress value={pct} size="sm" radius="xl" />
 
-        <div className="hud-progress-bar-bg">
-          <div className="hud-progress-bar-fill" style={{ width: `${pct}%` }} />
-        </div>
+          <Group justify="space-between" gap="xs">
+            <Text size="xs" c="dimmed">{t('multistop.stop_progress')} {current} / {totalPoints} ({pct}%)</Text>
+            {liveEtaSeconds !== null && <Text size="xs" c="dimmed">ETA {formatEta(liveEtaSeconds)}</Text>}
+          </Group>
+        </Stack>
+      </Paper>
 
-        <div className="hud-telemetry-row">
-          <span>{t('multistop.stop_progress')} {current} / {totalPoints} ({pct}%)</span>
-          {liveEtaSeconds !== null && <span>ETA {formatEta(liveEtaSeconds)}</span>}
-        </div>
-      </div>
-
-      <div className="playback-controls-row">
-        <button
-          className="playback-btn-primary"
-          disabled={isBusy}
+      <Group className="playback-controls-row" gap="xs" wrap="nowrap">
+        <Button
+          fullWidth
+          loading={isBusy}
           onClick={onPauseResume}
+          leftSection={isRunning ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
         >
-          <span className="playback-btn-icon">{isRunning ? '⏸' : '▶'}</span>
           {t(isRunning ? 'playback.pause' : 'playback.resume')}
-        </button>
-        <button
-          className="playback-btn-stop"
-          disabled={isBusy}
-          onClick={onStop}
-          title={t('playback.stop')}
-        >
-          ⏹
-        </button>
-      </div>
-    </div>
+        </Button>
+        <Tooltip label={t('playback.stop')}>
+          <ActionIcon
+            variant="light"
+            color="red"
+            size="lg"
+            disabled={isBusy}
+            onClick={onStop}
+            aria-label={t('playback.stop')}
+          >
+            <IconPlayerStop size={17} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    </Stack>
   )
 }

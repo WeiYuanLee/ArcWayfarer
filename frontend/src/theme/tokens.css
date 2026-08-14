@@ -1,0 +1,23 @@
+:root {
+  --aw-map-control-z-index: 1000;
+  --aw-map-overlay-z-index: 1100;
+  --aw-surface: #ffffff;
+  --aw-surface-raised: #f7f8fa;
+  --aw-canvas: #f1f3f5;
+  --aw-text-primary: #1f2933;
+  --aw-text-secondary: #667085;
+  --aw-border: #d9dde3;
+  --aw-map-control-bg: rgb(255 255 255 / 94%);
+  --aw-map-control-icon: #2f61b8;
+}
+
+html[data-mantine-color-scheme='dark'] {
+  --aw-surface: #202328;
+  --aw-surface-raised: #282c32;
+  --aw-canvas: #17191d;
+  --aw-text-primary: #f3f4f6;
+  --aw-text-secondary: #a8afb9;
+  --aw-border: #383d45;
+  --aw-map-control-bg: rgb(32 35 40 / 94%);
+  --aw-map-control-icon: #b3ccff;
+}

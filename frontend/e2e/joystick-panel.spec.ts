@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Joystick Panel', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('arcwayfarer.lang', 'zh'))
     await page.goto('/')
     await page.locator('.leaflet-container').waitFor({ timeout: 10_000 })
 
@@ -14,8 +15,8 @@ test.describe('Joystick Panel', () => {
     await expect(page.locator('.panel').first()).toBeVisible()
   })
 
-  test('應顯示基礎設定與動態模式分頁', async ({ page }) => {
-    await expect(page.locator('.sub-tab', { hasText: '基礎設定' })).toBeVisible()
+  test('應顯示固定速度與動態模式分頁', async ({ page }) => {
+    await expect(page.locator('.sub-tab', { hasText: '固定速度' })).toBeVisible()
     await expect(page.locator('.sub-tab', { hasText: '動態模式' })).toBeVisible()
   })
 
@@ -25,7 +26,7 @@ test.describe('Joystick Panel', () => {
     await expect(dynamicTab).toHaveClass(/active/)
   })
 
-  test('搖桿浮動底座區塊應存在', async ({ page }) => {
-    await expect(page.locator('.joystick-float-dock')).toBeVisible()
+  test('尚未啟動時不應顯示搖桿浮動底座', async ({ page }) => {
+    await expect(page.locator('.joystick-float-dock')).not.toBeVisible()
   })
 })

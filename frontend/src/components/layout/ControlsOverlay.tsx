@@ -41,7 +41,8 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
           <FloatingCard className="overlay-panel-card">
             <button
               className="panel-collapse-toggle"
-              onClick={() => setPanelExpanded(false)}
+              type="button"
+              onClick={(event) => { event.stopPropagation(); setPanelExpanded(false) }}
               aria-label={t('overlay.collapse_panel')}
             >
               ▾
@@ -60,7 +61,8 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
         ) : (
           <button
             className="panel-expand-toggle"
-            onClick={() => setPanelExpanded(true)}
+            type="button"
+            onClick={(event) => { event.stopPropagation(); setPanelExpanded(true) }}
             aria-label={t('overlay.expand_panel')}
           >
             ▸ {t(MODE_LABEL_KEYS[focusedMode])}

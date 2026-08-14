@@ -1,27 +1,94 @@
 import { useEffect, useState } from 'react'
+import { Button, Group, SegmentedControl, Text } from '@mantine/core'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
-import { formatPoint, parsePoint } from './coords'
+import { EMPTY_OVERLAY } from './types'
+import { formatPoint, haversineDistanceKm, parsePoint } from './coords'
 import { FavoriteButton } from './FavoriteButton'
+import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
+import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
 
-export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo }: PanelProps) {
+export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo, setOverlay }: PanelProps) {
   const t = useT()
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [teleportMode, setTeleportMode] = useState<'standard' | 'gold'>('standard')
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    title?: string
+    items: ContextMenuItem[]
+  } | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isOtherModeActive = deviceState !== 'idle' && deviceState !== 'teleporting'
   const canAct = deviceReady && target !== null && status.kind !== 'busy'
+  const distanceKm = target && livePosition ? haversineDistanceKm(livePosition, target) : null
+  const cooldownMinutes = distanceKm === null ? null : Math.min(120, Math.ceil(distanceKm))
 
   useEffect(() => {
     setTarget(point)
     setTargetText(formatPoint(point))
   }, [point])
+
+  useEffect(() => {
+    setOverlay({
+      markers: [],
+      path: [],
+      onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
+        const clickedPoint = { lat, lng }
+        setContextMenu({
+          x: clientX,
+          y: clientY,
+          title: `地圖位置 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          items: [
+            {
+              id: 'set-target',
+              label: t('contextmenu.set_target'),
+              onClick: () => {
+                setTarget(clickedPoint)
+                setTargetText(formatPoint(clickedPoint))
+                setPoint(clickedPoint)
+              },
+            },
+            {
+              id: 'teleport-here',
+              label: t('contextmenu.teleport_here'),
+              disabled: deviceState !== 'idle' || !deviceId,
+              onClick: async () => {
+                if (!deviceId) return
+                try {
+                  await setLocation(deviceId, lat, lng)
+                  pushHistory({ lat, lng, kind: 'teleport' }).catch(() => {})
+                  setPoint(clickedPoint)
+                  setTarget(clickedPoint)
+                  setTargetText(formatPoint(clickedPoint))
+                  requestFlyTo(lat, lng)
+                } catch (e) {
+                  setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('teleport.status.set_failed') })
+                }
+              },
+            },
+            {
+              id: 'copy-map-coords',
+              label: t('contextmenu.copy_coords_short'),
+              onClick: () => {
+                navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+                showToast(t('toast.copied_coords'))
+              },
+            },
+          ],
+        })
+      },
+    })
+    return () => setOverlay(EMPTY_OVERLAY)
+  }, [deviceId, deviceState, requestFlyTo, setOverlay, setPoint, t])
 
   function handleTextChange(value: string) {
     setStatus({ kind: 'idle' })
@@ -109,70 +176,55 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
 
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('teleport.title')}</h2>
-        <ModeInfoTooltip description={t('teleport.description')} />
-      </div>
+      <ModePanelLayout
+        title={t('teleport.title')}
+        headerAction={<ModeInfoTooltip description={t('teleport.description')} />}
+        notices={<>
+          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {isOtherModeActive && <PanelNotice tone="warning">{t('teleport.hint.navigating')}</PanelNotice>}
+        </>}
+        footer={
+          <PanelFooter justify="flex-end">
+            <Group className={`teleport-footer-actions ${teleportMode === 'gold' ? 'gold' : ''}`} gap="xs" wrap="nowrap">
+              {teleportMode === 'standard' && <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
+                {t('teleport.action.clear')}
+              </Button>}
+              <Button variant="default" disabled={!target} onClick={handlePreview}>{t('teleport.action.preview')}</Button>
+              <Button className="teleport-primary-action" disabled={!canAct} loading={status.kind === 'busy'} onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}>{teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}</Button>
+            </Group>
+          </PanelFooter>
+        }
+        status={status.kind === 'idle' ? undefined : <PanelStatus state={status.kind} message={status.kind === 'busy' ? t('generic.working') : status.message} />}
+      >
+        <PanelSection>
+          <SegmentedControl fullWidth size="xs" value={teleportMode} onChange={(value) => setTeleportMode(value as 'standard' | 'gold')} data={[{ value: 'standard', label: t('teleport.mode.standard') }, { value: 'gold', label: t('teleport.goldditto.title') }]} />
+          <CoordinateField
+            placeholder="lat, lng or Google Maps URL"
+            value={targetText}
+            onFocus={handleFocusInput}
+            onChange={handleTextChange}
+            onBlur={handleInputBlur}
+            rightSection={<FavoriteButton point={target} />}
+          />
+          <Group gap="xs">
+            <Button size="compact-sm" variant="default" onClick={handlePasteClipboard}>{t('teleport.action.paste')}</Button>
+            {livePosition && <Button size="compact-sm" variant="default" onClick={handleUseCurrentLocation}>{t('teleport.action.my_location')}</Button>}
+          </Group>
+          {distanceKm !== null && <Text size="xs" c="dimmed">{t('teleport.distance')}: {distanceKm.toFixed(1)} km · {t('teleport.cooldown')}: ~{cooldownMinutes} min</Text>}
+        </PanelSection>
+        {teleportMode === 'gold' && <PanelSection description={t('teleport.goldditto.help')}><></></PanelSection>}
+      </ModePanelLayout>
 
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {isOtherModeActive && (
-        <p className="panel-hint warning">{t('teleport.hint.navigating')}</p>
-      )}
-
-      <div className="input-favorite-wrapper">
-        <input
-          type="text"
-          className="coord-input-large"
-          placeholder="lat, lng or Google Maps URL"
-          value={targetText}
-          onFocus={handleFocusInput}
-          onChange={(e) => handleTextChange(e.target.value)}
-          onBlur={handleInputBlur}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={contextMenu.title}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
         />
-        <div className="inside-favorite-action">
-          <FavoriteButton point={target} />
-        </div>
-      </div>
-
-      <div className="panel-quick-actions">
-        <button className="swap-button" onClick={handlePasteClipboard} title={t('teleport.action.paste')}>
-          {t('teleport.action.paste')}
-        </button>
-        {livePosition && (
-          <button className="swap-button" onClick={handleUseCurrentLocation} title={t('teleport.action.my_location')}>
-            {t('teleport.action.my_location')}
-          </button>
-        )}
-      </div>
-
-      <div className="panel-actions">
-        <button disabled={!target} onClick={handlePreview}>
-          {t('teleport.action.preview')}
-        </button>
-        <button disabled={!canAct} onClick={handleSet}>
-          {t('teleport.action.set_location')}
-        </button>
-        <button disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
-          {t('teleport.action.clear')}
-        </button>
-      </div>
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'success' && <p className="panel-status ok">{status.message}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
-
-      <details className="goldditto-details">
-        <summary className="goldditto-summary">{t('teleport.goldditto.title')}</summary>
-        <div className="goldditto-content">
-          <p className="panel-hint">{t('teleport.goldditto.help')}</p>
-          <button className="goldditto-button" disabled={!canAct} onClick={handleGoldDitto}>
-            {t('teleport.goldditto.action')}
-          </button>
-        </div>
-      </details>
+      )}
     </div>
   )
 }

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, Stack, Tooltip } from '@mantine/core'
+import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -9,10 +11,20 @@ import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
+import { ConfirmModal } from '../common/ConfirmModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
+import {
+  CoordinateField,
+  ModePanelLayout,
+  NumberRangeField,
+  PanelFooter,
+  PanelNotice,
+  PanelSection,
+  PanelStatus,
+} from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type SubMode = 'manual' | 'circle'
@@ -30,6 +42,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     addWaypoint,
     removeWaypoint,
     moveWaypoint,
+    clearAllWaypoints,
     setAllWaypoints,
     reverseWaypoints,
     setAsStart,
@@ -55,6 +68,20 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     title?: string
     items: ContextMenuItem[]
   } | null>(null)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    description: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  })
+  const lastWaypointRef = useRef<HTMLDivElement | null>(null)
+  const focusNewWaypointRef = useRef(false)
+  const suppressPointPickerRef = useRef(false)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'looping'
@@ -74,6 +101,33 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         return [validWaypoints[startIndex], validWaypoints[(startIndex + 1) % validWaypoints.length]]
       })()
     : null
+
+  useEffect(() => {
+    if (!focusNewWaypointRef.current) return
+    focusNewWaypointRef.current = false
+    requestAnimationFrame(() => {
+      lastWaypointRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      const input = lastWaypointRef.current?.querySelector('input')
+      if (input) {
+        suppressPointPickerRef.current = true
+        input.focus()
+      }
+    })
+  }, [items.length])
+
+  function handleAddWaypoint() {
+    focusNewWaypointRef.current = true
+    addWaypoint()
+  }
+
+  function handleClearAllWaypoints() {
+    setConfirmModal({
+      isOpen: true,
+      title: t('confirm.clear_all_title'),
+      description: t('confirm.clear_all_desc'),
+      onConfirm: clearAllWaypoints,
+    })
+  }
 
   // Clean up overlay on unmount only
   useEffect(() => {
@@ -286,16 +340,42 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     }
   }
 
+  const notices = (
+    <>
+      {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
+      {deviceId && !deviceReady && (
+        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+      )}
+      {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+    </>
+  )
+
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('routeloop.title')}</h2>
-        <ModeInfoTooltip description={t('routeloop.description')} />
-      </div>
-
+      <ModePanelLayout
+        title={t('routeloop.title')}
+        titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
+        headerAction={<ModeInfoTooltip description={t('routeloop.description')} />}
+        notices={!isActive ? notices : undefined}
+        footer={!isActive ? (
+          <PanelFooter>
+            <PlaybackControls
+              canStart={canStart}
+              isActive={isActive}
+              isPaused={isPaused}
+              isBusy={isBusy}
+              onStart={handleStart}
+              onPauseResume={handlePauseResume}
+              onStop={handleStop}
+            />
+          </PanelFooter>
+        ) : undefined}
+        status={status.kind === 'busy'
+          ? <PanelStatus state="busy" message={t('generic.working')} />
+          : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined}
+      >
       {isActive ? (
         <ActiveFlightHUD
-          modeName={t('routeloop.title')}
           isRunning={isRunning}
           isPaused={isPaused}
           isBusy={isBusy}
@@ -312,149 +392,121 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         />
       ) : (
         <>
-          <div className="panel-scroll-body">
-            {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-            {deviceId && !deviceReady && (
-              <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-            )}
-            {deviceState === 'teleporting' && (
-              <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-            )}
-
-            <div className="panel-sub-tabs">
-              <button
-                className={`sub-tab ${subMode === 'manual' ? 'active' : ''}`}
-                onClick={() => setSubMode('manual')}
-                disabled={isActive}
-              >
-                {t('routeloop.mode.manual')}
-              </button>
-              <button
-                className={`sub-tab ${subMode === 'circle' ? 'active' : ''}`}
-                onClick={() => {
+          <PanelSection>
+            <SegmentedControl fullWidth size="xs" disabled={isActive} value={subMode} onChange={(value) => {
+              if (value === 'circle') {
                   setSubMode('circle')
                   if (circleCenter) {
                     const generated = pointsOnCircle(circleCenter, circleRadiusKm * 1000, circleCount)
                     setAllWaypoints(generated)
                   }
-                }}
-                disabled={isActive}
-              >
-                {t('routeloop.mode.circle')}
-              </button>
-            </div>
+              } else setSubMode('manual')
+            }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'circle' }]} />
 
-            {subMode === 'manual' ? (
-              <>
-                <div className="waypoint-list">
+          </PanelSection>
+
+          {subMode === 'manual' ? (
+            <PanelSection>
+                <Stack gap="xs" className="route-loop-waypoint-list">
                   {items.map((item, idx) => (
-                    <div className="coord-row" key={item.id}>
-                      <span>{idx + 1}</span>
-                      <input
-                        type="text"
+                    <Group className="route-loop-waypoint-row" key={item.id} wrap="nowrap" gap="xs" ref={idx === items.length - 1 ? lastWaypointRef : undefined}>
+                      <Badge variant="light" color="gray" circle>{idx + 1}</Badge>
+                      <CoordinateField
+                        size="xs"
                         placeholder="lat, lng or URL"
                         value={item.rawText}
-                        onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-                        onChange={(e) => handleTextChange(idx, e.target.value)}
+                        style={{ flex: 1 }}
+                        onFocus={() => {
+                          if (suppressPointPickerRef.current) {
+                            suppressPointPickerRef.current = false
+                            return
+                          }
+                          requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
+                        }}
+                        onChange={(value) => handleTextChange(idx, value)}
                       />
-                      <div className="waypoint-row-actions">
-                        <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                        <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                        <button
-                          className="waypoint-remove"
+                      <Group gap={2} wrap="nowrap">
+                        <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
+                        <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
+                        <ActionIcon color="red" variant="subtle"
                           disabled={isLocked || items.length <= 2}
                           onClick={() => removeWaypoint(idx)}
                           title={t('panel.remove_waypoint')}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
+                        aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
+                      </Group>
+                    </Group>
                   ))}
-                </div>
+                </Stack>
 
-                <div className="panel-quick-actions">
-                  <button className="swap-button" onClick={() => addWaypoint()}>
-                    {t('panel.add_waypoint')}
-                  </button>
-                  <button className="swap-button" onClick={reverseWaypoints} title={t('routeloop.action.reverse')}>
-                    {t('routeloop.action.reverse')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="coord-row">
-                  <span>C</span>
-                  <input
-                    type="text"
+                <Group gap="xs" wrap="nowrap">
+                  <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button>
+                  <Tooltip label={t('routeloop.action.reverse')}>
+                    <ActionIcon size="lg" variant="default" onClick={reverseWaypoints} aria-label={t('routeloop.action.reverse')}>
+                      <IconRefresh size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={t('multistop.action.clear_all')}>
+                    <ActionIcon size="lg" color="red" variant="light" onClick={handleClearAllWaypoints} aria-label={t('multistop.action.clear_all')}>
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+            </PanelSection>
+          ) : (
+            <PanelSection>
+                <CoordinateField label={t('routeloop.circle.center')}
                     placeholder="Center (lat, lng or URL)"
                     value={circleCenterText}
                     onFocus={handlePickCircleCenter}
-                    onChange={(e) => handleCircleCenterTextChange(e.target.value)}
+                    onChange={handleCircleCenterTextChange}
                     disabled={isActive}
                   />
-                </div>
 
                 {livePosition && (
-                  <div className="panel-quick-actions" style={{ marginTop: 4 }}>
-                    <button
-                      className="swap-button"
+                  <Group mt={4}>
+                    <Button size="xs" variant="default"
                       onClick={() => {
                         setCircleCenter(livePosition)
                         setCircleCenterText(formatPoint(livePosition))
                       }}
                       disabled={isActive}
-                    >
-                      {t('routeloop.circle.use_current_location')}
-                    </button>
-                  </div>
+                    >{t('routeloop.circle.use_current_location')}</Button>
+                  </Group>
                 )}
 
-                <div className="coord-row" style={{ marginTop: 10 }}>
-                  <span>{t('routeloop.circle.radius')}</span>
-                  <input
-                    type="number"
+                <NumberInput mt="sm" label={t('routeloop.circle.radius')}
                     min={0.01}
                     step={0.1}
                     value={circleRadiusKm}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setCircleRadiusKm(Math.max(0.01, Number(e.target.value)))}
+                    onChange={(value) => setCircleRadiusKm(Math.max(0.01, Number(value) || 0.01))}
                   />
-                </div>
 
-                <div className="panel-quick-actions">
+                <Group grow gap="xs" wrap="nowrap">
                   {[0.5, 1, 2, 5].map((r) => (
-                    <button
-                      key={r}
-                      className={`swap-button ${circleRadiusKm === r ? 'active' : ''}`}
+                    <Button key={r} size="xs" variant={circleRadiusKm === r ? 'filled' : 'default'}
                       onClick={() => setCircleRadiusKm(r)}
                       disabled={isActive}
-                    >
-                      {`${r}km`}
-                    </button>
+                    >{`${r}km`}</Button>
                   ))}
-                </div>
+                </Group>
 
-                <div className="coord-row" style={{ marginTop: 10 }}>
-                  <span>{t('routeloop.circle.count')}</span>
-                  <input
-                    type="number"
+                <NumberInput mt="sm" label={t('routeloop.circle.count')}
                     min={4}
                     max={36}
                     value={circleCount}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = Math.max(4, Math.min(36, Number(e.target.value) || 4))
+                    onChange={(value) => {
+                      const val = Math.max(4, Math.min(36, Number(value) || 4))
                       setCircleCount(val)
                     }}
                   />
-                </div>
-              </>
-            )}
+            </PanelSection>
+          )}
 
+          <PanelSection>
             <SwitchBar
               label={t('multistop.straight_line')}
               checked={straightLine}
@@ -464,33 +516,25 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
 
             <SwitchBar
               label={t('panel.pause_toggle')}
+              subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
               checked={pauseEnabled}
               onChange={setPauseEnabled}
               disabled={isActive}
-            />
-            {pauseEnabled && (
-              <div className="coord-row">
-                <span>{t('panel.sec_label')}</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={pauseMin}
-                  disabled={isActive}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPauseMin(Number(e.target.value))}
-                />
-                <span>–</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={pauseMax}
-                  disabled={isActive}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPauseMax(Number(e.target.value))}
-                />
-              </div>
-            )}
+            >
+              {pauseEnabled && <NumberRangeField
+                min={pauseMin}
+                max={pauseMax}
+                minLabel={t('panel.pause_min')}
+                maxLabel={t('panel.pause_max')}
+                onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+              />}
+            </SwitchBar>
+          </PanelSection>
 
+          <PanelSection>
             <SpeedSlider
               valueKmh={speedKmh}
               navMode={navMode}
@@ -498,22 +542,10 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               onNavModeChange={setNavMode}
               disabled={isActive}
             />
-          </div>
-
-          <PlaybackControls
-            canStart={canStart}
-            isActive={isActive}
-            isPaused={isPaused}
-            isBusy={isBusy}
-            onStart={handleStart}
-            onPauseResume={handlePauseResume}
-            onStop={handleStop}
-          />
+          </PanelSection>
         </>
       )}
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      </ModePanelLayout>
 
       {contextMenu && (
         <ContextMenu
@@ -524,6 +556,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           onClose={() => setContextMenu(null)}
         />
       )}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   )
 }

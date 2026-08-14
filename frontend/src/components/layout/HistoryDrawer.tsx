@@ -1,92 +1,43 @@
 import { useEffect, useState } from 'react'
+import { Badge, Divider, Drawer, Group, Stack, Text, UnstyledButton } from '@mantine/core'
+import { IconHistory } from '@tabler/icons-react'
 import { listHistory, type HistoryEntry } from '../../services/api'
 import { useI18n } from '../../i18n'
 import { formatRelativeTime } from './relativeTime'
 
-type Props = {
-  isOpen: boolean
-  onClose: () => void
-  onFlyTo: (lat: number, lng: number) => void
-}
-
-const KIND_KEY: Record<string, string> = {
-  teleport: 'mode.teleport',
-  navigate: 'mode.navigate',
-  route_loop: 'mode.route_loop',
-  multi_stop: 'mode.multi_stop',
-  random_walk: 'mode.random_walk',
-  joystick: 'mode.joystick',
-}
+type Props = { isOpen: boolean; onClose: () => void; onFlyTo: (lat: number, lng: number) => void }
+const KIND_KEY: Record<string, string> = { teleport: 'mode.teleport', navigate: 'mode.navigate', route_loop: 'mode.route_loop', multi_stop: 'mode.multi_stop', random_walk: 'mode.random_walk', joystick: 'mode.joystick' }
 
 export function HistoryDrawer({ isOpen, onClose, onFlyTo }: Props) {
   const { t, lang } = useI18n()
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
-
   useEffect(() => {
     if (!isOpen) return
     setLoading(true)
-    listHistory()
-      .then(setEntries)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    listHistory().then(setEntries).catch(() => {}).finally(() => setLoading(false))
   }, [isOpen])
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    if (isOpen) window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
-  function handleSelect(lat: number, lng: number) {
-    onFlyTo(lat, lng)
-    onClose()
-  }
-
   return (
-    <>
-      <div className="fav-drawer-backdrop" onClick={onClose} />
-      <aside className="fav-drawer" role="dialog" aria-label={t('history.title')}>
-        <div className="fav-drawer-header">
-          <div className="fav-drawer-title-row">
-            <h2 className="fav-drawer-title">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="fav-drawer-title-icon" style={{ color: '#7eb8d4' }}>
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-              {t('history.title')}
-            </h2>
-            <span className="fav-drawer-count">{entries.length} {t('history.count')}</span>
-            <button className="fav-drawer-close" onClick={onClose} aria-label={t('favorites.cancel')}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div className="fav-drawer-body">
-          {loading && <p className="fav-hint">{t('generic.working')}</p>}
-          {!loading && entries.length === 0 && <p className="fav-hint">{t('history.empty')}</p>}
-          {!loading && entries.length > 0 && (
-            <ul className="fav-list">
-              {entries.map((entry, i) => (
-                <li key={i} className="fav-item">
-                  <button className="hist-item-btn" onClick={() => handleSelect(entry.lat, entry.lng)}>
-                    <span className="hist-kind-badge">{t(KIND_KEY[entry.kind] as Parameters<typeof t>[0] ?? 'mode.teleport')}</span>
-                    <span className="hist-coords">{entry.lat.toFixed(5)}, {entry.lng.toFixed(5)}</span>
-                    <span className="hist-time">{formatRelativeTime(entry.ts, lang)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </aside>
-    </>
+    <Drawer opened={isOpen} onClose={onClose} position="right" size={400} title={<Group gap="xs"><IconHistory size={18} stroke={1.75} /><Text fw={600}>{t('history.title')}</Text><Badge variant="light" size="sm">{entries.length} {t('history.count')}</Badge></Group>} aria-label={t('history.title')}>
+      <Stack gap={0}>
+        {loading && <Text c="dimmed" size="sm">{t('generic.working')}</Text>}
+        {!loading && entries.length === 0 && <Text c="dimmed" size="sm">{t('history.empty')}</Text>}
+        {!loading && entries.map((entry, index) => (
+          <Stack gap={0} key={`${entry.ts}-${index}`}>
+            {index > 0 && <Divider />}
+            <UnstyledButton py="sm" onClick={() => { onFlyTo(entry.lat, entry.lng); onClose() }}>
+              <Group justify="space-between" wrap="nowrap" align="center">
+                <Stack gap={2} miw={0}>
+                  <Text size="sm" fw={500} truncate>{entry.lat.toFixed(5)}, {entry.lng.toFixed(5)}</Text>
+                  <Badge variant="light" size="xs" w="fit-content">{t((KIND_KEY[entry.kind] ?? 'mode.teleport') as Parameters<typeof t>[0])}</Badge>
+                </Stack>
+                <Text size="xs" c="dimmed" flex="0 0 auto">{formatRelativeTime(entry.ts, lang)}</Text>
+              </Group>
+            </UnstyledButton>
+          </Stack>
+        ))}
+      </Stack>
+    </Drawer>
   )
 }

@@ -3,6 +3,7 @@ export type Lang = 'zh' | 'en'
 export const STRINGS = {
   // Generic
   'generic.working': { zh: '處理中…', en: 'Working…' },
+  'generic.close': { zh: '關閉', en: 'Close' },
 
   // Map overlay
   'overlay.collapse_panel': { zh: '收合面板', en: 'Collapse panel' },
@@ -43,13 +44,18 @@ export const STRINGS = {
   'search.placeholder': { zh: '搜尋地名關鍵字 (例如: 台北101, 駁二藝術特區)…', en: 'Search place keyword (e.g. Taipei 101)…' },
   'search.no_results': { zh: '未找到匹配的地點', en: 'No matching places found' },
   'search.title': { zh: '搜尋地點', en: 'Search Location' },
+  'search.hint': { zh: '輸入至少兩個字元，搜尋地名、地標或地址。', en: 'Enter at least two characters to search places, landmarks, or addresses.' },
+  'search.clear': { zh: '清除搜尋', en: 'Clear search' },
 
   // Shared panel hints
   'panel.hint.select_device': { zh: '請先選擇裝置。', en: 'Select a device above.' },
   'panel.hint.device_not_ready': { zh: '裝置尚未就緒。', en: 'Device is not ready yet.' },
   'panel.hint.teleporting': { zh: '裝置正在瞬移中。', en: 'Device is currently teleporting.' },
   'panel.pause_toggle': { zh: '每站暫停', en: 'Pause at each stop' },
-  'panel.add_waypoint': { zh: '+ 新增路徑', en: '+ Add' },
+  'panel.pause_summary': { zh: '每一站會在此範圍內隨機停留。', en: 'Each stop waits for a random duration in this range.' },
+  'panel.pause_min': { zh: '最短停留（秒）', en: 'Minimum (sec)' },
+  'panel.pause_max': { zh: '最長停留（秒）', en: 'Maximum (sec)' },
+  'panel.add_waypoint': { zh: '新增路徑', en: 'Add waypoint' },
   'panel.remove_waypoint': { zh: '移除路徑', en: 'Remove' },
   'panel.sec_label': { zh: '秒', en: 'Sec' },
   'panel.paused': { zh: '已暫停。', en: 'Paused.' },
@@ -63,6 +69,7 @@ export const STRINGS = {
   'version.latest': { zh: '最新版本', en: 'Latest Version' },
   'version.up_to_date': { zh: '目前已是最新版本', en: 'You are using the latest version' },
   'version.new_available': { zh: '發現新版本！', en: 'New Version Available!' },
+  'version.update_available_short': { zh: '可更新', en: 'Update' },
   'version.check_btn': { zh: '檢查更新', en: 'Check for Updates' },
   'version.checking': { zh: '檢查中…', en: 'Checking…' },
   'version.download_now': { zh: '下載新版本', en: 'Download New Version' },
@@ -119,11 +126,13 @@ export const STRINGS = {
   // Connection status
   'connection.connected': { zh: '後端已連線', en: 'Backend connected' },
   'connection.disconnected': { zh: '後端未連線', en: 'Backend disconnected' },
+  'connection.reconnecting': { zh: '網路連線中斷，正在自動嘗試重連…', en: 'Connection lost. Reconnecting automatically…' },
 
   // Status bar
   'statusbar.lat': { zh: '緯度', en: 'Lat' },
   'statusbar.lng': { zh: '經度', en: 'Lng' },
   'statusbar.speed': { zh: '速度', en: 'Speed' },
+  'statusbar.standby': { zh: '待命', en: 'Standby' },
 
   // Teleport panel
   'teleport.title': { zh: '瞬移', en: 'Teleport' },
@@ -136,8 +145,11 @@ export const STRINGS = {
     en: 'Device is currently running another mode — setting or clearing location will stop it.',
   },
   'teleport.action.preview': { zh: '預覽', en: 'Preview' },
-  'teleport.action.set_location': { zh: '設定位置', en: 'Set Location' },
-  'teleport.action.clear': { zh: '清除', en: 'Clear' },
+  'teleport.action.set_location': { zh: '瞬移至此', en: 'Teleport here' },
+  'teleport.action.clear': { zh: '還原定位', en: 'Restore location' },
+  'teleport.mode.standard': { zh: '一般瞬移', en: 'Teleport' },
+  'teleport.distance': { zh: '距離目前位置', en: 'Distance from current location' },
+  'teleport.cooldown': { zh: '建議等待', en: 'Suggested wait' },
   'teleport.status.set_success': { zh: '位置已設定。', en: 'Location set.' },
   'teleport.status.set_failed': { zh: '設定位置失敗。', en: 'Failed to set location.' },
   'teleport.status.clear_success': { zh: '位置已清除。', en: 'Location cleared.' },
@@ -153,6 +165,9 @@ export const STRINGS = {
 
   // Navigate panel
   'navigate.title': { zh: '導航', en: 'Navigate' },
+  'navigate.active_leg': { zh: '起點 → 終點', en: 'Start → destination' },
+  'navigate.start': { zh: '起點', en: 'Start' },
+  'navigate.destination': { zh: '終點', en: 'Destination' },
   'navigate.description': {
     zh: '沿著兩點間的路線走路、騎車或開車。',
     en: 'Walk, bike, or drive along a routed path between two points.',
@@ -197,6 +212,8 @@ export const STRINGS = {
   'multistop.custom_speed': { zh: '自訂速度 (km/h)', en: 'Custom speed (km/h)' },
   'multistop.import_gpx': { zh: '匯入 GPX', en: 'Import GPX' },
   'multistop.import_file': { zh: '匯入檔案', en: 'Import file' },
+  'multistop.section.import': { zh: '匯入', en: 'Import' },
+  'multistop.section.operation_mode': { zh: '運作模式', en: 'Operation mode' },
   'multistop.export_template': { zh: '匯出範本', en: 'Export JSON' },
   'multistop.import_template': { zh: '載入範本', en: 'Import JSON' },
   'multistop.import_template_success': { zh: '已成功載入 JSON 路線範本！', en: 'Loaded JSON route template successfully!' },
@@ -219,6 +236,10 @@ export const STRINGS = {
   'contextmenu.set_start': { zh: '📍 設為路線起點', en: '📍 Set as start point' },
   'contextmenu.add_wp_here': { zh: '➕ 在此處新增路徑點', en: '➕ Add waypoint here' },
   'contextmenu.select_circle_center': { zh: '🎯 設為圓形路徑中心點', en: '🎯 Set as circle center' },
+  'contextmenu.set_target': { zh: '🎯 設為目標點', en: '🎯 Set as target point' },
+  'contextmenu.set_end': { zh: '🏁 設為導航終點', en: '🏁 Set as destination' },
+  'contextmenu.set_random_center': { zh: '🎯 設為隨機漫步中心', en: '🎯 Set as random-walk center' },
+  'contextmenu.set_joystick_anchor': { zh: '🎮 設為搖桿起點', en: '🎮 Set as joystick anchor' },
   'contextmenu.teleport_here': { zh: '⚡ 瞬移裝置至此', en: '⚡ Teleport device here' },
   'contextmenu.copy_coords_short': { zh: '📋 複製座標', en: '📋 Copy coordinates' },
 
@@ -241,6 +262,7 @@ export const STRINGS = {
     zh: '在半徑範圍內隨機漫遊，直到停止。',
     en: 'Wander to random points within a radius until stopped.',
   },
+  'randomwalk.radius': { zh: '半徑（公尺）', en: 'Radius (m)' },
   'randomwalk.status.wandering': { zh: '漫遊中…', en: 'Wandering…' },
   'randomwalk.status.failed_start': { zh: '隨機漫遊啟動失敗。', en: 'Failed to start random walk.' },
   'randomwalk.status.failed_stop': { zh: '隨機漫遊停止失敗。', en: 'Failed to stop random walk.' },

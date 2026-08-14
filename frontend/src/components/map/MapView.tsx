@@ -472,7 +472,7 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
           }
         }
 
-        if (m.onContextMenu) {
+        if (m.onContextMenu && udid === focusedDeviceId) {
           const onContextMenu = m.onContextMenu
           existing.on('contextmenu', (e: L.LeafletMouseEvent) => {
             e.originalEvent.preventDefault()
@@ -530,11 +530,12 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
       }
     }
 
-    // Update map-level contextmenu handler — last overlay with one wins
-    const mapContextMenuHandlers = Object.values(overlays ?? {}).map((o) => o.onMapContextMenu).filter(Boolean)
-    const mapContextMenu = mapContextMenuHandlers[mapContextMenuHandlers.length - 1]
-    onMapContextMenuRef.current = mapContextMenu ?? null
-  }, [overlays])
+    // Only the focused device may react to a map right-click. Multiple device overlays
+    // can be visible at once, so selecting the last handler would target the wrong mode.
+    onMapContextMenuRef.current = focusedDeviceId
+      ? overlays?.[focusedDeviceId]?.onMapContextMenu ?? null
+      : null
+  }, [overlays, focusedDeviceId])
 
   useEffect(() => {
     const map = mapRef.current
