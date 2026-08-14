@@ -550,7 +550,7 @@ body {
 
 /* Keep Leaflet's native zoom behaviour while visually joining it to the action rail. */
 .map-view-wrapper .leaflet-top.leaflet-left {
-  top: 120px;
+  top: 168px;
   left: auto;
   right: 16px;
 }
@@ -865,7 +865,7 @@ body {
   }
 
   .map-view-wrapper .leaflet-top.leaflet-left {
-    top: 96px;
+    top: 140px;
     left: auto;
     right: 16px;
   }
