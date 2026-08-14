@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActionIcon, Button, Group, NumberInput, SegmentedControl } from '@mantine/core'
+import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
@@ -311,6 +311,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     <div className="panel">
       <ModePanelLayout
         title={t('routeloop.title')}
+        titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('routeloop.description')} />}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? (
@@ -332,7 +333,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       >
       {isActive ? (
         <ActiveFlightHUD
-          modeName={t('routeloop.title')}
           isRunning={isRunning}
           isPaused={isPaused}
           isBusy={isBusy}

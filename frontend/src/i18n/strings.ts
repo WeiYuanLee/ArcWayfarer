@@ -119,6 +119,7 @@ export const STRINGS = {
   // Connection status
   'connection.connected': { zh: '後端已連線', en: 'Backend connected' },
   'connection.disconnected': { zh: '後端未連線', en: 'Backend disconnected' },
+  'connection.reconnecting': { zh: '網路連線中斷，正在自動嘗試重連…', en: 'Connection lost. Reconnecting automatically…' },
 
   // Status bar
   'statusbar.lat': { zh: '緯度', en: 'Lat' },

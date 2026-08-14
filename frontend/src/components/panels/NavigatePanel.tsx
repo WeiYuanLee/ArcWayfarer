@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, Paper, Text } from '@mantine/core'
+import { Badge, Button, Group, Paper, Text } from '@mantine/core'
 import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -153,17 +153,17 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     <div className="panel">
       <ModePanelLayout
         title={t('navigate.title')}
+        titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('navigate.description')} />}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? <PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter> : undefined}
         status={
           status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
             : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
-              : isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
-                : undefined
+              : undefined
         }
       >
-        {isActive ? <ActiveFlightHUD modeName={t('navigate.title')} isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} legLabel={t('navigate.active_leg')} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
+        {isActive ? <ActiveFlightHUD isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} legLabel={t('navigate.active_leg')} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
         {distanceKm !== null && (
           <Paper withBorder px="sm" py="xs" bg="var(--aw-surface-raised)">
             <Text size="xs" fw={600} mb={2}>{t('navigate.distance')}</Text>

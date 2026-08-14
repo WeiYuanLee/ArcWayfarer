@@ -6,6 +6,8 @@ export type ModePanelLayoutProps = {
   title: ReactNode
   /** A short explanation rendered beside the title (usually ModeInfoTooltip). */
   headerAction?: ReactNode
+  /** A compact live-state indicator displayed beside the title. */
+  titleStatus?: ReactNode
   /** Device or mode availability messages rendered before the form. */
   notices?: ReactNode
   children: ReactNode
@@ -25,6 +27,7 @@ export type ModePanelLayoutProps = {
 export function ModePanelLayout({
   title,
   headerAction,
+  titleStatus,
   notices,
   children,
   footer,
@@ -40,7 +43,10 @@ export function ModePanelLayout({
       style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column' }}
     >
       <Group justify="space-between" align="center" mb="md" wrap="nowrap">
-        <Title order={2} size="h4" fw={600}>{title}</Title>
+        <Group gap="xs" wrap="nowrap">
+          <Title order={2} size="h4" fw={600}>{title}</Title>
+          {titleStatus}
+        </Group>
         {headerAction}
       </Group>
 

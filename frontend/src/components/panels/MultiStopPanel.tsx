@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActionIcon, Button, FileButton, Group, NumberInput, SegmentedControl } from '@mantine/core'
+import { ActionIcon, Badge, Button, FileButton, Group, NumberInput, SegmentedControl } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
@@ -430,6 +430,7 @@ export function MultiStopPanel({
     <div className="panel">
       <ModePanelLayout
         title={t('multistop.title')}
+        titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? (
@@ -449,7 +450,6 @@ export function MultiStopPanel({
       >
       {isActive ? (
         <ActiveFlightHUD
-          modeName={t('multistop.title')}
           isRunning={isRunning}
           isPaused={isPaused}
           isBusy={isBusy}
