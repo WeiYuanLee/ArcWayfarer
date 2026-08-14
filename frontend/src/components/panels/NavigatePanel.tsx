@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, Text } from '@mantine/core'
+import { Button, Group, Paper, Text } from '@mantine/core'
 import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -163,9 +163,10 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         }
       >
         {distanceKm !== null && (
-          <PanelNotice title={t('navigate.distance')}>
+          <Paper withBorder px="sm" py="xs" bg="var(--aw-surface-raised)">
+            <Text size="xs" fw={600} mb={2}>{t('navigate.distance')}</Text>
             <Group gap="xs"><Text size="sm">{distanceKm.toFixed(2)} km</Text><Text c="dimmed">·</Text><Text size="sm">{t('navigate.est_time')}: {durationMin} {t('navigate.minutes')}</Text></Group>
-          </PanelNotice>
+          </Paper>
         )}
         <PanelSection>
           <CoordinateField

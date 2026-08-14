@@ -816,9 +816,11 @@ body {
 .teleport-footer-actions.gold .teleport-primary-action { grid-column: auto; }
 
 .playback-controls-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 .playback-btn-primary {
