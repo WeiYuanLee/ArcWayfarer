@@ -11,6 +11,7 @@ import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
+import { ConfirmModal } from '../common/ConfirmModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
@@ -41,6 +42,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     addWaypoint,
     removeWaypoint,
     moveWaypoint,
+    clearAllWaypoints,
     setAllWaypoints,
     reverseWaypoints,
     setAsStart,
@@ -66,6 +68,17 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     title?: string
     items: ContextMenuItem[]
   } | null>(null)
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    description: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  })
   const lastWaypointRef = useRef<HTMLDivElement | null>(null)
   const focusNewWaypointRef = useRef(false)
   const suppressPointPickerRef = useRef(false)
@@ -105,6 +118,15 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   function handleAddWaypoint() {
     focusNewWaypointRef.current = true
     addWaypoint()
+  }
+
+  function handleClearAllWaypoints() {
+    setConfirmModal({
+      isOpen: true,
+      title: t('confirm.clear_all_title'),
+      description: t('confirm.clear_all_desc'),
+      onConfirm: clearAllWaypoints,
+    })
   }
 
   // Clean up overlay on unmount only
@@ -416,7 +438,11 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   ))}
                 </Stack>
 
-                <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button></Group>
+                <Group gap="xs">
+                  <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button>
+                  <Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button>
+                  <Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button>
+                </Group>
             </PanelSection>
           ) : (
             <PanelSection>
@@ -522,6 +548,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           onClose={() => setContextMenu(null)}
         />
       )}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   )
 }
