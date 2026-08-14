@@ -180,7 +180,7 @@ export function startRouteLoop(
   stationPause: StationPause,
   customSpeedKmh?: number,
   straightLine: boolean = false
-): Promise<{ status: string; route: LatLng[] }> {
+): Promise<{ status: string; route: LatLng[]; legs: LatLng[][] }> {
   return postJsonWithResponse('/api/route-loop/start', {
     udid,
     nav_mode: navMode,
@@ -219,7 +219,7 @@ export function startMultiStop(
   waypoints: LatLng[],
   stationPause: StationPause,
   options: MultiStopOptions = {}
-): Promise<{ status: string; route: LatLng[] }> {
+): Promise<{ status: string; route: LatLng[]; legs: LatLng[][] }> {
   return postJsonWithResponse('/api/multi-stop/start', {
     udid,
     nav_mode: navMode,

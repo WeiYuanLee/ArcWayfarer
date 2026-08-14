@@ -90,6 +90,44 @@ export function haversineDistanceKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
+/**
+ * Returns the road geometry for the leg that starts at `currentStop`.
+ * `routePath` is the playback path returned by the backend, which contains every
+ * interpolated road point in waypoint order. Falling back to the waypoint pair
+ * keeps the preview useful before a route has been planned.
+ */
+export function routeLegForStop(
+  routePath: LatLng[],
+  waypoints: LatLng[],
+  currentStop: number,
+  isLoop: boolean
+): LatLng[] | null {
+  if (waypoints.length < 2) return null
+
+  const legIndex = Math.max(0, Math.min(currentStop - 1, waypoints.length - 1))
+  if (!isLoop && legIndex >= waypoints.length - 1) return null
+  const fallback = [waypoints[legIndex], waypoints[(legIndex + 1) % waypoints.length]]
+  if (routePath.length < 2) return fallback
+
+  let cursor = 0
+  for (let index = 0; index <= legIndex; index++) {
+    const destination = waypoints[(index + 1) % waypoints.length]
+    let destinationIndex = cursor
+    let closestDistance = Infinity
+    for (let pointIndex = cursor; pointIndex < routePath.length; pointIndex++) {
+      const distance = haversineDistanceKm(routePath[pointIndex], destination)
+      if (distance < closestDistance) {
+        closestDistance = distance
+        destinationIndex = pointIndex
+      }
+    }
+    if (index === legIndex && destinationIndex > cursor) return routePath.slice(cursor, destinationIndex + 1)
+    cursor = destinationIndex
+  }
+
+  return fallback
+}
+
 export function movePoint(center: LatLng, bearingDeg: number, distanceMeters: number): LatLng {
   const EARTH_RADIUS_M = 6371000.0
   const toRad = (deg: number) => (deg * Math.PI) / 180
@@ -208,5 +246,4 @@ export function calculateRouteProgressPct(
   const pct = (bestTraversedDist / totalDist) * 100
   return Math.min(100, Math.max(0, Math.round(pct)))
 }
-
 

@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/route-loop")
 @router.post("/start")
 async def post_start(body: RouteLoopStartRequest) -> dict:
     try:
-        route_points = await route_loop.start_route_loop(
+        route_points, route_legs = await route_loop.start_route_loop(
             body.udid,
             body.nav_mode,
             [(wp.lat, wp.lng) for wp in body.waypoints],
@@ -23,7 +23,11 @@ async def post_start(body: RouteLoopStartRequest) -> dict:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001 - surface route/device/tunnel errors to the UI
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"status": "ok", "route": [{"lat": lat, "lng": lng} for lat, lng in route_points]}
+    return {
+        "status": "ok",
+        "route": [{"lat": lat, "lng": lng} for lat, lng in route_points],
+        "legs": [[{"lat": lat, "lng": lng} for lat, lng in leg] for leg in route_legs],
+    }
 
 
 @router.post("/stop")

@@ -53,6 +53,58 @@ function bearingDegrees(a: LatLng, b: LatLng): number {
 
 const ARROW_SPACING_METERS = 180
 
+type PathSample = { point: LatLng; bearing: number }
+
+function samplePathAtProgress(path: LatLng[], segmentEnds: number[], totalLength: number, progress: number): PathSample {
+  const targetDistance = totalLength * progress
+  let low = 0
+  let high = segmentEnds.length - 1
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (segmentEnds[middle] < targetDistance) low = middle + 1
+    else high = middle
+  }
+  const index = low
+  const previousEnd = index > 0 ? segmentEnds[index - 1] : 0
+  const length = segmentEnds[index] - previousEnd
+  const fraction = length > 0 ? (targetDistance - previousEnd) / length : 0
+  const start = path[index]
+  const end = path[index + 1]
+  return {
+    point: {
+      lat: start.lat + (end.lat - start.lat) * fraction,
+      lng: start.lng + (end.lng - start.lng) * fraction,
+    },
+    bearing: bearingDegrees(start, end),
+  }
+}
+
+/**
+ * The animated leg must be a literal slice of the blue route already drawn on
+ * the map. `requestedPath` only identifies its start/end waypoint; it is never
+ * used as the geometry, so an animation cannot cut across a road-route bend.
+ */
+function activeLegFromDrawnPath(path: LatLng[], requestedPath: LatLng[] | null | undefined): LatLng[] | null {
+  if (path.length < 2 || !requestedPath || requestedPath.length < 2) return requestedPath ?? null
+
+  const closestIndex = (target: LatLng, from: number) => {
+    let closest = from
+    let closestDistance = Infinity
+    for (let index = from; index < path.length; index++) {
+      const distance = haversineMeters(path[index], target)
+      if (distance < closestDistance) {
+        closest = index
+        closestDistance = distance
+      }
+    }
+    return closest
+  }
+
+  const startIndex = closestIndex(requestedPath[0], 0)
+  const endIndex = closestIndex(requestedPath[requestedPath.length - 1], startIndex)
+  return endIndex > startIndex ? path.slice(startIndex, endIndex + 1) : requestedPath
+}
+
 function makeLiveMarkerIcon(isFocused: boolean): L.DivIcon {
   const coreColor = isFocused ? '#00e676' : '#3b82f6'
   const pulseColor = isFocused ? 'rgba(0, 230, 118, 0.45)' : 'rgba(59, 130, 246, 0.45)'
@@ -290,7 +342,9 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
 
       // Only the leg being travelled receives arrows. Keeping the complete route as a
       // plain blue line makes the current Point N → Point N+1 leg immediately obvious.
-      const activePath = overlay.activePath
+      // Derive the highlighted route from `overlay.path`, the same exact array
+      // used to draw the blue line above. See activeLegFromDrawnPath().
+      const activePath = activeLegFromDrawnPath(overlay.path, overlay.activePath)
       const activePathKey = activePath && activePath.length >= 2 ? activePath.map((point) => `${point.lat},${point.lng}`).join('|') : null
       const activePathChanged = activePathKeys.get(udid) !== activePathKey
       if (activePathChanged) {
@@ -318,10 +372,15 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
         )
         activePathKeys.set(udid, activePathKey!)
 
-        const arrowCount = Math.max(1, Math.ceil(haversineMeters(activePath[0], activePath[activePath.length - 1]) / ARROW_SPACING_METERS))
-        const bearing = bearingDegrees(activePath[0], activePath[activePath.length - 1])
+        const segmentLengths = activePath.slice(1).map((point, index) => haversineMeters(activePath[index], point))
+        const segmentEnds = segmentLengths.reduce<number[]>((ends, length) => {
+          ends.push((ends.at(-1) ?? 0) + length)
+          return ends
+        }, [])
+        const pathLength = segmentEnds.at(-1) ?? 0
+        const arrowCount = Math.max(1, Math.ceil(pathLength / ARROW_SPACING_METERS))
         const activeArrows = Array.from({ length: arrowCount }, () =>
-          L.marker(activeLatLngs[0], { icon: makeArrowIcon(bearing), interactive: false, pane: 'routeArrowPane' }).addTo(map)
+          L.marker(activeLatLngs[0], { icon: makeArrowIcon(0), interactive: false, pane: 'routeArrowPane' }).addTo(map)
         )
         arrows.set(udid, activeArrows)
 
@@ -329,9 +388,9 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
           const phase = (now % 1600) / 1600
           activeArrows.forEach((arrow, index) => {
             const progress = (phase + index / arrowCount) % 1
-            const start = activePath[0]
-            const end = activePath[activePath.length - 1]
-            arrow.setLatLng([start.lat + (end.lat - start.lat) * progress, start.lng + (end.lng - start.lng) * progress])
+            const sample = samplePathAtProgress(activePath, segmentEnds, pathLength, progress)
+            arrow.setLatLng(sample.point)
+            arrow.setIcon(makeArrowIcon(sample.bearing))
           })
           arrowAnimationFrames.set(udid, requestAnimationFrame(animateArrows))
         }
