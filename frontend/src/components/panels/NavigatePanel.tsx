@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, TextInput } from '@mantine/core'
+import { Button, Group, Text } from '@mantine/core'
 import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -11,6 +11,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
@@ -144,79 +145,51 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
 
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('navigate.title')}</h2>
-        <ModeInfoTooltip description={t('navigate.description')} />
-      </div>
-
-      <div className="panel-scroll-body">
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {deviceState === 'teleporting' && (
-        <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-      )}
-
-      {distanceKm !== null && (
-        <div className="route-preflight-badge">
-          <span>{t('navigate.distance')}: {distanceKm.toFixed(2)} km</span>
-          <span>·</span>
-          <span>{t('navigate.est_time')}: {durationMin} {t('navigate.minutes')}</span>
-        </div>
-      )}
-
-      <div className="coord-row">
-        <span>S</span>
-        <TextInput
-          placeholder="lat, lng or URL"
-          value={startText}
-          onFocus={() => requestPoint((lat, lng) => { setStart({ lat, lng }); setStartText(formatPoint({ lat, lng })) })}
-          onChange={(event) => handleStartTextChange(event.currentTarget.value)}
-          rightSection={<FavoriteButton point={start} />}
-        />
-      </div>
-      <Button size="compact-sm" variant="default" onClick={handleSwap} title={t('navigate.swap')}>
-        {t('navigate.swap')}
-      </Button>
-      <div className="coord-row">
-        <span>E</span>
-        <TextInput
-          placeholder="lat, lng or URL"
-          value={endText}
-          onFocus={() => requestPoint((lat, lng) => { setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) })}
-          onChange={(event) => handleEndTextChange(event.currentTarget.value)}
-          rightSection={<FavoriteButton point={end} />}
-        />
-      </div>
-
-      <SpeedSlider
-        valueKmh={speedKmh}
-        navMode={navMode}
-        onChange={setSpeedKmh}
-        onNavModeChange={setNavMode}
-        disabled={isActive}
-      />
-      </div>
-
-      <PlaybackControls
-        canStart={canStart}
-        isActive={isActive}
-        isPaused={isPaused}
-        isBusy={isBusy}
-        onStart={handleStart}
-        onPauseResume={handlePauseResume}
-        onStop={handleStop}
-      />
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {isRunning && (
-        <p className="panel-status ok">
-          {t('navigate.status.running')}{liveEtaSeconds !== null ? `… ETA ${formatEta(liveEtaSeconds)}` : '…'}
-        </p>
-      )}
-      {isPaused && <p className="panel-status warning">{t('panel.paused')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      <ModePanelLayout
+        title={t('navigate.title')}
+        headerAction={<ModeInfoTooltip description={t('navigate.description')} />}
+        notices={<>
+          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+        </>}
+        footer={<PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter>}
+        status={
+          status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
+            : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
+              : isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
+                : isRunning ? <PanelStatus state="success" message={`${t('navigate.status.running')}${liveEtaSeconds !== null ? `… ETA ${formatEta(liveEtaSeconds)}` : '…'}`} />
+                  : undefined
+        }
+      >
+        {distanceKm !== null && (
+          <PanelNotice title={t('navigate.distance')}>
+            <Group gap="xs"><Text size="sm">{distanceKm.toFixed(2)} km</Text><Text c="dimmed">·</Text><Text size="sm">{t('navigate.est_time')}: {durationMin} {t('navigate.minutes')}</Text></Group>
+          </PanelNotice>
+        )}
+        <PanelSection>
+          <CoordinateField
+            label="S"
+            placeholder="lat, lng or URL"
+            value={startText}
+            onFocus={() => requestPoint((lat, lng) => { setStart({ lat, lng }); setStartText(formatPoint({ lat, lng })) })}
+            onChange={handleStartTextChange}
+            rightSection={<FavoriteButton point={start} />}
+          />
+          <Button size="compact-sm" variant="default" onClick={handleSwap}>{t('navigate.swap')}</Button>
+          <CoordinateField
+            label="E"
+            placeholder="lat, lng or URL"
+            value={endText}
+            onFocus={() => requestPoint((lat, lng) => { setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) })}
+            onChange={handleEndTextChange}
+            rightSection={<FavoriteButton point={end} />}
+          />
+        </PanelSection>
+        <PanelSection title={t('statusbar.speed')}>
+          <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
+        </PanelSection>
+      </ModePanelLayout>
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, NumberInput, TextInput } from '@mantine/core'
+import { Button, Group, NumberInput } from '@mantine/core'
 import { pauseRandomWalk, pushHistory, resumeRandomWalk, setLocation, startRandomWalk, stopRandomWalk, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -11,6 +11,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { CoordinateField, ModePanelLayout, NumberRangeField, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
@@ -144,97 +145,45 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
 
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('randomwalk.title')}</h2>
-        <ModeInfoTooltip description={t('randomwalk.description')} />
-      </div>
-
-      <div className="panel-scroll-body">
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {deviceState === 'teleporting' && (
-        <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-      )}
-
-      <TextInput
-          label="C" placeholder="Center (lat, lng or URL)"
-          value={centerText}
-          onFocus={() =>
-            requestPoint((lat, lng) => {
-              setCenter({ lat, lng })
-              setCenterText(formatPoint({ lat, lng }))
-            })
-          }
-          onChange={(e) => handleCenterTextChange(e.target.value)}
-        />
-
-      <NumberInput label="Radius (m)" min={1}
-          value={radius}
-          onFocus={(e) => e.target.select()}
-          onChange={(value) => setRadius(Number(value) || 0)}
-        />
-
-      <Group gap="xs">
-        {[50, 100, 300, 500].map((r) => (
-          <Button key={r} size="xs" variant={radius === r ? 'filled' : 'default'} onClick={() => setRadius(r)}>{`${r}m`}</Button>
-        ))}
-      </Group>
-
-      <SwitchBar
-        label={t('multistop.straight_line')}
-        checked={straightLine}
-        onChange={setStraightLine}
-        disabled={isActive}
-      />
-
-      <SwitchBar
-        label={t('panel.pause_toggle')}
-        checked={pauseEnabled}
-        onChange={setPauseEnabled}
-        disabled={isActive}
-      />
-      {pauseEnabled && (
-        <Group grow align="end">
-          <NumberInput label={t('panel.sec_label')} min={0}
-            value={pauseMin}
-            disabled={isActive}
-            onFocus={(e) => e.target.select()}
-            onChange={(value) => setPauseMin(Number(value) || 0)}
+      <ModePanelLayout
+        title={t('randomwalk.title')}
+        headerAction={<ModeInfoTooltip description={t('randomwalk.description')} />}
+        notices={<>
+          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+        </>}
+        footer={<PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter>}
+        status={
+          status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
+            : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
+              : isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
+                : isRunning ? <PanelStatus state="success" message={t('randomwalk.status.wandering')} />
+                  : undefined
+        }
+      >
+        <PanelSection>
+          <CoordinateField
+            label="C"
+            placeholder="Center (lat, lng or URL)"
+            value={centerText}
+            onFocus={() => requestPoint((lat, lng) => { setCenter({ lat, lng }); setCenterText(formatPoint({ lat, lng })) })}
+            onChange={handleCenterTextChange}
           />
-          <NumberInput label="–" min={0}
-            value={pauseMax}
-            disabled={isActive}
-            onFocus={(e) => e.target.select()}
-            onChange={(value) => setPauseMax(Number(value) || 0)}
-          />
-        </Group>
-      )}
-
-      <SpeedSlider
-        valueKmh={speedKmh}
-        navMode={navMode}
-        onChange={setSpeedKmh}
-        onNavModeChange={setNavMode}
-        disabled={isActive}
-      />
-      </div>
-
-      <PlaybackControls
-        canStart={canStart}
-        isActive={isActive}
-        isPaused={isPaused}
-        isBusy={isBusy}
-        onStart={handleStart}
-        onPauseResume={handlePauseResume}
-        onStop={handleStop}
-      />
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {isRunning && <p className="panel-status ok">{t('randomwalk.status.wandering')}</p>}
-      {isPaused && <p className="panel-status warning">{t('panel.paused')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+          <NumberInput label="Radius (m)" min={1} value={radius} disabled={isActive} onFocus={(event) => event.currentTarget.select()} onChange={(value) => setRadius(Number(value) || 0)} />
+          <Group gap="xs">
+            {[50, 100, 300, 500].map((value) => <Button key={value} size="xs" variant={radius === value ? 'filled' : 'default'} disabled={isActive} onClick={() => setRadius(value)}>{`${value}m`}</Button>)}
+          </Group>
+        </PanelSection>
+        <PanelSection title={t('panel.pause_toggle')}>
+          <SwitchBar label={t('multistop.straight_line')} checked={straightLine} onChange={setStraightLine} disabled={isActive} />
+          <SwitchBar label={t('panel.pause_toggle')} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive} />
+          {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.sec_label')} maxLabel="–" minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
+        </PanelSection>
+        <PanelSection title={t('statusbar.speed')}>
+          <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
+        </PanelSection>
+      </ModePanelLayout>
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

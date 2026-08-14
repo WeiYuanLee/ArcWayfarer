@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActionIcon, Button, Group, NumberInput, SegmentedControl, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Group, NumberInput, SegmentedControl } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
@@ -15,6 +15,15 @@ import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
+import {
+  CoordinateField,
+  ModePanelLayout,
+  NumberRangeField,
+  PanelFooter,
+  PanelNotice,
+  PanelSection,
+  PanelStatus,
+} from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type SubMode = 'manual' | 'circle'
@@ -288,13 +297,39 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     }
   }
 
+  const notices = (
+    <>
+      {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
+      {deviceId && !deviceReady && (
+        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+      )}
+      {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+    </>
+  )
+
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('routeloop.title')}</h2>
-        <ModeInfoTooltip description={t('routeloop.description')} />
-      </div>
-
+      <ModePanelLayout
+        title={t('routeloop.title')}
+        headerAction={<ModeInfoTooltip description={t('routeloop.description')} />}
+        notices={!isActive ? notices : undefined}
+        footer={!isActive ? (
+          <PanelFooter>
+            <PlaybackControls
+              canStart={canStart}
+              isActive={isActive}
+              isPaused={isPaused}
+              isBusy={isBusy}
+              onStart={handleStart}
+              onPauseResume={handlePauseResume}
+              onStop={handleStop}
+            />
+          </PanelFooter>
+        ) : undefined}
+        status={status.kind === 'busy'
+          ? <PanelStatus state="busy" message={t('generic.working')} />
+          : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined}
+      >
       {isActive ? (
         <ActiveFlightHUD
           modeName={t('routeloop.title')}
@@ -314,15 +349,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         />
       ) : (
         <>
-          <div className="panel-scroll-body">
-            {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-            {deviceId && !deviceReady && (
-              <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-            )}
-            {deviceState === 'teleporting' && (
-              <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-            )}
-
+          <PanelSection title={t('routeloop.mode.manual')}>
             <SegmentedControl fullWidth size="xs" disabled={isActive} value={subMode} onChange={(value) => {
               if (value === 'circle') {
                   setSubMode('circle')
@@ -333,18 +360,20 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               } else setSubMode('manual')
             }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'circle' }]} />
 
-            {subMode === 'manual' ? (
-              <>
+          </PanelSection>
+
+          {subMode === 'manual' ? (
+            <PanelSection title={t('routeloop.mode.manual')}>
                 <div className="waypoint-list">
                   {items.map((item, idx) => (
                     <div className="coord-row" key={item.id}>
                       <span>{idx + 1}</span>
-                      <TextInput
+                      <CoordinateField
                         size="xs"
                         placeholder="lat, lng or URL"
                         value={item.rawText}
                         onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-                        onChange={(e) => handleTextChange(idx, e.target.value)}
+                        onChange={(value) => handleTextChange(idx, value)}
                       />
                       <div className="waypoint-row-actions">
                         <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
@@ -360,14 +389,14 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 </div>
 
                 <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => addWaypoint()}>{t('panel.add_waypoint')}</Button><Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button></Group>
-              </>
-            ) : (
-              <>
-                <TextInput label="C"
+            </PanelSection>
+          ) : (
+            <PanelSection title={t('routeloop.mode.circle')}>
+                <CoordinateField label={t('routeloop.circle.center')}
                     placeholder="Center (lat, lng or URL)"
                     value={circleCenterText}
                     onFocus={handlePickCircleCenter}
-                    onChange={(e) => handleCircleCenterTextChange(e.target.value)}
+                    onChange={handleCircleCenterTextChange}
                     disabled={isActive}
                   />
 
@@ -412,9 +441,10 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                       setCircleCount(val)
                     }}
                   />
-              </>
-            )}
+            </PanelSection>
+          )}
 
+          <PanelSection>
             <SwitchBar
               label={t('multistop.straight_line')}
               checked={straightLine}
@@ -429,23 +459,20 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               disabled={isActive}
             />
             {pauseEnabled && (
-              <Group grow align="end"><NumberInput label={t('panel.sec_label')}
-                  min={0}
-                  value={pauseMin}
-                  disabled={isActive}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(value) => setPauseMin(Number(value) || 0)}
-                />
-                <NumberInput label="–"
-                  min={0}
-                  value={pauseMax}
-                  disabled={isActive}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(value) => setPauseMax(Number(value) || 0)}
-                />
-              </Group>
+              <NumberRangeField
+                min={pauseMin}
+                max={pauseMax}
+                minLabel={t('panel.sec_label')}
+                maxLabel="–"
+                onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+              />
             )}
+          </PanelSection>
 
+          <PanelSection>
             <SpeedSlider
               valueKmh={speedKmh}
               navMode={navMode}
@@ -453,22 +480,10 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               onNavModeChange={setNavMode}
               disabled={isActive}
             />
-          </div>
-
-          <PlaybackControls
-            canStart={canStart}
-            isActive={isActive}
-            isPaused={isPaused}
-            isBusy={isBusy}
-            onStart={handleStart}
-            onPauseResume={handlePauseResume}
-            onStop={handleStop}
-          />
+          </PanelSection>
         </>
       )}
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      </ModePanelLayout>
 
       {contextMenu && (
         <ContextMenu

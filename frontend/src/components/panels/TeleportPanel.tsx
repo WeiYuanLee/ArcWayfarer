@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, TextInput } from '@mantine/core'
+import { Accordion, Button, Group } from '@mantine/core'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -9,6 +9,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
 
@@ -172,65 +173,54 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
 
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('teleport.title')}</h2>
-        <ModeInfoTooltip description={t('teleport.description')} />
-      </div>
+      <ModePanelLayout
+        title={t('teleport.title')}
+        headerAction={<ModeInfoTooltip description={t('teleport.description')} />}
+        notices={<>
+          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {isOtherModeActive && <PanelNotice tone="warning">{t('teleport.hint.navigating')}</PanelNotice>}
+        </>}
+        footer={
+          <PanelFooter>
+            <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
+              {t('teleport.action.clear')}
+            </Button>
+            <Group gap="xs">
+              <Button variant="default" disabled={!target} onClick={handlePreview}>{t('teleport.action.preview')}</Button>
+              <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={handleSet}>{t('teleport.action.set_location')}</Button>
+            </Group>
+          </PanelFooter>
+        }
+        status={status.kind === 'idle' ? undefined : <PanelStatus state={status.kind} message={status.kind === 'busy' ? t('generic.working') : status.message} />}
+      >
+        <PanelSection>
+          <CoordinateField
+            placeholder="lat, lng or Google Maps URL"
+            value={targetText}
+            onFocus={handleFocusInput}
+            onChange={handleTextChange}
+            onBlur={handleInputBlur}
+            rightSection={<FavoriteButton point={target} />}
+          />
+          <Group gap="xs">
+            <Button size="compact-sm" variant="default" onClick={handlePasteClipboard}>{t('teleport.action.paste')}</Button>
+            {livePosition && <Button size="compact-sm" variant="default" onClick={handleUseCurrentLocation}>{t('teleport.action.my_location')}</Button>}
+          </Group>
+        </PanelSection>
 
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {isOtherModeActive && (
-        <p className="panel-hint warning">{t('teleport.hint.navigating')}</p>
-      )}
-
-      <TextInput
-        label={t('teleport.title')}
-        placeholder="lat, lng or Google Maps URL"
-        value={targetText}
-        onFocus={handleFocusInput}
-        onChange={(event) => handleTextChange(event.currentTarget.value)}
-        onBlur={handleInputBlur}
-        rightSection={<FavoriteButton point={target} />}
-      />
-
-      <Group gap="xs" mt="sm">
-        <Button size="compact-sm" variant="default" onClick={handlePasteClipboard} title={t('teleport.action.paste')}>
-          {t('teleport.action.paste')}
-        </Button>
-        {livePosition && (
-          <Button size="compact-sm" variant="default" onClick={handleUseCurrentLocation} title={t('teleport.action.my_location')}>
-            {t('teleport.action.my_location')}
-          </Button>
-        )}
-      </Group>
-
-      <Group grow mt="lg">
-        <Button variant="default" disabled={!target} onClick={handlePreview}>
-          {t('teleport.action.preview')}
-        </Button>
-        <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={handleSet}>
-          {t('teleport.action.set_location')}
-        </Button>
-        <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
-          {t('teleport.action.clear')}
-        </Button>
-      </Group>
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'success' && <p className="panel-status ok">{status.message}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
-
-      <details className="goldditto-details">
-        <summary className="goldditto-summary">{t('teleport.goldditto.title')}</summary>
-        <div className="goldditto-content">
-          <p className="panel-hint">{t('teleport.goldditto.help')}</p>
-          <button className="goldditto-button" disabled={!canAct} onClick={handleGoldDitto}>
-            {t('teleport.goldditto.action')}
-          </button>
-        </div>
-      </details>
+        <PanelSection>
+          <Accordion variant="contained" radius="sm">
+            <Accordion.Item value="gold-ditto">
+              <Accordion.Control>{t('teleport.goldditto.title')}</Accordion.Control>
+              <Accordion.Panel>
+                <PanelNotice tone="info">{t('teleport.goldditto.help')}</PanelNotice>
+                <Button mt="sm" color="yellow" variant="light" disabled={!canAct} onClick={handleGoldDitto}>{t('teleport.goldditto.action')}</Button>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
+        </PanelSection>
+      </ModePanelLayout>
 
       {contextMenu && (
         <ContextMenu

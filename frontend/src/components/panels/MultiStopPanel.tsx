@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActionIcon, Button, FileButton, Group, NumberInput, SegmentedControl, TextInput } from '@mantine/core'
+import { ActionIcon, Button, FileButton, Group, NumberInput, SegmentedControl } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
@@ -26,6 +26,15 @@ import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
+import {
+  CoordinateField,
+  ModePanelLayout,
+  NumberRangeField,
+  PanelFooter,
+  PanelNotice,
+  PanelSection,
+  PanelStatus,
+} from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type ImportMessage = { kind: 'ok' | 'error'; text: string }
@@ -403,13 +412,41 @@ export function MultiStopPanel({
     }
   }
 
+  const notices = (
+    <>
+      {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
+      {deviceId && !deviceReady && (
+        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+      )}
+      {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+    </>
+  )
+
+  const statusMessage = status.kind === 'busy'
+    ? <PanelStatus state="busy" message={t('generic.working')} />
+    : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined
+
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('multistop.title')}</h2>
-        <ModeInfoTooltip description={t('multistop.description')} />
-      </div>
-
+      <ModePanelLayout
+        title={t('multistop.title')}
+        headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
+        notices={!isActive ? notices : undefined}
+        footer={!isActive ? (
+          <PanelFooter>
+            <PlaybackControls
+              canStart={canStart}
+              isActive={isActive}
+              isPaused={isPaused}
+              isBusy={isBusy}
+              onStart={handleStart}
+              onPauseResume={handlePauseResume}
+              onStop={handleStop}
+            />
+          </PanelFooter>
+        ) : undefined}
+        status={statusMessage}
+      >
       {isActive ? (
         <ActiveFlightHUD
           modeName={t('multistop.title')}
@@ -428,33 +465,25 @@ export function MultiStopPanel({
           onStop={handleStop}
         />
       ) : (
-        <div className="panel-scroll-body multistop-panel-scroll">
-          {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-          {deviceId && !deviceReady && (
-            <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-          )}
-          {deviceState === 'teleporting' && (
-            <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
-          )}
-
-          <section className="multistop-section">
+        <>
+          <PanelSection>
             {gpxFileName && (
-              <div className="route-preflight-badge">
+              <Group gap="xs" fz="xs" c="dimmed">
                 <span>GPX: {gpxFileName}</span>
                 <span>·</span>
                 <span>{validWaypoints.length} Points</span>
-              </div>
+              </Group>
             )}
 
             <div className="waypoint-list">
               {items.map((item, idx) => (
                 <div className="coord-row" key={item.id}>
                   <span>{idx + 1}</span>
-                  <TextInput size="xs"
+                  <CoordinateField size="xs"
                     placeholder="lat, lng or URL"
                     value={item.rawText}
                     onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
-                    onChange={(e) => handleTextChange(idx, e.target.value)}
+                    onChange={(value) => handleTextChange(idx, value)}
                   />
                   <div className="waypoint-row-actions">
                     <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
@@ -470,9 +499,9 @@ export function MultiStopPanel({
             </div>
 
             <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => addWaypoint()}>{t('panel.add_waypoint')}</Button><Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
-          </section>
+          </PanelSection>
 
-          <section className="multistop-section">
+          <PanelSection title={t('multistop.import_file')}>
             <Group gap="xs">
             <FileButton accept=".gpx,.json,application/gpx+xml,application/json"
               onChange={async (file) => {
@@ -494,12 +523,10 @@ export function MultiStopPanel({
             <Button size="xs" variant="default" onClick={() => setPasteOpen(true)}>{t('multistop.paste_coords')}</Button>
             </Group>
 
-            {importMessage && (
-              <p className={`panel-status ${importMessage.kind === 'error' ? 'error' : 'ok'}`}>{importMessage.text}</p>
-            )}
-          </section>
+            {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
+          </PanelSection>
 
-          <section className="multistop-section">
+          <PanelSection title={t('multistop.jump_mode')}>
             <SegmentedControl fullWidth size="xs" disabled={isActive} value={jumpMode ? 'jump' : 'line'} onChange={(value) => { setJumpMode(value === 'jump'); if (value === 'line') setStraightLine(true) }} data={[{ label: t('multistop.jump_mode'), value: 'jump' }, { label: t('multistop.straight_line'), value: 'line' }]} />
 
             {jumpMode ? (
@@ -526,23 +553,23 @@ export function MultiStopPanel({
                 disabled={isActive}
               />
               {pauseEnabled && (
-                <Group grow align="end"><NumberInput label={t('panel.sec_label')}
-                    min={0}
-                    value={pauseMin}
-                    disabled={isActive}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(value) => setPauseMin(Number(value) || 0)}
-                  />
-                  <NumberInput label="–"
-                    min={0}
-                    value={pauseMax}
-                    disabled={isActive}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(value) => setPauseMax(Number(value) || 0)}
-                  />
-                </Group>
+                <NumberRangeField
+                  min={pauseMin}
+                  max={pauseMax}
+                  minLabel={t('panel.sec_label')}
+                  maxLabel="–"
+                  onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                  onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                  minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                  maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                />
               )}
+            </>
+            )}
+          </PanelSection>
 
+          {!jumpMode && (
+            <PanelSection>
               <SpeedSlider
                 valueKmh={speedKmh}
                 navMode={navMode}
@@ -550,24 +577,11 @@ export function MultiStopPanel({
                 onNavModeChange={setNavMode}
                 disabled={isActive}
               />
-            </>
-            )}
-          </section>
-
-          <PlaybackControls
-            canStart={canStart}
-            isActive={isActive}
-            isPaused={isPaused}
-            isBusy={isBusy}
-            onStart={handleStart}
-            onPauseResume={handlePauseResume}
-            onStop={handleStop}
-          />
-        </div>
+            </PanelSection>
+          )}
+        </>
       )}
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      </ModePanelLayout>
 
       {contextMenu && (
         <ContextMenu

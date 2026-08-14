@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Badge, Button, SegmentedControl } from '@mantine/core'
+import { Badge, Button, SegmentedControl, Text } from '@mantine/core'
 import { pushHistory, startJoystick, stopJoystick, type NavMode } from '../../services/api'
 import type { PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -11,6 +11,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type SubTab = 'basic' | 'dynamic'
@@ -106,55 +107,39 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
 
   return (
     <div className="panel">
-      <div className="panel-header-row">
-        <h2>{t('joystick.title')}</h2>
-        <ModeInfoTooltip description={t('joystick.description')} />
-      </div>
-
-      {!deviceId && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
-      {deviceId && !deviceReady && (
-        <p className="panel-hint warning">{device?.detail ?? t('panel.hint.device_not_ready')}</p>
-      )}
-      {deviceId && deviceReady && !isActive && !startPoint && (
-        <p className="panel-hint warning">{t('joystick.hint.need_anchor')}</p>
-      )}
-
-      {/* Sub-Tab Bar for Basic vs Dynamic mode setup */}
-      <SegmentedControl
-        fullWidth size="xs" disabled={isActive} value={subTab}
-        onChange={(value) => setSubTab(value as SubTab)}
-        data={[{ label: t('joystick.tab.basic'), value: 'basic' }, { label: t('joystick.tab.dynamic'), value: 'dynamic' }]}
-      />
-
-      {subTab === 'basic' ? (
-        <SpeedSlider
-          valueKmh={speedKmh}
-          navMode={navMode}
-          onChange={setSpeedKmh}
-          onNavModeChange={setNavMode}
-          disabled={isActive}
-        />
-      ) : (
-        <div className="dynamic-settings-group">
-          <div className="setting-row">
-            <span className="setting-label">{t('joystick.dynamic.speed_range')}</span>
-            <Badge variant="light">0–{DYNAMIC_MAX_SPEED_KMH} km/h</Badge>
-          </div>
-          <p className="panel-hint">{t('joystick.dynamic.description')}</p>
-        </div>
-      )}
-
-      <div className="panel-actions icon-actions">
-        {!isActive ? (
-          <Button fullWidth disabled={!canStart} onClick={handleStart}>{t('joystick.action.start')}</Button>
+      <ModePanelLayout
+        title={t('joystick.title')}
+        headerAction={<ModeInfoTooltip description={t('joystick.description')} />}
+        notices={<>
+          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {deviceId && deviceReady && !isActive && !startPoint && <PanelNotice tone="warning">{t('joystick.hint.need_anchor')}</PanelNotice>}
+        </>}
+        footer={<PanelFooter justify="flex-end">
+          {!isActive
+            ? <Button disabled={!canStart} loading={isBusy} onClick={handleStart}>{t('joystick.action.start')}</Button>
+            : <Button color="red" disabled={isBusy} loading={isBusy} onClick={handleStop}>{t('joystick.action.stop')}</Button>}
+        </PanelFooter>}
+        status={status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} /> : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : isActive ? <PanelStatus state="success" message={t('joystick.status.active')} /> : undefined}
+      >
+        <PanelSection>
+          <SegmentedControl
+            fullWidth size="xs" disabled={isActive} value={subTab}
+            onChange={(value) => setSubTab(value as SubTab)}
+            data={[{ label: t('joystick.tab.basic'), value: 'basic' }, { label: t('joystick.tab.dynamic'), value: 'dynamic' }]}
+          />
+        </PanelSection>
+        {subTab === 'basic' ? (
+          <PanelSection title={t('statusbar.speed')}>
+            <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
+          </PanelSection>
         ) : (
-          <Button fullWidth color="red" disabled={isBusy} onClick={handleStop}>{t('joystick.action.stop')}</Button>
+          <PanelSection title={t('joystick.dynamic.speed_range')}>
+            <Badge variant="light">0–{DYNAMIC_MAX_SPEED_KMH} km/h</Badge>
+            <Text size="xs" c="dimmed">{t('joystick.dynamic.description')}</Text>
+          </PanelSection>
         )}
-      </div>
-
-      {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
-      {isActive && <p className="panel-status ok">{t('joystick.status.active')}</p>}
-      {status.kind === 'error' && <p className="panel-status error">{status.message}</p>}
+      </ModePanelLayout>
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
