@@ -8,6 +8,7 @@
   --aw-text-secondary: #667085;
   --aw-border: #d9dde3;
   --aw-map-control-bg: rgb(255 255 255 / 94%);
+  --aw-map-control-icon: #2f61b8;
 }
 
 html[data-mantine-color-scheme='dark'] {
@@ -18,4 +19,5 @@ html[data-mantine-color-scheme='dark'] {
   --aw-text-secondary: #a8afb9;
   --aw-border: #383d45;
   --aw-map-control-bg: rgb(32 35 40 / 94%);
+  --aw-map-control-icon: #b3ccff;
 }

@@ -485,7 +485,7 @@ body {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   pointer-events: auto;
 }
 
@@ -496,32 +496,20 @@ body {
   height: 46px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(167, 196, 224, 0.25);
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(39, 54, 72, 0.78), rgba(18, 26, 38, 0.72));
-  backdrop-filter: blur(10px);
-  color: #dcecff;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-map-control-bg);
+  color: var(--aw-map-control-icon);
   cursor: pointer;
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  box-shadow: var(--mantine-shadow-xs);
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-}
-
-.icon-rail button::before,
-.map-view-wrapper .leaflet-control-zoom a::before {
-  position: absolute;
-  top: 0;
-  left: 8px;
-  right: 8px;
-  height: 1px;
-  content: '';
-  background: linear-gradient(90deg, transparent, rgba(196, 225, 255, 0.65), transparent);
 }
 
 .icon-rail button:hover,
 .map-view-wrapper .leaflet-control-zoom a:hover {
-  transform: translateY(-1px);
-  border-color: rgba(133, 202, 255, 0.75);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  background: var(--aw-surface-raised);
+  border-color: var(--mantine-color-arcBlue-5);
+  box-shadow: var(--mantine-shadow-sm);
 }
 
 .icon-rail button:focus-visible,
@@ -540,14 +528,14 @@ body {
   stroke-linejoin: round;
 }
 
-.icon-rail .history-action { color: #91d8ff; }
-.icon-rail .favorites-action { color: #ffd37a; }
+.icon-rail .history-action { color: var(--aw-map-control-icon); }
+.icon-rail .favorites-action { color: var(--aw-map-control-icon); }
 
 .icon-rail button.active {
-  border-color: rgba(143, 213, 255, 0.85);
-  background: linear-gradient(145deg, rgba(48, 112, 151, 0.84), rgba(26, 63, 98, 0.8));
-  color: #fff;
-  box-shadow: 0 8px 22px rgba(37, 149, 218, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-color: var(--mantine-color-arcBlue-5);
+  background: var(--mantine-color-arcBlue-light);
+  color: var(--mantine-color-arcBlue-7);
+  box-shadow: none;
 }
 
 /* Keep Leaflet's native zoom behaviour while visually joining it to the action rail. */
@@ -560,7 +548,7 @@ body {
 .map-view-wrapper .leaflet-control-zoom {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   border: 0;
   background: transparent;
@@ -574,25 +562,25 @@ body {
   height: 46px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(167, 196, 224, 0.25);
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(39, 54, 72, 0.78), rgba(18, 26, 38, 0.72));
-  color: #dcecff;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-map-control-bg);
+  color: var(--aw-map-control-icon);
   font-family: inherit;
   font-size: 25px;
   font-weight: 300;
   line-height: 1;
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  box-shadow: var(--mantine-shadow-xs);
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
 .map-view-wrapper .leaflet-control-zoom a + a {
-  border-top: 1px solid rgba(167, 196, 224, 0.25);
+  border-top: 1px solid var(--aw-border);
 }
 
 .map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-in,
 .map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-out {
-  border-radius: 14px;
+  border-radius: 8px;
 }
 
 .map-view-wrapper .leaflet-control-zoom a.leaflet-disabled {
