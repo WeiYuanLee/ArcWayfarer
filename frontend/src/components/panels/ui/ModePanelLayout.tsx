@@ -51,8 +51,8 @@ export function ModePanelLayout({
       </Group>
 
       {scrollable ? (
-        <ScrollArea type="auto" offsetScrollbars style={{ minHeight: 0, flex: 1 }}>
-          <Box pe="xs">{body}</Box>
+        <ScrollArea type="auto" style={{ minHeight: 0, flex: 1 }}>
+          <Box>{body}</Box>
         </ScrollArea>
       ) : body}
 
