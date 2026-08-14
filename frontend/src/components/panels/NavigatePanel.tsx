@@ -172,7 +172,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         )}
         <PanelSection>
           <CoordinateField
-            label="S"
+            label={t('navigate.start')}
             placeholder="lat, lng or URL"
             value={startText}
             onFocus={() => requestPoint((lat, lng) => { setStart({ lat, lng }); setStartText(formatPoint({ lat, lng })) })}
@@ -181,7 +181,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
           />
           <Button size="compact-sm" variant="default" onClick={handleSwap}>{t('navigate.swap')}</Button>
           <CoordinateField
-            label="E"
+            label={t('navigate.destination')}
             placeholder="lat, lng or URL"
             value={endText}
             onFocus={() => requestPoint((lat, lng) => { setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) })}
