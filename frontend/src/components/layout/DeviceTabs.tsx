@@ -27,14 +27,14 @@ const MODE_SHORT_NAMES: Record<Mode, string> = {
 }
 
 function statusColor(device: Device, state: DeviceState | undefined): string {
-  if (device.status !== 'ready') return '#666'
-  if (state === 'paused') return '#e0a555'
-  if (state && RUNNING_STATES.includes(state)) return '#4a9af0'
-  return '#4caf50'
+  if (device.status !== 'ready') return 'var(--mantine-color-gray-5)'
+  if (state === 'paused') return 'var(--mantine-color-yellow-6)'
+  if (state && RUNNING_STATES.includes(state)) return 'var(--mantine-color-blue-6)'
+  return 'var(--mantine-color-green-6)'
 }
 
 function getStateLabel(state: DeviceState | undefined, mode: Mode | undefined, t: (key: StringKey) => string): string {
-  if (!state || state === 'idle') return '待命'
+  if (!state || state === 'idle') return t('statusbar.standby')
   if (state === 'paused') return t('panel.paused')
   if (state === 'looping') return t('routeloop.status.looping')
   if (state === 'random_walk') return t('randomwalk.status.wandering')

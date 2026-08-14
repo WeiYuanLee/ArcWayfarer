@@ -68,6 +68,7 @@ export const STRINGS = {
   'version.latest': { zh: '最新版本', en: 'Latest Version' },
   'version.up_to_date': { zh: '目前已是最新版本', en: 'You are using the latest version' },
   'version.new_available': { zh: '發現新版本！', en: 'New Version Available!' },
+  'version.update_available_short': { zh: '可更新', en: 'Update' },
   'version.check_btn': { zh: '檢查更新', en: 'Check for Updates' },
   'version.checking': { zh: '檢查中…', en: 'Checking…' },
   'version.download_now': { zh: '下載新版本', en: 'Download New Version' },

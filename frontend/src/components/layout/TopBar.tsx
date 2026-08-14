@@ -51,7 +51,6 @@ export function TopBar({
   return (
     <div className="top-bar">
       <DevMenuButton deviceId={focusedDeviceId} />
-      <ColorSchemeControl />
       <div className="topbar-title-group">
         <h1>{t('topbar.title')}</h1>
         <VersionBadge
@@ -80,6 +79,7 @@ export function TopBar({
         loading={devicesLoading}
         onRefresh={onRefreshDevices}
       />
+      <ColorSchemeControl />
       <ConnectionStatus connected={connected} />
     </div>
   )
