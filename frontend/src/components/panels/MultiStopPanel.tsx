@@ -529,7 +529,7 @@ export function MultiStopPanel({
             <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
           </PanelSection>
 
-          <PanelSection title={t('multistop.import_file')}>
+          <PanelSection title={t('multistop.section.import')}>
             <Group gap="xs">
             <FileButton accept=".gpx,.json,application/gpx+xml,application/json"
               onChange={async (file) => {
@@ -554,7 +554,7 @@ export function MultiStopPanel({
             {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
           </PanelSection>
 
-          <PanelSection title={t('multistop.jump_mode')}>
+          <PanelSection title={t('multistop.section.operation_mode')}>
             <SegmentedControl fullWidth size="xs" disabled={isActive} value={jumpMode ? 'jump' : 'line'} onChange={(value) => { setJumpMode(value === 'jump'); if (value === 'line') setStraightLine(true) }} data={[{ label: t('multistop.jump_mode'), value: 'jump' }, { label: t('multistop.straight_line'), value: 'line' }]} />
 
             {jumpMode ? (

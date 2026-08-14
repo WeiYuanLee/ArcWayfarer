@@ -207,6 +207,8 @@ export const STRINGS = {
   'multistop.custom_speed': { zh: '自訂速度 (km/h)', en: 'Custom speed (km/h)' },
   'multistop.import_gpx': { zh: '匯入 GPX', en: 'Import GPX' },
   'multistop.import_file': { zh: '匯入檔案', en: 'Import file' },
+  'multistop.section.import': { zh: '匯入', en: 'Import' },
+  'multistop.section.operation_mode': { zh: '運作模式', en: 'Operation mode' },
   'multistop.export_template': { zh: '匯出範本', en: 'Export JSON' },
   'multistop.import_template': { zh: '載入範本', en: 'Import JSON' },
   'multistop.import_template_success': { zh: '已成功載入 JSON 路線範本！', en: 'Loaded JSON route template successfully!' },
