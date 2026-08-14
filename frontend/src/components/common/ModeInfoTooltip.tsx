@@ -1,20 +1,14 @@
-import { useState } from 'react'
+import { Tooltip } from '@mantine/core'
+import { IconInfoCircle } from '@tabler/icons-react'
 
 type Props = {
   description: string
 }
 
 export function ModeInfoTooltip({ description }: Props) {
-  const [show, setShow] = useState(false)
-
   return (
-    <span
-      className="mode-info-tooltip-wrapper"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      <span className="mode-info-icon">ⓘ</span>
-      {show && <span className="mode-info-popover">{description}</span>}
-    </span>
+    <Tooltip label={description} multiline w={260}>
+      <span className="mode-info-icon" aria-label={description}><IconInfoCircle size={16} stroke={1.8} /></span>
+    </Tooltip>
   )
 }

@@ -1,4 +1,6 @@
 import { useT } from '../../i18n'
+import { ActionIcon, Button, Group, Tooltip } from '@mantine/core'
+import { IconPlayerPause, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react'
 
 type Props = {
   canStart: boolean
@@ -14,18 +16,18 @@ export function PlaybackControls({ canStart, isActive, isPaused, isBusy, onStart
   const t = useT()
   const isRunning = isActive && !isPaused
   const primaryLabel = t(isRunning ? 'playback.pause' : isPaused ? 'playback.resume' : 'playback.start')
-  const primaryIcon = isRunning ? '⏸' : '▶'
   const primaryDisabled = isRunning || isPaused ? isBusy : !canStart
 
   return (
-    <div className="playback-controls-row">
-      <button className="playback-btn-primary" disabled={primaryDisabled} onClick={isActive ? onPauseResume : onStart}>
-        <span className="playback-btn-icon">{primaryIcon}</span>
+    <Group className="playback-controls-row" gap="xs" wrap="nowrap">
+      <Button fullWidth loading={isBusy} disabled={primaryDisabled} onClick={isActive ? onPauseResume : onStart} leftSection={isRunning ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}>
         {primaryLabel}
-      </button>
-      <button className="playback-btn-stop" disabled={!isActive || isBusy} onClick={onStop} title={t('playback.stop')}>
-        ⏹
-      </button>
-    </div>
+      </Button>
+      <Tooltip label={t('playback.stop')}>
+        <ActionIcon color="red" variant="light" size="lg" disabled={!isActive || isBusy} onClick={onStop} aria-label={t('playback.stop')}>
+          <IconPlayerStop size={17} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
   )
 }

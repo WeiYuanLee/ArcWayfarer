@@ -8,21 +8,13 @@ type SwitchBarProps = {
 
 export function SwitchBar({ checked, onChange, label, disabled, subLabel }: SwitchBarProps) {
   return (
-    <label className={`switch-bar-row ${disabled ? 'disabled' : ''}`}>
-      <div className="switch-bar-label-group">
-        <span className="switch-bar-label">{label}</span>
-        {subLabel && <span className="switch-bar-sub">{subLabel}</span>}
+    <Group className="switch-bar-row" justify="space-between" wrap="nowrap">
+      <div>
+        <Text size="sm" fw={500}>{label}</Text>
+        {subLabel && <Text size="xs" c="dimmed">{subLabel}</Text>}
       </div>
-      <div className={`switch-bar-track ${checked ? 'checked' : ''}`}>
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          disabled={disabled}
-          className="switch-bar-input"
-        />
-        <div className="switch-bar-thumb" />
-      </div>
-    </label>
+      <Switch checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} disabled={disabled} aria-label={label} />
+    </Group>
   )
 }
+import { Group, Switch, Text } from '@mantine/core'
