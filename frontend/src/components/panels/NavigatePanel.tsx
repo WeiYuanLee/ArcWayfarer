@@ -160,11 +160,10 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
           status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
             : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
               : isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
-                : isRunning ? <PanelStatus state="success" message={`${t('navigate.status.running')}${liveEtaSeconds !== null ? `… ETA ${formatEta(liveEtaSeconds)}` : '…'}`} />
-                  : undefined
+                : undefined
         }
       >
-        {isActive ? <ActiveFlightHUD modeName={t('navigate.title')} isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
+        {isActive ? <ActiveFlightHUD modeName={t('navigate.title')} isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} legLabel={t('navigate.active_leg')} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
         {distanceKm !== null && (
           <Paper withBorder px="sm" py="xs" bg="var(--aw-surface-raised)">
             <Text size="xs" fw={600} mb={2}>{t('navigate.distance')}</Text>

@@ -14,6 +14,7 @@ type Props = {
   routePath?: LatLng[]
   waypoints?: (LatLng | null)[]
   isLoop?: boolean
+  legLabel?: string
   connected?: boolean
   onPauseResume: () => void
   onStop: () => void
@@ -31,6 +32,7 @@ export function ActiveFlightHUD({
   routePath,
   waypoints,
   isLoop = false,
+  legLabel,
   connected = true,
   onPauseResume,
   onStop,
@@ -59,7 +61,7 @@ export function ActiveFlightHUD({
         <div className="hud-leg-info">
           <span className="hud-leg-title">{t('hud.current_leg')}</span>
           <span className="hud-leg-nodes">
-            Point #{current} → Point #{next}
+            {legLabel || `Point #${current} → Point #${next}`}
           </span>
         </div>
 

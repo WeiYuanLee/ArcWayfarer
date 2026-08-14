@@ -156,6 +156,7 @@ export const STRINGS = {
 
   // Navigate panel
   'navigate.title': { zh: '導航', en: 'Navigate' },
+  'navigate.active_leg': { zh: '起點 → 終點', en: 'Start → destination' },
   'navigate.description': {
     zh: '沿著兩點間的路線走路、騎車或開車。',
     en: 'Walk, bike, or drive along a routed path between two points.',
