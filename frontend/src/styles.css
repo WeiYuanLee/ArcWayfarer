@@ -810,6 +810,11 @@ body {
 .mode-switcher .mantine-SegmentedControl-indicator { border: 1px solid var(--mantine-color-arcBlue-5); background: var(--mantine-color-arcBlue-light); border-radius: 6px; }
 .mode-switcher-item { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; font-size: 13px; white-space: nowrap; }
 
+.teleport-footer-actions { display: grid; grid-template-columns: max-content 1fr; width: 100%; }
+.teleport-footer-actions .teleport-primary-action { grid-column: 1 / -1; width: 100%; }
+.teleport-footer-actions.gold { grid-template-columns: 1fr 1fr; }
+.teleport-footer-actions.gold .teleport-primary-action { grid-column: auto; }
+
 .playback-controls-row {
   display: flex;
   gap: 8px;

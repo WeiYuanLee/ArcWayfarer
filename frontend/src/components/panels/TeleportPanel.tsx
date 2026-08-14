@@ -186,12 +186,12 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
         </>}
         footer={
           <PanelFooter justify="flex-end">
-            <Group gap="xs" wrap="wrap" justify="flex-end">
+            <Group className={`teleport-footer-actions ${teleportMode === 'gold' ? 'gold' : ''}`} gap="xs" wrap="nowrap">
               {teleportMode === 'standard' && <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
                 {t('teleport.action.clear')}
               </Button>}
               <Button variant="default" disabled={!target} onClick={handlePreview}>{t('teleport.action.preview')}</Button>
-              <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}>{teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}</Button>
+              <Button className="teleport-primary-action" disabled={!canAct} loading={status.kind === 'busy'} onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}>{teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}</Button>
             </Group>
           </PanelFooter>
         }
