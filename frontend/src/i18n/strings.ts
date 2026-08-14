@@ -43,6 +43,8 @@ export const STRINGS = {
   'search.placeholder': { zh: '搜尋地名關鍵字 (例如: 台北101, 駁二藝術特區)…', en: 'Search place keyword (e.g. Taipei 101)…' },
   'search.no_results': { zh: '未找到匹配的地點', en: 'No matching places found' },
   'search.title': { zh: '搜尋地點', en: 'Search Location' },
+  'search.hint': { zh: '輸入至少兩個字元，搜尋地名、地標或地址。', en: 'Enter at least two characters to search places, landmarks, or addresses.' },
+  'search.clear': { zh: '清除搜尋', en: 'Clear search' },
 
   // Shared panel hints
   'panel.hint.select_device': { zh: '請先選擇裝置。', en: 'Select a device above.' },
@@ -128,6 +130,7 @@ export const STRINGS = {
   'statusbar.lat': { zh: '緯度', en: 'Lat' },
   'statusbar.lng': { zh: '經度', en: 'Lng' },
   'statusbar.speed': { zh: '速度', en: 'Speed' },
+  'statusbar.standby': { zh: '待命', en: 'Standby' },
 
   // Teleport panel
   'teleport.title': { zh: '瞬移', en: 'Teleport' },

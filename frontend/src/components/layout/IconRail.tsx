@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { ActionIcon, Tooltip } from '@mantine/core'
-import { IconHeart, IconHistory } from '@tabler/icons-react'
+import { IconHeart, IconHistory, IconSearch } from '@tabler/icons-react'
 import { FavoritesDrawer } from './FavoritesDrawer'
 import { HistoryDrawer } from './HistoryDrawer'
 import { useT } from '../../i18n'
+import { PlaceSearchDrawer } from '../map/PlaceSearchDrawer'
 
 type Props = {
   onFlyTo: (lat: number, lng: number) => void
   onSelectFavorite: (lat: number, lng: number) => void
+  onSelectPlace: (lat: number, lng: number, placeName: string) => void
 }
 
-export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
+export function IconRail({ onFlyTo, onSelectFavorite, onSelectPlace }: Props) {
   const t = useT()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [favDrawerOpen, setFavDrawerOpen] = useState(false)
+  const [placeSearchOpen, setPlaceSearchOpen] = useState(false)
 
   return (
     <>
@@ -40,6 +43,17 @@ export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
           <IconHeart size={21} stroke={1.8} />
         </ActionIcon>
         </Tooltip>
+        <Tooltip label={t('search.title')} position="left" openDelay={450}>
+        <ActionIcon
+          className={`map-action-button place-search-action${placeSearchOpen ? ' active' : ''}`}
+          onClick={() => setPlaceSearchOpen(true)}
+          aria-label={t('search.title')}
+          variant={placeSearchOpen ? 'light' : 'default'}
+          color="blue"
+        >
+          <IconSearch size={21} stroke={1.8} />
+        </ActionIcon>
+        </Tooltip>
       </div>
 
       <HistoryDrawer
@@ -52,6 +66,11 @@ export function IconRail({ onFlyTo, onSelectFavorite }: Props) {
         isOpen={favDrawerOpen}
         onClose={() => setFavDrawerOpen(false)}
         onSelectFavorite={onSelectFavorite}
+      />
+      <PlaceSearchDrawer
+        isOpen={placeSearchOpen}
+        onClose={() => setPlaceSearchOpen(false)}
+        onSelectPlace={onSelectPlace}
       />
     </>
   )

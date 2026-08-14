@@ -2158,164 +2158,31 @@ body {
   transform: translateX(20px);
 }
 
-/* Keyword Place Search Bar */
-.place-search-container {
-  position: relative;
-  z-index: 25;
-  width: 260px;
-  pointer-events: auto;
+/* Place search uses a drawer like Favorites, with compact but information-rich results. */
+.place-search-result {
+  width: 100%;
+  padding: 10px;
+  text-align: left;
+  background: var(--aw-surface-raised);
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
-.place-search-input-box {
-  display: flex;
-  align-items: center;
-  background: rgba(30, 30, 30, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+.place-search-result:hover,
+.place-search-result:focus-visible {
+  background: var(--aw-surface);
+  border-color: var(--mantine-primary-color-filled);
 }
 
-.place-search-input-box:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+.place-search-result:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
 }
 
-.place-search-container .search-icon {
-  font-size: 14px;
-  opacity: 0.7;
-  user-select: none;
-}
-
-.place-search-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #eee;
-  font-size: 13px;
-  outline: none;
-  margin-left: 8px;
-  min-width: 0;
-}
-
-.place-search-input::placeholder {
-  color: #888;
-}
-
-.place-search-clear {
-  background: transparent;
-  border: none;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 4px;
-  margin-left: 4px;
-  border-radius: 4px;
-}
-
-.place-search-clear:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.place-search-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: placeSearchSpin 0.7s linear infinite;
-  margin-left: 6px;
+.place-search-result-icon {
   flex-shrink: 0;
-}
-
-@keyframes placeSearchSpin {
-  to { transform: rotate(360deg); }
-}
-
-.place-search-dropdown {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 8px;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  list-style: none;
-  padding: 6px 0;
-  max-height: 280px;
-  overflow-y: auto;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
-  scrollbar-width: thin;
-  scrollbar-color: #555 transparent;
-}
-
-.place-search-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-
-.place-search-dropdown::-webkit-scrollbar-thumb {
-  background: #555;
-  border-radius: 3px;
-}
-
-.dropdown-row {
-  display: flex;
-  align-items: flex-start;
-  padding: 8px 12px;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  transition: background 0.15s ease;
-}
-
-.dropdown-row:last-child {
-  border-bottom: none;
-}
-
-.dropdown-row.selected,
-.dropdown-row:hover {
-  background: rgba(59, 130, 246, 0.2);
-}
-
-.dropdown-row .row-icon {
-  font-size: 14px;
-  margin-right: 8px;
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.dropdown-row .row-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.dropdown-row .place-title {
-  color: #fff;
-  font-weight: 500;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dropdown-row .place-address {
-  color: #aaa;
-  font-size: 11px;
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dropdown-empty {
-  padding: 12px;
-  text-align: center;
-  color: #888;
-  font-size: 12px;
+  color: var(--mantine-primary-color-filled);
 }
 
 /* Custom Right-Click Context Menu & Map Path Tooltips */
