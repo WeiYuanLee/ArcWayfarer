@@ -310,14 +310,7 @@ body {
 }
 
 .device-refresh {
-  background: #2a2a2a;
-  color: #eee;
-  border: 1px solid #444;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .device-refresh:disabled {
@@ -757,14 +750,20 @@ body {
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 1;
-  background: transparent;
-  border: none;
-  color: #bbb;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  background: var(--aw-surface-raised);
+  border: 1px solid var(--aw-border);
+  border-radius: 6px;
+  color: var(--aw-text-secondary);
   cursor: pointer;
   font-size: 14px;
   padding: 0;
+  pointer-events: auto;
 }
+
+.panel-collapse-toggle:hover { color: var(--aw-text-primary); border-color: var(--mantine-primary-color-filled); }
 
 .panel-expand-toggle {
   background: var(--aw-surface);

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ActionIcon, Tooltip } from '@mantine/core'
+import { IconRefresh } from '@tabler/icons-react'
 import type { Device } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -153,9 +155,11 @@ export function DeviceTabs({
           </div>
         )
       })}
-      <button className="device-refresh" onClick={onRefresh} disabled={loading} title={t('device.rescan')}>
-        ⟳
-      </button>
+      <Tooltip label={t('device.rescan')}>
+        <ActionIcon className="device-refresh" variant="default" color="gray" loading={loading} onClick={onRefresh} aria-label={t('device.rescan')}>
+          <IconRefresh size={16} />
+        </ActionIcon>
+      </Tooltip>
     </div>
   )
 }

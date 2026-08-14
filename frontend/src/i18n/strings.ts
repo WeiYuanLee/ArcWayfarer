@@ -3,6 +3,7 @@ export type Lang = 'zh' | 'en'
 export const STRINGS = {
   // Generic
   'generic.working': { zh: '處理中…', en: 'Working…' },
+  'generic.close': { zh: '關閉', en: 'Close' },
 
   // Map overlay
   'overlay.collapse_panel': { zh: '收合面板', en: 'Collapse panel' },
