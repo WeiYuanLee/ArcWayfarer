@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ActionIcon, Badge, Button, FileButton, Group, NumberInput, SegmentedControl } from '@mantine/core'
+import { useEffect, useRef, useState } from 'react'
+import { ActionIcon, Badge, Button, FileButton, Group, NumberInput, SegmentedControl, Stack } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
@@ -92,6 +92,9 @@ export function MultiStopPanel({
     description: '',
     onConfirm: () => {},
   })
+  const lastWaypointRef = useRef<HTMLDivElement | null>(null)
+  const focusNewWaypointRef = useRef(false)
+  const suppressPointPickerRef = useRef(false)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -126,6 +129,24 @@ export function MultiStopPanel({
         return endIndex < validWaypoints.length ? [validWaypoints[startIndex], validWaypoints[endIndex]] : null
       })()
     : null
+
+  useEffect(() => {
+    if (!focusNewWaypointRef.current) return
+    focusNewWaypointRef.current = false
+    requestAnimationFrame(() => {
+      lastWaypointRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      const input = lastWaypointRef.current?.querySelector('input')
+      if (input) {
+        suppressPointPickerRef.current = true
+        input.focus()
+      }
+    })
+  }, [items.length])
+
+  function handleAddWaypoint() {
+    focusNewWaypointRef.current = true
+    addWaypoint()
+  }
 
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -475,17 +496,24 @@ export function MultiStopPanel({
               </Group>
             )}
 
-            <div className="waypoint-list">
+            <Stack gap="xs" className="route-loop-waypoint-list">
               {items.map((item, idx) => (
-                <div className="coord-row" key={item.id}>
-                  <span>{idx + 1}</span>
+                <Group className="route-loop-waypoint-row" key={item.id} wrap="nowrap" gap="xs" ref={idx === items.length - 1 ? lastWaypointRef : undefined}>
+                  <Badge variant="light" color="gray" circle>{idx + 1}</Badge>
                   <CoordinateField size="xs"
                     placeholder="lat, lng or URL"
                     value={item.rawText}
-                    onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
+                    style={{ flex: 1 }}
+                    onFocus={() => {
+                      if (suppressPointPickerRef.current) {
+                        suppressPointPickerRef.current = false
+                        return
+                      }
+                      requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
+                    }}
                     onChange={(value) => handleTextChange(idx, value)}
                   />
-                  <div className="waypoint-row-actions">
+                  <Group gap={2} wrap="nowrap">
                     <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
                     <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
                     <ActionIcon color="red" variant="subtle"
@@ -493,12 +521,12 @@ export function MultiStopPanel({
                       onClick={() => removeWaypoint(idx)}
                       title={t('panel.remove_waypoint')}
                     aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
-                  </div>
-                </div>
+                  </Group>
+                </Group>
               ))}
-            </div>
+            </Stack>
 
-            <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => addWaypoint()}>{t('panel.add_waypoint')}</Button><Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
+            <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
           </PanelSection>
 
           <PanelSection title={t('multistop.import_file')}>
