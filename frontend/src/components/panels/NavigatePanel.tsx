@@ -189,7 +189,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
             rightSection={<FavoriteButton point={end} />}
           />
         </PanelSection>
-        <PanelSection title={t('statusbar.speed')}>
+        <PanelSection>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
         </PanelSection>
         </>}

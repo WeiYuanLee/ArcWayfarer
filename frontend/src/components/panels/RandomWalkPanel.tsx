@@ -180,7 +180,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
           <SwitchBar label={t('panel.pause_toggle')} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive} />
           {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.sec_label')} maxLabel="–" minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
         </PanelSection>
-        <PanelSection title={t('statusbar.speed')}>
+        <PanelSection>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
         </PanelSection>
       </ModePanelLayout>

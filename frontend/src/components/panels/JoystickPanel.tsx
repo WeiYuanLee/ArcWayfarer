@@ -130,7 +130,7 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
           />
         </PanelSection>
         {subTab === 'basic' ? (
-          <PanelSection title={t('statusbar.speed')}>
+          <PanelSection>
             <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
           </PanelSection>
         ) : (
