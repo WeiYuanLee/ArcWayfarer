@@ -6,6 +6,7 @@ import { EMPTY_OVERLAY } from './types'
 import { estimateDurationMinutes, formatEta, formatPoint, haversineDistanceKm, parsePoint } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
+import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { FavoriteButton } from './FavoriteButton'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
@@ -15,7 +16,7 @@ import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSectio
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
-export function NavigatePanel({ deviceId, device, deviceState, livePosition, liveEtaSeconds, requestPoint, setOverlay }: PanelProps) {
+export function NavigatePanel({ deviceId, device, deviceState, livePosition, liveEtaSeconds, liveStopIndex, connected, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
   const [start, setStart] = useState<LatLng | null>(null)
   const [end, setEnd] = useState<LatLng | null>(null)
@@ -142,18 +143,19 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
 
   const distanceKm = start && end ? haversineDistanceKm(start, end) : null
   const durationMin = distanceKm !== null ? estimateDurationMinutes(distanceKm, speedKmh) : null
+  const notices = <>
+    {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
+    {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+    {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
+  </>
 
   return (
     <div className="panel">
       <ModePanelLayout
         title={t('navigate.title')}
         headerAction={<ModeInfoTooltip description={t('navigate.description')} />}
-        notices={<>
-          {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
-          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
-          {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
-        </>}
-        footer={<PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter>}
+        notices={!isActive ? notices : undefined}
+        footer={!isActive ? <PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter> : undefined}
         status={
           status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
             : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
@@ -162,6 +164,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
                   : undefined
         }
       >
+        {isActive ? <ActiveFlightHUD modeName={t('navigate.title')} isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
         {distanceKm !== null && (
           <Paper withBorder px="sm" py="xs" bg="var(--aw-surface-raised)">
             <Text size="xs" fw={600} mb={2}>{t('navigate.distance')}</Text>
@@ -190,6 +193,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         <PanelSection title={t('statusbar.speed')}>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
         </PanelSection>
+        </>}
       </ModePanelLayout>
       {contextMenu && (
         <ContextMenu
