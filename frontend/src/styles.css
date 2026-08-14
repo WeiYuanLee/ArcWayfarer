@@ -2071,26 +2071,23 @@ body {
   color: #64748b;
 }
 
-/* Stylish Modern Switch Bar */
+/* Shared switch-row surface. Uses theme tokens so its boundary stays visible in light mode. */
 .switch-bar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  margin-top: 8px;
-  cursor: pointer;
+  background: var(--aw-surface-raised);
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  margin-top: 0;
   user-select: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
 }
 
-.switch-bar-row:hover:not(.disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(0, 242, 254, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+.switch-bar-row:has(input:not(:disabled)):hover {
+  border-color: var(--mantine-primary-color-filled);
 }
 
 .switch-bar-row.disabled {

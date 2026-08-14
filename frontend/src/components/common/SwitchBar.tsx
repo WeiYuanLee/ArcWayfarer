@@ -8,7 +8,7 @@ type SwitchBarProps = {
 
 export function SwitchBar({ checked, onChange, label, disabled, subLabel }: SwitchBarProps) {
   return (
-    <Group className="switch-bar-row" justify="space-between" wrap="nowrap">
+    <Group className={`switch-bar-row${disabled ? ' disabled' : ''}`} justify="space-between" wrap="nowrap">
       <div>
         <Text size="sm" fw={500}>{label}</Text>
         {subLabel && <Text size="xs" c="dimmed">{subLabel}</Text>}
