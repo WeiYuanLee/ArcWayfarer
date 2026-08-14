@@ -150,18 +150,46 @@ function startBackend() {
   if (isDev) return Promise.resolve()
   const exe = backendExecutablePath()
   console.log('[electron] spawning backend:', exe)
+  let stderr = ''
   backendProc = spawn(exe, [], {
     cwd: path.dirname(exe),
     env: { ...process.env, ARCWAYFARER_WEB_DIR: path.join(process.resourcesPath, 'mobile-web') },
   })
   backendProc.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`))
-  backendProc.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`))
+  backendProc.stderr.on('data', (d) => {
+    const output = d.toString()
+    // Keep enough of the Python/PyInstaller error to make a packaged-launch
+    // failure actionable without putting an unbounded amount in the dialog.
+    stderr = (stderr + output).slice(-8000)
+    process.stderr.write(`[backend] ${output}`)
+  })
   backendProc.on('exit', (code) => {
     console.log('[electron] backend exited with code', code)
     backendProc = null
   })
 
-  return waitForBackend('http://127.0.0.1:8787/health')
+  const proc = backendProc
+  const startupFailure = new Promise((_, reject) => {
+    proc.once('error', (err) => {
+      reject(new Error(`Could not launch the bundled backend (${err.message}).`))
+    })
+    proc.once('exit', (code, signal) => {
+      const status = signal ? `signal ${signal}` : `code ${code}`
+      const details = stderr.trim()
+      reject(new Error(
+        `Bundled backend exited before it became ready (${status}).` +
+        (details ? `\n\nBackend output:\n${details}` : '')
+      ))
+    })
+  })
+
+  return Promise.race([
+    waitForBackend('http://127.0.0.1:8787/health').catch((err) => {
+      const details = stderr.trim()
+      throw new Error(err.message + (details ? `\n\nBackend output:\n${details}` : ''))
+    }),
+    startupFailure,
+  ])
 }
 
 function stopTunneld() {

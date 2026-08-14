@@ -73,11 +73,11 @@ export function DevMenuButton({ deviceId }: Props) {
           <hr className="dev-menu-divider" />
 
           <button type="button" onClick={() => { setOpen(false); setRemoteOpen(true) }}>
-            手機遙控
+            {t('devmenu.remote')}
           </button>
 
           <button type="button" onClick={() => { setOpen(false); setSponsorOpen(true) }}>
-            支持開發者
+            {t('devmenu.sponsor')}
           </button>
 
           <hr className="dev-menu-divider" />

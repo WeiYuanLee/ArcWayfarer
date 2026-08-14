@@ -85,6 +85,8 @@ export const STRINGS = {
   },
   'devmenu.amfi_failed': { zh: 'AMFI reveal 失敗', en: 'AMFI reveal failed' },
   'devmenu.lang_label': { zh: '語言', en: 'Language' },
+  'devmenu.remote': { zh: '手機遙控', en: 'Mobile Remote' },
+  'devmenu.sponsor': { zh: '支持開發者', en: 'Support the Developer' },
 
   // Mode selector
   'mode.teleport': { zh: '瞬移', en: 'Teleport' },
