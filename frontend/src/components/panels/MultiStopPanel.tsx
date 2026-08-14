@@ -548,6 +548,7 @@ export function MultiStopPanel({
             <>
               <SwitchBar
                 label={t('panel.pause_toggle')}
+                subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
                 checked={pauseEnabled}
                 onChange={setPauseEnabled}
                 disabled={isActive}
@@ -556,8 +557,8 @@ export function MultiStopPanel({
                 <NumberRangeField
                   min={pauseMin}
                   max={pauseMax}
-                  minLabel={t('panel.sec_label')}
-                  maxLabel="–"
+                  minLabel={t('panel.pause_min')}
+                  maxLabel={t('panel.pause_max')}
                   onMinChange={(value) => setPauseMin(Number(value) || 0)}
                   onMaxChange={(value) => setPauseMax(Number(value) || 0)}
                   minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}

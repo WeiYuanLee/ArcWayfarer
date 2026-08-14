@@ -175,10 +175,10 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
             {[50, 100, 300, 500].map((value) => <Button key={value} size="xs" variant={radius === value ? 'filled' : 'default'} disabled={isActive} onClick={() => setRadius(value)}>{`${value}m`}</Button>)}
           </Group>
         </PanelSection>
-        <PanelSection title={t('panel.pause_toggle')}>
+        <PanelSection>
           <SwitchBar label={t('multistop.straight_line')} checked={straightLine} onChange={setStraightLine} disabled={isActive} />
-          <SwitchBar label={t('panel.pause_toggle')} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive} />
-          {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.sec_label')} maxLabel="–" minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
+          <SwitchBar label={t('panel.pause_toggle')} subLabel={pauseEnabled ? t('panel.pause_summary') : undefined} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive} />
+          {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.pause_min')} maxLabel={t('panel.pause_max')} minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
         </PanelSection>
         <PanelSection>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
