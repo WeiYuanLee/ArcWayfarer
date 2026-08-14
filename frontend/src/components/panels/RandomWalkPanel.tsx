@@ -177,8 +177,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
         </PanelSection>
         <PanelSection>
           <SwitchBar label={t('multistop.straight_line')} checked={straightLine} onChange={setStraightLine} disabled={isActive} />
-          <SwitchBar label={t('panel.pause_toggle')} subLabel={pauseEnabled ? t('panel.pause_summary') : undefined} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive} />
-          {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.pause_min')} maxLabel={t('panel.pause_max')} minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
+          <SwitchBar label={t('panel.pause_toggle')} subLabel={pauseEnabled ? t('panel.pause_summary') : undefined} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive}>
+            {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.pause_min')} maxLabel={t('panel.pause_max')} minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
+          </SwitchBar>
         </PanelSection>
         <PanelSection>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />

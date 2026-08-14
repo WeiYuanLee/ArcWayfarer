@@ -486,9 +486,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               checked={pauseEnabled}
               onChange={setPauseEnabled}
               disabled={isActive}
-            />
-            {pauseEnabled && (
-              <NumberRangeField
+            >
+              {pauseEnabled && <NumberRangeField
                 min={pauseMin}
                 max={pauseMax}
                 minLabel={t('panel.pause_min')}
@@ -497,8 +496,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 onMaxChange={(value) => setPauseMax(Number(value) || 0)}
                 minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
                 maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
-              />
-            )}
+              />}
+            </SwitchBar>
           </PanelSection>
 
           <PanelSection>

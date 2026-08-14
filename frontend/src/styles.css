@@ -2074,8 +2074,8 @@ body {
 /* Shared switch-row surface. Uses theme tokens so its boundary stays visible in light mode. */
 .switch-bar-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   padding: 10px 14px;
   background: var(--aw-surface-raised);
   border: 1px solid var(--aw-border);
@@ -2084,6 +2084,10 @@ body {
   user-select: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
+}
+
+.switch-bar-row > .mantine-Group-root {
+  width: 100%;
 }
 
 .switch-bar-row:has(input:not(:disabled)):hover {
