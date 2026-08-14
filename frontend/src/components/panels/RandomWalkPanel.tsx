@@ -11,7 +11,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
-import { CoordinateField, ModePanelLayout, NumberRangeField, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
+import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
@@ -25,9 +25,6 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
-  const [pauseEnabled, setPauseEnabled] = useState(false)
-  const [pauseMin, setPauseMin] = useState(5)
-  const [pauseMax, setPauseMax] = useState(20)
   const [straightLine, setStraightLine] = useState(true)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; title?: string; items: ContextMenuItem[] } | null>(null)
 
@@ -106,7 +103,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
         navMode,
         center,
         radius,
-        { enabled: pauseEnabled, min: pauseMin, max: pauseMax },
+        { enabled: false, min: 0, max: 0 },
         speedKmh,
         straightLine
       )
@@ -164,22 +161,19 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
       >
         <PanelSection>
           <CoordinateField
-            label="C"
+            label={t('routeloop.circle.center')}
             placeholder="Center (lat, lng or URL)"
             value={centerText}
             onFocus={() => requestPoint((lat, lng) => { setCenter({ lat, lng }); setCenterText(formatPoint({ lat, lng })) })}
             onChange={handleCenterTextChange}
           />
-          <NumberInput label="Radius (m)" min={1} value={radius} disabled={isActive} onFocus={(event) => event.currentTarget.select()} onChange={(value) => setRadius(Number(value) || 0)} />
+          <NumberInput label={t('randomwalk.radius')} min={1} value={radius} disabled={isActive} onFocus={(event) => event.currentTarget.select()} onChange={(value) => setRadius(Number(value) || 0)} />
           <Group gap="xs">
             {[50, 100, 300, 500].map((value) => <Button key={value} size="xs" variant={radius === value ? 'filled' : 'default'} disabled={isActive} onClick={() => setRadius(value)}>{`${value}m`}</Button>)}
           </Group>
         </PanelSection>
         <PanelSection>
           <SwitchBar label={t('multistop.straight_line')} checked={straightLine} onChange={setStraightLine} disabled={isActive} />
-          <SwitchBar label={t('panel.pause_toggle')} subLabel={pauseEnabled ? t('panel.pause_summary') : undefined} checked={pauseEnabled} onChange={setPauseEnabled} disabled={isActive}>
-            {pauseEnabled && <NumberRangeField min={pauseMin} max={pauseMax} onMinChange={(value) => setPauseMin(Number(value) || 0)} onMaxChange={(value) => setPauseMax(Number(value) || 0)} minLabel={t('panel.pause_min')} maxLabel={t('panel.pause_max')} minProps={{ min: 0, disabled: isActive }} maxProps={{ min: 0, disabled: isActive }} />}
-          </SwitchBar>
         </PanelSection>
         <PanelSection>
           <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />

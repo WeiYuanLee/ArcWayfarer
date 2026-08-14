@@ -257,6 +257,7 @@ export const STRINGS = {
     zh: '在半徑範圍內隨機漫遊，直到停止。',
     en: 'Wander to random points within a radius until stopped.',
   },
+  'randomwalk.radius': { zh: '半徑（公尺）', en: 'Radius (m)' },
   'randomwalk.status.wandering': { zh: '漫遊中…', en: 'Wandering…' },
   'randomwalk.status.failed_start': { zh: '隨機漫遊啟動失敗。', en: 'Failed to start random walk.' },
   'randomwalk.status.failed_stop': { zh: '隨機漫遊停止失敗。', en: 'Failed to stop random walk.' },
