@@ -816,11 +816,14 @@ body {
 .teleport-footer-actions.gold .teleport-primary-action { grid-column: auto; }
 
 .playback-controls-row {
+  width: 100%;
+  margin-top: 0;
+}
+
+.playback-controls-row.is-active {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  width: 100%;
   gap: 8px;
-  margin-top: 0;
 }
 
 @media (max-width: 640px) {

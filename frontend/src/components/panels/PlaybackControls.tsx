@@ -19,15 +19,17 @@ export function PlaybackControls({ canStart, isActive, isPaused, isBusy, onStart
   const primaryDisabled = isRunning || isPaused ? isBusy : !canStart
 
   return (
-    <Group className="playback-controls-row" gap="xs" wrap="nowrap">
+    <Group className={`playback-controls-row${isActive ? ' is-active' : ''}`} gap="xs" wrap="nowrap">
       <Button fullWidth loading={isBusy} disabled={primaryDisabled} onClick={isActive ? onPauseResume : onStart} leftSection={isRunning ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}>
         {primaryLabel}
       </Button>
-      <Tooltip label={t('playback.stop')}>
-        <ActionIcon color="red" variant="light" size="lg" disabled={!isActive || isBusy} onClick={onStop} aria-label={t('playback.stop')}>
-          <IconPlayerStop size={17} />
-        </ActionIcon>
-      </Tooltip>
+      {isActive && (
+        <Tooltip label={t('playback.stop')}>
+          <ActionIcon color="red" variant="light" size="lg" disabled={isBusy} onClick={onStop} aria-label={t('playback.stop')}>
+            <IconPlayerStop size={17} />
+          </ActionIcon>
+        </Tooltip>
+      )}
     </Group>
   )
 }
