@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { Menu } from '@mantine/core'
 
 export type ContextMenuItem = {
   id: string
@@ -19,84 +18,25 @@ type Props = {
 }
 
 export function ContextMenu({ x, y, title, items, onClose }: Props) {
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onClose()
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault()
-        const buttons = menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
-        if (!buttons || buttons.length === 0) return
-        const activeIndex = Array.from(buttons).indexOf(document.activeElement as HTMLButtonElement)
-        let nextIndex = 0
-        if (e.key === 'ArrowDown') {
-          nextIndex = activeIndex < buttons.length - 1 ? activeIndex + 1 : 0
-        } else {
-          nextIndex = activeIndex > 0 ? activeIndex - 1 : buttons.length - 1
-        }
-        buttons[nextIndex]?.focus()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [onClose])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const firstButton = menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')
-      firstButton?.focus()
-    }, 30)
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Prevent menu from clipping outside viewport
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-  const posX = Math.min(x, viewportWidth - 220)
-  const posY = Math.min(y, viewportHeight - 260)
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
-      aria-label={title || 'Context Menu'}
-      className="custom-context-menu"
-      style={{ left: `${posX}px`, top: `${posY}px` }}
-      onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {title && <div className="context-menu-header">{title}</div>}
-      <div className="context-menu-body" role="none">
+  return (
+    <Menu opened onChange={(opened) => { if (!opened) onClose() }} position="bottom-start" shadow="md" width={220} withinPortal zIndex={2100}>
+      <Menu.Target>
+        <span aria-hidden style={{ position: 'fixed', left: x, top: y, width: 1, height: 1, pointerEvents: 'none' }} />
+      </Menu.Target>
+      <Menu.Dropdown>
+        {title && <Menu.Label>{title}</Menu.Label>}
         {items.map((item) => (
-          <button
+          <Menu.Item
             key={item.id}
-            role="menuitem"
-            className={`context-menu-item ${item.danger ? 'danger' : ''}`}
             disabled={item.disabled}
-            aria-disabled={item.disabled}
-            onClick={() => {
-              if (item.disabled) return
-              item.onClick()
-              onClose()
-            }}
+            color={item.danger ? 'red' : undefined}
+            leftSection={item.icon ? <span aria-hidden>{item.icon}</span> : undefined}
+            onClick={() => { item.onClick(); onClose() }}
           >
-            {item.icon && <span className="item-icon">{item.icon}</span>}
-            <span className="item-label">{item.label}</span>
-          </button>
+            {item.label}
+          </Menu.Item>
         ))}
-      </div>
-    </div>,
-    document.body
+      </Menu.Dropdown>
+    </Menu>
   )
 }
