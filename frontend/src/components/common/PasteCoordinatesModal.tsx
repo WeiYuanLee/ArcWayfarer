@@ -13,11 +13,13 @@ export function PasteCoordinatesModal({ isOpen, value, onChange, onSubmit, onClo
   const t = useT()
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title={t('multistop.paste_coords')} centered size="md">
+    <Modal opened={isOpen} onClose={onClose} title={t('multistop.paste_coords')} centered size="lg">
       <form onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
         <Textarea
           autoFocus
-          minRows={7}
+          autosize
+          minRows={8}
+          maxRows={14}
           placeholder={t('multistop.paste_placeholder')}
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}
