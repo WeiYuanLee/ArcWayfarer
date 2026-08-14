@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Group, TextInput } from '@mantine/core'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -184,43 +185,38 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
         <p className="panel-hint warning">{t('teleport.hint.navigating')}</p>
       )}
 
-      <div className="input-favorite-wrapper">
-        <input
-          type="text"
-          className="coord-input-large"
-          placeholder="lat, lng or Google Maps URL"
-          value={targetText}
-          onFocus={handleFocusInput}
-          onChange={(e) => handleTextChange(e.target.value)}
-          onBlur={handleInputBlur}
-        />
-        <div className="inside-favorite-action">
-          <FavoriteButton point={target} />
-        </div>
-      </div>
+      <TextInput
+        label={t('teleport.title')}
+        placeholder="lat, lng or Google Maps URL"
+        value={targetText}
+        onFocus={handleFocusInput}
+        onChange={(event) => handleTextChange(event.currentTarget.value)}
+        onBlur={handleInputBlur}
+        rightSection={<FavoriteButton point={target} />}
+      />
 
-      <div className="panel-quick-actions">
-        <button className="swap-button" onClick={handlePasteClipboard} title={t('teleport.action.paste')}>
+      <Group gap="xs" mt="sm">
+        <Button size="compact-sm" variant="default" onClick={handlePasteClipboard} title={t('teleport.action.paste')}>
           {t('teleport.action.paste')}
-        </button>
+        </Button>
         {livePosition && (
-          <button className="swap-button" onClick={handleUseCurrentLocation} title={t('teleport.action.my_location')}>
+          <Button size="compact-sm" variant="default" onClick={handleUseCurrentLocation} title={t('teleport.action.my_location')}>
             {t('teleport.action.my_location')}
-          </button>
+          </Button>
         )}
-      </div>
+      </Group>
 
-      <div className="panel-actions">
-        <button disabled={!target} onClick={handlePreview}>
+      <Group grow mt="lg">
+        <Button variant="default" disabled={!target} onClick={handlePreview}>
           {t('teleport.action.preview')}
-        </button>
-        <button disabled={!canAct} onClick={handleSet}>
+        </Button>
+        <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={handleSet}>
           {t('teleport.action.set_location')}
-        </button>
-        <button disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
+        </Button>
+        <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
           {t('teleport.action.clear')}
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       {status.kind === 'busy' && <p className="panel-status">{t('generic.working')}</p>}
       {status.kind === 'success' && <p className="panel-status ok">{status.message}</p>}
