@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listHistory, type HistoryEntry } from '../../services/api'
 import { useI18n } from '../../i18n'
 import { formatRelativeTime } from './relativeTime'
+import { Drawer } from '@mantine/core'
 
 type Props = {
   isOpen: boolean
@@ -32,25 +33,13 @@ export function HistoryDrawer({ isOpen, onClose, onFlyTo }: Props) {
       .finally(() => setLoading(false))
   }, [isOpen])
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    if (isOpen) window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
   function handleSelect(lat: number, lng: number) {
     onFlyTo(lat, lng)
     onClose()
   }
 
   return (
-    <>
-      <div className="fav-drawer-backdrop" onClick={onClose} />
-      <aside className="fav-drawer" role="dialog" aria-label={t('history.title')}>
+    <Drawer opened={isOpen} onClose={onClose} position="right" size={400} padding={0} withCloseButton={false} aria-label={t('history.title')}>
         <div className="fav-drawer-header">
           <div className="fav-drawer-title-row">
             <h2 className="fav-drawer-title">
@@ -86,7 +75,6 @@ export function HistoryDrawer({ isOpen, onClose, onFlyTo }: Props) {
             </ul>
           )}
         </div>
-      </aside>
-    </>
+    </Drawer>
   )
 }

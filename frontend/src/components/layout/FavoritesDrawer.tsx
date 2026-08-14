@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
+import { Drawer } from '@mantine/core'
 import { useT } from '../../i18n'
 import { useFavorites } from '../../hooks/useFavorites'
 import { FavoriteGroupSection } from './FavoriteGroupSection'
@@ -41,14 +42,6 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
     }
   }, [isOpen, refresh])
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    if (isOpen) window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -66,14 +59,10 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
     onClose()
   }
 
-  if (!isOpen) return null
-
   const totalCount = displayed.length
 
   return (
-    <>
-      <div className="fav-drawer-backdrop" onClick={onClose} />
-      <aside className="fav-drawer" role="dialog" aria-label={t('favorites.title')}>
+    <Drawer opened={isOpen} onClose={onClose} position="right" size={400} padding={0} withCloseButton={false} aria-label={t('favorites.title')}>
         {/* Header */}
         <div className="fav-drawer-header">
           <div className="fav-drawer-title-row">
@@ -154,9 +143,7 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
             </DndContext>
           )}
         </div>
-      </aside>
-
       <UndoToast pendingDeletes={pendingDeletes} onUndo={undoDelete} />
-    </>
+    </Drawer>
   )
 }
