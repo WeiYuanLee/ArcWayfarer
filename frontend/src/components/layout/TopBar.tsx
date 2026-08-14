@@ -2,6 +2,7 @@ import { DeviceTabs } from './DeviceTabs'
 import { ConnectionStatus } from '../ConnectionStatus'
 import { DevMenuButton } from './DevMenuButton'
 import { VersionBadge } from '../common/VersionBadge'
+import { ColorSchemeControl } from './ColorSchemeControl'
 import type { Device } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -50,6 +51,7 @@ export function TopBar({
   return (
     <div className="top-bar">
       <DevMenuButton deviceId={focusedDeviceId} />
+      <ColorSchemeControl />
       <div className="topbar-title-group">
         <h1>{t('topbar.title')}</h1>
         <VersionBadge

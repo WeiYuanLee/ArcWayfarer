@@ -1,8 +1,8 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #1e1e1e;
-  color: #eee;
+  background: var(--aw-canvas);
+  color: var(--aw-text-primary);
 }
 
 @keyframes livePulse {
@@ -23,7 +23,8 @@ body {
   align-items: center;
   gap: 16px;
   padding: 10px 16px;
-  border-bottom: 1px solid #333;
+  background: var(--aw-surface);
+  border-bottom: 1px solid var(--aw-border);
 }
 
 .topbar-title-group {

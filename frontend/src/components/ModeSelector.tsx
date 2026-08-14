@@ -1,5 +1,6 @@
 import { useT } from '../i18n'
 import type { StringKey } from '../i18n'
+import { SegmentedControl } from '@mantine/core'
 
 export type Mode = 'teleport' | 'navigate' | 'route-loop' | 'multi-stop' | 'random-walk' | 'joystick'
 
@@ -20,20 +21,11 @@ type Props = {
 export function ModeSelector({ value, onChange }: Props) {
   const t = useT()
   return (
-    <div className="dynamic-capsule-selector">
-      {MODES.map((mode) => {
-        const isActive = mode.id === value
-        return (
-          <button
-            key={mode.id}
-            className={`capsule-item ${isActive ? 'active' : ''}`}
-            onClick={() => onChange(mode.id)}
-          >
-            <span className="capsule-label">{t(mode.labelKey)}</span>
-            {isActive && <div className="capsule-glow-indicator" />}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      aria-label="Location control mode"
+      value={value}
+      onChange={(next) => onChange(next as Mode)}
+      data={MODES.map((mode) => ({ value: mode.id, label: t(mode.labelKey) }))}
+    />
   )
 }

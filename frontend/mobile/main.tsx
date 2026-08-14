@@ -2,6 +2,11 @@ import { FormEvent, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '../src/MobileApp'
 import { I18nProvider } from '../src/i18n'
+import { AppProviders } from '../src/theme/AppProviders'
+import '@mantine/core/styles.css'
+import '@mantine/notifications/styles.css'
+import '@mantine/spotlight/styles.css'
+import '../src/theme/tokens.css'
 import '../src/styles.css'
 
 const SESSION_KEY = 'arcwayfarer.mobile.session'
@@ -38,7 +43,11 @@ function PairingScreen({ token, onPaired }: { token: string | null; onPaired: ()
 function MobileRoot() {
   const [paired, setPaired] = useState(() => Boolean(sessionStorage.getItem(SESSION_KEY)))
   const token = new URLSearchParams(location.hash.slice(1)).get('pair')
-  return paired ? <I18nProvider><App /></I18nProvider> : <PairingScreen token={token} onPaired={() => setPaired(true)} />
+  return (
+    <AppProviders>
+      {paired ? <I18nProvider><App /></I18nProvider> : <PairingScreen token={token} onPaired={() => setPaired(true)} />}
+    </AppProviders>
+  )
 }
 
 createRoot(document.getElementById('root')!).render(<MobileRoot />)
