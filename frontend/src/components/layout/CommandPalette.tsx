@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Spotlight, type SpotlightActionData } from '@mantine/spotlight'
-import { IconDeviceMobile, IconHistory, IconMapPin, IconRefresh, IconRoute, IconStar, IconTerminal2 } from '@tabler/icons-react'
+import { IconDeviceMobile, IconHistory, IconMapPin, IconRefresh, IconRoute, IconStar } from '@tabler/icons-react'
 import { listFavorites, listHistory, type Favorite, type HistoryEntry } from '../../services/api'
 import { useT } from '../../i18n'
 import type { Mode } from '../ModeSelector'
@@ -72,7 +72,6 @@ export function CommandPalette({ isOpen, onClose, onSelectMode, onFlyTo, onSelec
       maxHeight={420}
       centered
       zIndex={2200}
-      leftSection={<IconTerminal2 size={18} />}
     />
   )
 }
