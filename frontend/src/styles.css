@@ -467,6 +467,16 @@ body {
   border-radius: 3px;
 }
 
+.route-loop-waypoint-list {
+  max-height: 132px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.route-loop-waypoint-row {
+  min-width: 0;
+}
+
 .overlay-status-dock {
   position: fixed;
   bottom: 16px;

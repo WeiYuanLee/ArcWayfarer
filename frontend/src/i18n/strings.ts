@@ -49,7 +49,7 @@ export const STRINGS = {
   'panel.hint.device_not_ready': { zh: '裝置尚未就緒。', en: 'Device is not ready yet.' },
   'panel.hint.teleporting': { zh: '裝置正在瞬移中。', en: 'Device is currently teleporting.' },
   'panel.pause_toggle': { zh: '每站暫停', en: 'Pause at each stop' },
-  'panel.add_waypoint': { zh: '+ 新增路徑', en: '+ Add' },
+  'panel.add_waypoint': { zh: '新增路徑', en: 'Add waypoint' },
   'panel.remove_waypoint': { zh: '移除路徑', en: 'Remove' },
   'panel.sec_label': { zh: '秒', en: 'Sec' },
   'panel.paused': { zh: '已暫停。', en: 'Paused.' },
