@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, Stack } from '@mantine/core'
+import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, Stack, Tooltip } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
@@ -438,10 +438,18 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   ))}
                 </Stack>
 
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                   <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button>
-                  <Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button>
-                  <Button size="xs" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button>
+                  <Tooltip label={t('routeloop.action.reverse')}>
+                    <ActionIcon size="lg" variant="default" onClick={reverseWaypoints} aria-label={t('routeloop.action.reverse')}>
+                      <IconRefresh size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label={t('multistop.action.clear_all')}>
+                    <ActionIcon size="lg" color="red" variant="light" onClick={handleClearAllWaypoints} aria-label={t('multistop.action.clear_all')}>
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Tooltip>
                 </Group>
             </PanelSection>
           ) : (
