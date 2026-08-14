@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { Button, Group, Modal, Textarea } from '@mantine/core'
 import { useT } from '../../i18n'
 
 type Props = {
@@ -12,51 +11,22 @@ type Props = {
 
 export function PasteCoordinatesModal({ isOpen, value, onChange, onSubmit, onClose }: Props) {
   const t = useT()
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    if (!isOpen) return
-    textareaRef.current?.focus()
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
-  return createPortal(
-    <div className="modal-backdrop" onClick={onClose}>
-      <form
-        className="paste-coordinates-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="paste-coordinates-title"
-        onClick={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault()
-          onSubmit()
-        }}
-      >
-        <h3 id="paste-coordinates-title">{t('multistop.paste_coords')}</h3>
-        <textarea
-          ref={textareaRef}
-          className="paste-textarea"
+  return (
+    <Modal opened={isOpen} onClose={onClose} title={t('multistop.paste_coords')} centered size="md">
+      <form onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
+        <Textarea
+          autoFocus
+          minRows={7}
           placeholder={t('multistop.paste_placeholder')}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event.currentTarget.value)}
         />
-        <div className="paste-coordinates-actions">
-          <button type="button" className="swap-button" onClick={onClose}>
-            {t('multistop.paste_cancel')}
-          </button>
-          <button type="submit" className="swap-button">
-            {t('multistop.paste_submit')}
-          </button>
-        </div>
+        <Group justify="flex-end" mt="lg">
+          <Button type="button" variant="default" onClick={onClose}>{t('multistop.paste_cancel')}</Button>
+          <Button type="submit">{t('multistop.paste_submit')}</Button>
+        </Group>
       </form>
-    </div>,
-    document.body
+    </Modal>
   )
 }
