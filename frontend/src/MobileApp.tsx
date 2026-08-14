@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ActionIcon, Alert, Badge, NativeSelect, Tabs, Text, Tooltip } from '@mantine/core'
+import { IconClock, IconHeart, IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
 import { MapView } from './components/map/MapView'
 import { FavoritesDrawer } from './components/layout/FavoritesDrawer'
 import { HistoryDrawer } from './components/layout/HistoryDrawer'
@@ -10,15 +12,16 @@ import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useT } from './i18n'
 import type { StringKey } from './i18n'
+import { ColorSchemeControl } from './components/layout/ColorSchemeControl'
 
 type SheetState = 'collapsed' | 'half' | 'full'
 
-const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: string }[] = [
-  { id: 'teleport',    labelKey: 'mode.teleport',    icon: '📍' },
-  { id: 'navigate',    labelKey: 'mode.navigate',    icon: '🧭' },
-  { id: 'multi-stop',  labelKey: 'mode.multi_stop',  icon: '📌' },
-  { id: 'route-loop',  labelKey: 'mode.route_loop',  icon: '🔁' },
-  { id: 'random-walk', labelKey: 'mode.random_walk', icon: '🎲' },
+const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[] = [
+  { id: 'teleport',    labelKey: 'mode.teleport',    icon: IconMapPin },
+  { id: 'navigate',    labelKey: 'mode.navigate',    icon: IconRoute },
+  { id: 'multi-stop',  labelKey: 'mode.multi_stop',  icon: IconRoute2 },
+  { id: 'route-loop',  labelKey: 'mode.route_loop',  icon: IconWand },
+  { id: 'random-walk', labelKey: 'mode.random_walk', icon: IconWalk },
 ]
 
 export default function MobileApp() {
@@ -150,20 +153,24 @@ export default function MobileApp() {
   const overlaysMap: Record<string, MapOverlay> = focusedDeviceId ? { [focusedDeviceId]: overlay } : {}
 
   return (
-    <div className="mapp">
+    <div className="mapp mobile-app">
       {/* Top bar */}
       <div className="mapp-topbar">
-        <span className={`mapp-dot ${connected ? 'mapp-dot--on' : 'mapp-dot--off'}`} />
-        <span className="mapp-device-name">{deviceName ?? (connected ? t('panel.hint.select_device') : '未連線')}</span>
+        <Badge className="mapp-connection" color={connected ? 'teal' : 'gray'} variant="light" size="sm" leftSection={<span className="mapp-dot" />}>
+          {connected ? 'Connected' : 'Offline'}
+        </Badge>
+        <Text className="mapp-device-name" size="sm" fw={600} truncate>{deviceName ?? (connected ? t('panel.hint.select_device') : '未連線')}</Text>
         {devices.length > 1 && (
-          <select
+          <NativeSelect
             className="mapp-device-picker"
             value={focusedDeviceId ?? ''}
             onChange={(e) => setFocusedDeviceId(e.target.value)}
-          >
-            {devices.map((d) => <option key={d.udid} value={d.udid}>{d.name}</option>)}
-          </select>
+            data={devices.map((d) => ({ value: d.udid, label: d.name }))}
+            aria-label="Choose device"
+            size="xs"
+          />
         )}
+        <ColorSchemeControl />
       </div>
 
       {/* Map full-screen */}
@@ -179,14 +186,24 @@ export default function MobileApp() {
         />
 
         {/* FAB: favorites & history */}
-        <div className="mapp-fabs">
-          <button className="mapp-fab" onClick={() => setFavOpen(true)} aria-label={t('favorites.title')}>⭐</button>
-          <button className="mapp-fab" onClick={() => setHistoryOpen(true)} aria-label={t('history.title')}>🕒</button>
+        <div className="mapp-fabs" aria-label="Map actions">
+          <Tooltip label={t('favorites.title')} position="right">
+            <ActionIcon className="mapp-fab" onClick={() => setFavOpen(true)} aria-label={t('favorites.title')} size="lg" variant="default">
+              <IconHeart size={20} stroke={1.75} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t('history.title')} position="right">
+            <ActionIcon className="mapp-fab" onClick={() => setHistoryOpen(true)} aria-label={t('history.title')} size="lg" variant="default">
+              <IconClock size={20} stroke={1.75} />
+            </ActionIcon>
+          </Tooltip>
         </div>
 
         {/* Pending pick hint */}
         {pendingPickRef.current && (
-          <div className="mapp-pick-hint">點地圖選取位置</div>
+          <Alert className="mapp-pick-hint" variant="filled" color="arcBlue" icon={<IconMapPin size={16} />}>
+            點地圖選取位置
+          </Alert>
         )}
       </div>
 
@@ -203,24 +220,30 @@ export default function MobileApp() {
         </div>
 
         {/* Mode tab bar */}
-        <div className="mapp-tabs">
-          {MOBILE_MODES.map((m) => (
-            <button
-              key={m.id}
-              className={`mapp-tab ${mode === m.id ? 'mapp-tab--active' : ''}`}
-              onClick={() => { setMode(m.id); if (sheetState === 'collapsed') setSheetState('half') }}
-            >
-              <span className="mapp-tab-icon">{m.icon}</span>
-              <span className="mapp-tab-label">{t(m.labelKey)}</span>
-            </button>
-          ))}
-        </div>
+        <Tabs
+          className="mapp-tabs"
+          value={mode}
+          onChange={(value) => {
+            if (!value) return
+            setMode(value as Mode)
+            if (sheetState === 'collapsed') setSheetState('half')
+          }}
+          variant="pills"
+          keepMounted={false}
+        >
+          <Tabs.List grow>
+            {MOBILE_MODES.map((m) => {
+              const Icon = m.icon
+              return <Tabs.Tab key={m.id} value={m.id} leftSection={<Icon size={15} stroke={1.8} />}>{t(m.labelKey)}</Tabs.Tab>
+            })}
+          </Tabs.List>
+        </Tabs>
 
         {/* Panel content */}
         <div className="mapp-panel-body">
           {focusedDeviceId
             ? <Panel {...panelProps()} />
-            : <p className="mapp-hint">{t('panel.hint.select_device')}</p>
+            : <Text className="mapp-hint" c="dimmed" size="sm">{t('panel.hint.select_device')}</Text>
           }
         </div>
       </div>

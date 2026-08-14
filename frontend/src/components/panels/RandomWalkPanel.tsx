@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Group, NumberInput, TextInput } from '@mantine/core'
 import { pauseRandomWalk, pushHistory, resumeRandomWalk, setLocation, startRandomWalk, stopRandomWalk, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -157,11 +158,8 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
         <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
       )}
 
-      <div className="coord-row">
-        <span>C</span>
-        <input
-          type="text"
-          placeholder="Center (lat, lng or URL)"
+      <TextInput
+          label="C" placeholder="Center (lat, lng or URL)"
           value={centerText}
           onFocus={() =>
             requestPoint((lat, lng) => {
@@ -171,30 +169,18 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
           }
           onChange={(e) => handleCenterTextChange(e.target.value)}
         />
-      </div>
 
-      <div className="coord-row">
-        <span>Radius (m)</span>
-        <input
-          type="number"
-          min={1}
+      <NumberInput label="Radius (m)" min={1}
           value={radius}
           onFocus={(e) => e.target.select()}
-          onChange={(e) => setRadius(Number(e.target.value))}
+          onChange={(value) => setRadius(Number(value) || 0)}
         />
-      </div>
 
-      <div className="panel-quick-actions">
+      <Group gap="xs">
         {[50, 100, 300, 500].map((r) => (
-          <button
-            key={r}
-            className={`swap-button ${radius === r ? 'active' : ''}`}
-            onClick={() => setRadius(r)}
-          >
-            {`${r}m`}
-          </button>
+          <Button key={r} size="xs" variant={radius === r ? 'filled' : 'default'} onClick={() => setRadius(r)}>{`${r}m`}</Button>
         ))}
-      </div>
+      </Group>
 
       <SwitchBar
         label={t('multistop.straight_line')}
@@ -210,26 +196,20 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
         disabled={isActive}
       />
       {pauseEnabled && (
-        <div className="coord-row">
-          <span>{t('panel.sec_label')}</span>
-          <input
-            type="number"
-            min={0}
+        <Group grow align="end">
+          <NumberInput label={t('panel.sec_label')} min={0}
             value={pauseMin}
             disabled={isActive}
             onFocus={(e) => e.target.select()}
-            onChange={(e) => setPauseMin(Number(e.target.value))}
+            onChange={(value) => setPauseMin(Number(value) || 0)}
           />
-          <span>–</span>
-          <input
-            type="number"
-            min={0}
+          <NumberInput label="–" min={0}
             value={pauseMax}
             disabled={isActive}
             onFocus={(e) => e.target.select()}
-            onChange={(e) => setPauseMax(Number(e.target.value))}
+            onChange={(value) => setPauseMax(Number(value) || 0)}
           />
-        </div>
+        </Group>
       )}
 
       <SpeedSlider

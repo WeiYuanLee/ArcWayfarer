@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Badge, Button, SegmentedControl } from '@mantine/core'
 import { pushHistory, startJoystick, stopJoystick, type NavMode } from '../../services/api'
 import type { PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -119,22 +120,11 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
       )}
 
       {/* Sub-Tab Bar for Basic vs Dynamic mode setup */}
-      <div className="panel-sub-tabs">
-        <button
-          className={`sub-tab ${subTab === 'basic' ? 'active' : ''}`}
-          onClick={() => setSubTab('basic')}
-          disabled={isActive}
-        >
-          {t('joystick.tab.basic')}
-        </button>
-        <button
-          className={`sub-tab ${subTab === 'dynamic' ? 'active' : ''}`}
-          onClick={() => setSubTab('dynamic')}
-          disabled={isActive}
-        >
-          {t('joystick.tab.dynamic')}
-        </button>
-      </div>
+      <SegmentedControl
+        fullWidth size="xs" disabled={isActive} value={subTab}
+        onChange={(value) => setSubTab(value as SubTab)}
+        data={[{ label: t('joystick.tab.basic'), value: 'basic' }, { label: t('joystick.tab.dynamic'), value: 'dynamic' }]}
+      />
 
       {subTab === 'basic' ? (
         <SpeedSlider
@@ -148,7 +138,7 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
         <div className="dynamic-settings-group">
           <div className="setting-row">
             <span className="setting-label">{t('joystick.dynamic.speed_range')}</span>
-            <span className="setting-val-badge">0–{DYNAMIC_MAX_SPEED_KMH} km/h</span>
+            <Badge variant="light">0–{DYNAMIC_MAX_SPEED_KMH} km/h</Badge>
           </div>
           <p className="panel-hint">{t('joystick.dynamic.description')}</p>
         </div>
@@ -156,13 +146,9 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
 
       <div className="panel-actions icon-actions">
         {!isActive ? (
-          <button disabled={!canStart} onClick={handleStart} title={t('joystick.action.start')}>
-            {t('joystick.action.start')}
-          </button>
+          <Button fullWidth disabled={!canStart} onClick={handleStart}>{t('joystick.action.start')}</Button>
         ) : (
-          <button disabled={isBusy} onClick={handleStop} title={t('joystick.action.stop')}>
-            {t('joystick.action.stop')}
-          </button>
+          <Button fullWidth color="red" disabled={isBusy} onClick={handleStop}>{t('joystick.action.stop')}</Button>
         )}
       </div>
 

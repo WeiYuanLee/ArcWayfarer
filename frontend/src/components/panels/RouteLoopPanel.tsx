@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { ActionIcon, Button, Group, NumberInput, SegmentedControl, TextInput } from '@mantine/core'
+import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -321,28 +323,15 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               <p className="panel-hint warning">{t('panel.hint.teleporting')}</p>
             )}
 
-            <div className="panel-sub-tabs">
-              <button
-                className={`sub-tab ${subMode === 'manual' ? 'active' : ''}`}
-                onClick={() => setSubMode('manual')}
-                disabled={isActive}
-              >
-                {t('routeloop.mode.manual')}
-              </button>
-              <button
-                className={`sub-tab ${subMode === 'circle' ? 'active' : ''}`}
-                onClick={() => {
+            <SegmentedControl fullWidth size="xs" disabled={isActive} value={subMode} onChange={(value) => {
+              if (value === 'circle') {
                   setSubMode('circle')
                   if (circleCenter) {
                     const generated = pointsOnCircle(circleCenter, circleRadiusKm * 1000, circleCount)
                     setAllWaypoints(generated)
                   }
-                }}
-                disabled={isActive}
-              >
-                {t('routeloop.mode.circle')}
-              </button>
-            </div>
+              } else setSubMode('manual')
+            }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'circle' }]} />
 
             {subMode === 'manual' ? (
               <>
@@ -350,108 +339,79 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   {items.map((item, idx) => (
                     <div className="coord-row" key={item.id}>
                       <span>{idx + 1}</span>
-                      <input
-                        type="text"
+                      <TextInput
+                        size="xs"
                         placeholder="lat, lng or URL"
                         value={item.rawText}
                         onFocus={() => requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))}
                         onChange={(e) => handleTextChange(idx, e.target.value)}
                       />
                       <div className="waypoint-row-actions">
-                        <button disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} title="Move Up">↑</button>
-                        <button disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} title="Move Down">↓</button>
-                        <button
-                          className="waypoint-remove"
+                        <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
+                        <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
+                        <ActionIcon color="red" variant="subtle"
                           disabled={isLocked || items.length <= 2}
                           onClick={() => removeWaypoint(idx)}
                           title={t('panel.remove_waypoint')}
-                        >
-                          ✕
-                        </button>
+                        aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="panel-quick-actions">
-                  <button className="swap-button" onClick={() => addWaypoint()}>
-                    {t('panel.add_waypoint')}
-                  </button>
-                  <button className="swap-button" onClick={reverseWaypoints} title={t('routeloop.action.reverse')}>
-                    {t('routeloop.action.reverse')}
-                  </button>
-                </div>
+                <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={() => addWaypoint()}>{t('panel.add_waypoint')}</Button><Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button></Group>
               </>
             ) : (
               <>
-                <div className="coord-row">
-                  <span>C</span>
-                  <input
-                    type="text"
+                <TextInput label="C"
                     placeholder="Center (lat, lng or URL)"
                     value={circleCenterText}
                     onFocus={handlePickCircleCenter}
                     onChange={(e) => handleCircleCenterTextChange(e.target.value)}
                     disabled={isActive}
                   />
-                </div>
 
                 {livePosition && (
-                  <div className="panel-quick-actions" style={{ marginTop: 4 }}>
-                    <button
-                      className="swap-button"
+                  <Group mt={4}>
+                    <Button size="xs" variant="default"
                       onClick={() => {
                         setCircleCenter(livePosition)
                         setCircleCenterText(formatPoint(livePosition))
                       }}
                       disabled={isActive}
-                    >
-                      {t('routeloop.circle.use_current_location')}
-                    </button>
-                  </div>
+                    >{t('routeloop.circle.use_current_location')}</Button>
+                  </Group>
                 )}
 
-                <div className="coord-row" style={{ marginTop: 10 }}>
-                  <span>{t('routeloop.circle.radius')}</span>
-                  <input
-                    type="number"
+                <NumberInput mt="sm" label={t('routeloop.circle.radius')}
                     min={0.01}
                     step={0.1}
                     value={circleRadiusKm}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setCircleRadiusKm(Math.max(0.01, Number(e.target.value)))}
+                    onChange={(value) => setCircleRadiusKm(Math.max(0.01, Number(value) || 0.01))}
                   />
-                </div>
 
-                <div className="panel-quick-actions">
+                <Group gap="xs">
                   {[0.5, 1, 2, 5].map((r) => (
-                    <button
-                      key={r}
-                      className={`swap-button ${circleRadiusKm === r ? 'active' : ''}`}
+                    <Button key={r} size="xs" variant={circleRadiusKm === r ? 'filled' : 'default'}
                       onClick={() => setCircleRadiusKm(r)}
                       disabled={isActive}
-                    >
-                      {`${r}km`}
-                    </button>
+                    >{`${r}km`}</Button>
                   ))}
-                </div>
+                </Group>
 
-                <div className="coord-row" style={{ marginTop: 10 }}>
-                  <span>{t('routeloop.circle.count')}</span>
-                  <input
-                    type="number"
+                <NumberInput mt="sm" label={t('routeloop.circle.count')}
                     min={4}
                     max={36}
                     value={circleCount}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = Math.max(4, Math.min(36, Number(e.target.value) || 4))
+                    onChange={(value) => {
+                      const val = Math.max(4, Math.min(36, Number(value) || 4))
                       setCircleCount(val)
                     }}
                   />
-                </div>
               </>
             )}
 
@@ -469,26 +429,21 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               disabled={isActive}
             />
             {pauseEnabled && (
-              <div className="coord-row">
-                <span>{t('panel.sec_label')}</span>
-                <input
-                  type="number"
+              <Group grow align="end"><NumberInput label={t('panel.sec_label')}
                   min={0}
                   value={pauseMin}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPauseMin(Number(e.target.value))}
+                  onChange={(value) => setPauseMin(Number(value) || 0)}
                 />
-                <span>–</span>
-                <input
-                  type="number"
+                <NumberInput label="–"
                   min={0}
                   value={pauseMax}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setPauseMax(Number(e.target.value))}
+                  onChange={(value) => setPauseMax(Number(value) || 0)}
                 />
-              </div>
+              </Group>
             )}
 
             <SpeedSlider
