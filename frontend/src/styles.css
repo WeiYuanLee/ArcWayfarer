@@ -739,20 +739,19 @@ body {
 
 .overlay-status-dock .status-bar {
   border-top: none;
-  background: rgba(30, 30, 30, 0.75);
-  backdrop-filter: blur(8px);
-  border-radius: 10px;
+  background: var(--aw-surface);
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
   padding: 8px 14px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--mantine-shadow-xs);
 }
 
 .floating-card {
   position: relative;
-  background: rgba(30, 30, 30, 0.82);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  background: var(--aw-surface);
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  box-shadow: var(--mantine-shadow-sm);
   padding: 16px;
 }
 
@@ -770,15 +769,14 @@ body {
 }
 
 .panel-expand-toggle {
-  background: rgba(30, 30, 30, 0.82);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #eee;
-  border-radius: 999px;
+  background: var(--aw-surface);
+  border: 1px solid var(--aw-border);
+  color: var(--aw-text-primary);
+  border-radius: 6px;
   padding: 10px 16px;
   cursor: pointer;
   text-transform: capitalize;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--mantine-shadow-sm);
 }
 
 .mode-selector {
@@ -808,6 +806,21 @@ body {
   background: #4a4af0;
   color: #fff;
 }
+
+.mode-switcher {
+  max-width: min(760px, calc(100vw - 32px));
+  overflow-x: auto;
+  padding: 2px;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-surface);
+  box-shadow: var(--mantine-shadow-xs);
+}
+
+.mode-switcher .mantine-SegmentedControl-root { min-width: max-content; background: transparent; }
+.mode-switcher .mantine-SegmentedControl-control { border: 0; }
+.mode-switcher .mantine-SegmentedControl-indicator { border: 1px solid var(--mantine-color-arcBlue-5); background: var(--mantine-color-arcBlue-light); border-radius: 6px; }
+.mode-switcher-item { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; font-size: 13px; white-space: nowrap; }
 
 .playback-controls-row {
   display: flex;
