@@ -419,7 +419,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 <Group gap="xs"><Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={reverseWaypoints}>{t('routeloop.action.reverse')}</Button></Group>
             </PanelSection>
           ) : (
-            <PanelSection title={t('routeloop.mode.circle')}>
+            <PanelSection>
                 <CoordinateField label={t('routeloop.circle.center')}
                     placeholder="Center (lat, lng or URL)"
                     value={circleCenterText}
@@ -449,7 +449,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                     onChange={(value) => setCircleRadiusKm(Math.max(0.01, Number(value) || 0.01))}
                   />
 
-                <Group gap="xs">
+                <Group grow gap="xs" wrap="nowrap">
                   {[0.5, 1, 2, 5].map((r) => (
                     <Button key={r} size="xs" variant={circleRadiusKm === r ? 'filled' : 'default'}
                       onClick={() => setCircleRadiusKm(r)}
