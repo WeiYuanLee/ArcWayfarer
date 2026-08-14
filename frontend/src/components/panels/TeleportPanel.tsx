@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Accordion, Button, Group } from '@mantine/core'
+import { Button, Group, SegmentedControl, Text } from '@mantine/core'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatPoint, parsePoint } from './coords'
+import { formatPoint, haversineDistanceKm, parsePoint } from './coords'
 import { FavoriteButton } from './FavoriteButton'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
@@ -18,6 +18,7 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [teleportMode, setTeleportMode] = useState<'standard' | 'gold'>('standard')
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -28,6 +29,8 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
   const deviceReady = device?.status === 'ready'
   const isOtherModeActive = deviceState !== 'idle' && deviceState !== 'teleporting'
   const canAct = deviceReady && target !== null && status.kind !== 'busy'
+  const distanceKm = target && livePosition ? haversineDistanceKm(livePosition, target) : null
+  const cooldownMinutes = distanceKm === null ? null : Math.min(120, Math.ceil(distanceKm))
 
   useEffect(() => {
     setTarget(point)
@@ -188,13 +191,14 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
             </Button>
             <Group gap="xs">
               <Button variant="default" disabled={!target} onClick={handlePreview}>{t('teleport.action.preview')}</Button>
-              <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={handleSet}>{t('teleport.action.set_location')}</Button>
+              <Button disabled={!canAct} loading={status.kind === 'busy'} onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}>{teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}</Button>
             </Group>
           </PanelFooter>
         }
         status={status.kind === 'idle' ? undefined : <PanelStatus state={status.kind} message={status.kind === 'busy' ? t('generic.working') : status.message} />}
       >
         <PanelSection>
+          <SegmentedControl fullWidth size="xs" value={teleportMode} onChange={(value) => setTeleportMode(value as 'standard' | 'gold')} data={[{ value: 'standard', label: t('teleport.mode.standard') }, { value: 'gold', label: t('teleport.goldditto.title') }]} />
           <CoordinateField
             placeholder="lat, lng or Google Maps URL"
             value={targetText}
@@ -207,19 +211,9 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
             <Button size="compact-sm" variant="default" onClick={handlePasteClipboard}>{t('teleport.action.paste')}</Button>
             {livePosition && <Button size="compact-sm" variant="default" onClick={handleUseCurrentLocation}>{t('teleport.action.my_location')}</Button>}
           </Group>
+          {distanceKm !== null && <Text size="xs" c="dimmed">{t('teleport.distance')}: {distanceKm.toFixed(1)} km · {t('teleport.cooldown')}: ~{cooldownMinutes} min</Text>}
         </PanelSection>
-
-        <PanelSection>
-          <Accordion variant="contained" radius="sm">
-            <Accordion.Item value="gold-ditto">
-              <Accordion.Control>{t('teleport.goldditto.title')}</Accordion.Control>
-              <Accordion.Panel>
-                <PanelNotice tone="info">{t('teleport.goldditto.help')}</PanelNotice>
-                <Button mt="sm" color="yellow" variant="light" disabled={!canAct} onClick={handleGoldDitto}>{t('teleport.goldditto.action')}</Button>
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
-        </PanelSection>
+        {teleportMode === 'gold' && <PanelSection description={t('teleport.goldditto.help')}><></></PanelSection>}
       </ModePanelLayout>
 
       {contextMenu && (
