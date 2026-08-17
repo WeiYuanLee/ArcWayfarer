@@ -4,7 +4,7 @@ import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@t
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatPoint, parsePoint, pointsOnCircle } from './coords'
+import { formatPoint, parsePoint, pointsOnCircle, routeLegForStop } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
@@ -58,6 +58,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [routePath, setRoutePath] = useState<LatLng[]>([])
+  const [routeLegs, setRouteLegs] = useState<LatLng[][]>([])
   const [pauseEnabled, setPauseEnabled] = useState(false)
   const [pauseMin, setPauseMin] = useState(5)
   const [pauseMax, setPauseMax] = useState(20)
@@ -96,10 +97,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
 
   const isLocked = isActive || isBusy
   const activePath = isRunning && validWaypoints.length >= 2
-    ? (() => {
-        const startIndex = Math.max(0, Math.min((liveStopIndex ?? 1) - 1, validWaypoints.length - 1))
-        return [validWaypoints[startIndex], validWaypoints[(startIndex + 1) % validWaypoints.length]]
-      })()
+    ? routeLegs[(liveStopIndex ?? 1) - 1] ?? routeLegForStop(routePath, validWaypoints, liveStopIndex ?? 1, true)
     : null
 
   useEffect(() => {
@@ -306,6 +304,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         straightLine
       )
       setRoutePath(result.route)
+      setRouteLegs(result.legs)
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'route_loop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
@@ -319,6 +318,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     try {
       await stopRouteLoop(deviceId)
       setRoutePath([])
+      setRouteLegs([])
       setStatus({ kind: 'idle' })
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('routeloop.status.failed_stop') })

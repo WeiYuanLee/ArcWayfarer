@@ -53,6 +53,9 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         ...(end ? [{ id: 'nav-end', lat: end.lat, lng: end.lng, color: '#e05555', label: 'E', draggable: !isLocked, onDragEnd: (lat: number, lng: number) => { if (isLocked) return; setEnd({ lat, lng }); setEndText(formatPoint({ lat, lng })) } }] : []),
       ],
       path: routePath,
+      // Navigation has one planned leg, so the complete road geometry is also
+      // the active path that receives the animated direction arrows.
+      activePath: isRunning && routePath.length >= 2 ? routePath : null,
       onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
         const clickedPoint = { lat, lng }
         setContextMenu({
@@ -79,7 +82,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       },
     })
     return () => setOverlay(EMPTY_OVERLAY)
-  }, [start, end, routePath, isLocked, deviceId, deviceState, setOverlay, t])
+  }, [start, end, routePath, isRunning, isLocked, deviceId, deviceState, setOverlay, t])
 
   async function handleStart() {
     if (!deviceId || !start || !end) return

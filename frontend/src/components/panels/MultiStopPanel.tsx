@@ -13,7 +13,7 @@ import {
 } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatPoint, parsePastedPoints, parsePoint } from './coords'
+import { formatPoint, parsePastedPoints, parsePoint, routeLegForStop } from './coords'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
@@ -69,6 +69,7 @@ export function MultiStopPanel({
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [routePath, setRoutePath] = useState<LatLng[]>([])
+  const [routeLegs, setRouteLegs] = useState<LatLng[][]>([])
   const [pauseEnabled, setPauseEnabled] = useState(false)
   const [pauseMin, setPauseMin] = useState(5)
   const [pauseMax, setPauseMax] = useState(20)
@@ -123,11 +124,7 @@ export function MultiStopPanel({
 
   const isLocked = isActive || isBusy
   const activePath = isRunning && validWaypoints.length >= 2
-    ? (() => {
-        const startIndex = Math.max(0, Math.min((liveStopIndex ?? 1) - 1, validWaypoints.length - 1))
-        const endIndex = startIndex + 1
-        return endIndex < validWaypoints.length ? [validWaypoints[startIndex], validWaypoints[endIndex]] : null
-      })()
+    ? routeLegs[(liveStopIndex ?? 1) - 1] ?? routeLegForStop(routePath, validWaypoints, liveStopIndex ?? 1, false)
     : null
 
   useEffect(() => {
@@ -399,6 +396,7 @@ export function MultiStopPanel({
         { straightLine, jumpMode, jumpPreDelay, jumpPostDelay, customSpeedKmh: speedKmh }
       )
       setRoutePath(result.route)
+      setRouteLegs(result.legs)
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'multi_stop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
@@ -412,6 +410,7 @@ export function MultiStopPanel({
     try {
       await stopMultiStop(deviceId)
       setRoutePath([])
+      setRouteLegs([])
       setStatus({ kind: 'idle' })
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('multistop.status.failed_stop') })

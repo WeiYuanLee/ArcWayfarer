@@ -11,9 +11,10 @@ async def _build_multistop_playback(
     speed_mps: float,
     tick_seconds: float,
     straight_line: bool = False,
-) -> tuple[list[tuple[float, float]], frozenset[int], dict[int, int]]:
+) -> tuple[list[tuple[float, float]], frozenset[int], dict[int, int], list[list[tuple[float, float]]]]:
     """Route + interpolate each leg separately (no closing leg back to the first waypoint)."""
     playback: list[tuple[float, float]] = []
+    leg_playbacks: list[list[tuple[float, float]]] = []
     station_indices: set[int] = set()
     stop_at: dict[int, int] = {0: 1}  # tick 0 = arrived at stop 1 (the starting waypoint)
     num_legs = len(waypoints) - 1
@@ -28,17 +29,19 @@ async def _build_multistop_playback(
             except Exception:
                 leg_route = [start, end]
         leg_playback = interpolate(leg_route, speed_mps, tick_seconds)
+        leg_geometry = leg_playback or [start, end]
         if playback and leg_playback:
             leg_playback = leg_playback[1:]  # drop the point shared with the previous leg's end
         if not leg_playback:
             leg_playback = [end]
         playback.extend(leg_playback)
+        leg_playbacks.append(leg_geometry)
         is_last_leg = i == num_legs - 1
         if playback:
             stop_at[len(playback) - 1] = i + 2  # 1-based stop number for waypoints[i + 1]
         if playback and not is_last_leg:
             station_indices.add(len(playback) - 1)  # no pause at the final destination — nothing follows it
-    return playback, frozenset(station_indices), stop_at
+    return playback, frozenset(station_indices), stop_at, leg_playbacks
 
 
 async def start_multi_stop(
@@ -53,7 +56,7 @@ async def start_multi_stop(
     jump_pre_delay: float = 0.0,
     jump_post_delay: float = 0.0,
     custom_speed_kmh: float | None = None,
-) -> list[tuple[float, float]]:
+) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
     if len(waypoints) < 2:
         raise RuntimeError("Multi-stop needs at least 2 waypoints.")
 
@@ -62,10 +65,10 @@ async def start_multi_stop(
 
     if jump_mode:
         simulation_engine.start_jump(udid, waypoints, jump_pre_delay, jump_post_delay)
-        return waypoints
+        return waypoints, []
 
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
-    playback_points, station_indices, stop_at = await _build_multistop_playback(
+    playback_points, station_indices, stop_at, leg_playbacks = await _build_multistop_playback(
         nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS, straight_line
     )
     pause_range = (pause_min, pause_max) if pause_enabled else (0.0, 0.0)
@@ -79,7 +82,7 @@ async def start_multi_stop(
         station_pause_range=pause_range,
         stop_at=stop_at,
     )
-    return playback_points
+    return playback_points, leg_playbacks
 
 
 def stop_multi_stop(udid: str) -> bool:
