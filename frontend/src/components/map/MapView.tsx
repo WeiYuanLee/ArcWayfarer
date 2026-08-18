@@ -5,6 +5,7 @@ import type { MapOverlay } from '../panels/types'
 
 import { createCachedTileLayer } from './CachedTileLayer'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
+import { API_BASE_URL } from '../../services/api'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -218,8 +219,14 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
     }
 
     const provider = tileProvider ?? DEFAULT_TILE_PROVIDER
+    // Electron's file:// renderer does not provide OSM with a usable referrer
+    // or application identity. Route only the built-in desktop layer through
+    // our loopback backend, which supplies OSM's required User-Agent.
+    const tileUrl = provider.id === DEFAULT_TILE_PROVIDER.id && !window.location.pathname.startsWith('/mobile')
+      ? `${API_BASE_URL}/api/map/tiles/{z}/{x}/{y}.png`
+      : provider.url
 
-    const tileLayer = createCachedTileLayer(provider.url, {
+    const tileLayer = createCachedTileLayer(tileUrl, {
       provider,
       attribution: provider.attribution,
       maxZoom: provider.maxZoom,
