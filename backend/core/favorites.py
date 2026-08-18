@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 
-from config import BOOKMARKS_FILE
+from config import BOOKMARKS_FILE, FAVORITE_GROUPS_FILE
 from models.schemas import Favorite, FavoriteReorderItem
 from services.storage import safe_load_json, safe_write_json
 
@@ -12,9 +12,23 @@ class FavoriteManager:
     def __init__(self) -> None:
         raw = safe_load_json(BOOKMARKS_FILE, [])
         self._favorites: list[Favorite] = [Favorite(**f) for f in raw]
+        self._groups: list[str] = self._load_groups()
 
     def list(self) -> list[Favorite]:
         return sorted(self._favorites, key=lambda f: f.order)
+
+    def list_groups(self) -> list[str]:
+        favorite_groups = {favorite.group.strip() for favorite in self._favorites if favorite.group.strip()}
+        return sorted(set(self._groups) | favorite_groups, key=str.casefold)
+
+    def add_group(self, name: str) -> str:
+        normalized = name.strip()
+        if not normalized:
+            raise ValueError("Group name cannot be empty.")
+        if normalized.casefold() not in {group.casefold() for group in self.list_groups()}:
+            self._groups.append(normalized)
+            self._save_groups()
+        return normalized
 
     def add(self, name: str, lat: float, lng: float, group: str = "", notes: str = "") -> Favorite:
         max_order = max((f.order for f in self._favorites), default=-1)
@@ -62,6 +76,13 @@ class FavoriteManager:
 
     def _save(self) -> None:
         safe_write_json(BOOKMARKS_FILE, [f.model_dump() for f in self._favorites])
+
+    def _load_groups(self) -> list[str]:
+        raw = safe_load_json(FAVORITE_GROUPS_FILE, [])
+        return [group.strip() for group in raw if isinstance(group, str) and group.strip()]
+
+    def _save_groups(self) -> None:
+        safe_write_json(FAVORITE_GROUPS_FILE, self.list_groups())
 
 
 favorite_manager = FavoriteManager()

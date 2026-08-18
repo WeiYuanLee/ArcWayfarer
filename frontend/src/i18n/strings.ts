@@ -34,6 +34,8 @@ export const STRINGS = {
   'favorites.notes_placeholder': { zh: '備忘說明（可留空）', en: 'Notes (optional)' },
   'favorites.ungrouped': { zh: '未分組', en: 'Ungrouped' },
   'favorites.new_group': { zh: '新增分組', en: 'New group' },
+  'favorites.new_group_placeholder': { zh: '建立新的空群組', en: 'Create an empty group' },
+  'favorites.create_group': { zh: '建立群組', en: 'Create group' },
   'favorites.undo_delete': { zh: '已刪除', en: 'Deleted' },
   'favorites.undo': { zh: '復原', en: 'Undo' },
   'favorites.drag_hint': { zh: '拖曳調整順序', en: 'Drag to reorder' },

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from core.favorites import favorite_manager
-from models.schemas import Favorite, FavoriteCreateRequest, FavoriteReorderRequest, FavoriteUpdateRequest
+from models.schemas import Favorite, FavoriteCreateRequest, FavoriteGroupCreateRequest, FavoriteReorderRequest, FavoriteUpdateRequest
 
 router = APIRouter(prefix="/api/favorites")
 
@@ -9,6 +9,19 @@ router = APIRouter(prefix="/api/favorites")
 @router.get("")
 async def get_favorites() -> list[Favorite]:
     return favorite_manager.list()
+
+
+@router.get("/groups")
+async def get_favorite_groups() -> list[str]:
+    return favorite_manager.list_groups()
+
+
+@router.post("/groups")
+async def post_favorite_group(body: FavoriteGroupCreateRequest) -> str:
+    try:
+        return favorite_manager.add_group(body.name)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("")

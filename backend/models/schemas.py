@@ -143,6 +143,10 @@ class FavoriteUpdateRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class FavoriteGroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+
+
 class FavoriteReorderItem(BaseModel):
     id: str
     order: int

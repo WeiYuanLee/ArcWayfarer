@@ -338,6 +338,14 @@ export function listFavorites(): Promise<Favorite[]> {
   return getJson('/api/favorites')
 }
 
+export function listFavoriteGroups(): Promise<string[]> {
+  return getJson('/api/favorites/groups')
+}
+
+export function addFavoriteGroup(name: string): Promise<string> {
+  return postJsonWithResponse('/api/favorites/groups', { name })
+}
+
 export function addFavorite(input: { name: string; lat: number; lng: number; group?: string; notes?: string }): Promise<Favorite> {
   return postJsonWithResponse('/api/favorites', input)
 }
