@@ -357,6 +357,43 @@ body {
   min-width: 0;
 }
 
+.map-tile-loading-badge {
+  position: absolute;
+  bottom: 24px;
+  left: 16px;
+  z-index: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--aw-surface-floating, rgba(255, 255, 255, 0.9));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--aw-border, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--aw-text-secondary, #5e6d7d);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  animation: fadeIn 0.18s ease-in-out;
+}
+
+.map-tile-loading-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--aw-border, #dbe3eb);
+  border-top-color: var(--aw-primary, #007aff);
+  border-radius: 50%;
+  animation: mapTileSpin 0.75s linear infinite;
+}
+
+@keyframes mapTileSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .map-overlay-container {
   position: absolute;
   inset: 0;

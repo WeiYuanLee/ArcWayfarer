@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ActionIcon, Alert, Button, Group, Menu, Text } from '@mantine/core'
-import { IconHeart, IconMenu2, IconPhone, IconTool } from '@tabler/icons-react'
+import { IconHeart, IconMenu2, IconPhone, IconTool, IconUsersGroup } from '@tabler/icons-react'
 import * as api from '../../services/api'
 import { useI18n } from '../../i18n'
 import { MobileRemoteModal } from '../common/MobileRemoteModal'
 import { SponsorModal } from '../common/SponsorModal'
+import { CommunityModal } from '../common/CommunityModal'
 
 type Props = { deviceId: string | null }
 
@@ -14,6 +15,7 @@ export function DevMenuButton({ deviceId }: Props) {
   const [message, setMessage] = useState<string | null>(null)
   const [remoteOpen, setRemoteOpen] = useState(false)
   const [sponsorOpen, setSponsorOpen] = useState(false)
+  const [communityOpen, setCommunityOpen] = useState(false)
 
   useEffect(() => {
     if (!message) return
@@ -53,6 +55,7 @@ export function DevMenuButton({ deviceId }: Props) {
           <Menu.Divider />
           <Menu.Item leftSection={<IconPhone size={16} />} onClick={() => setRemoteOpen(true)}>{t('devmenu.remote')}</Menu.Item>
           <Menu.Item leftSection={<IconHeart size={16} />} onClick={() => setSponsorOpen(true)}>{t('devmenu.sponsor')}</Menu.Item>
+          <Menu.Item leftSection={<IconUsersGroup size={16} />} onClick={() => setCommunityOpen(true)}>{t('devmenu.community')}</Menu.Item>
           <Menu.Divider />
           <Group justify="space-between" px="sm" py={4}>
             <Text size="xs" c="dimmed">{t('devmenu.lang_label')}</Text>
@@ -65,6 +68,7 @@ export function DevMenuButton({ deviceId }: Props) {
       </Menu>
       <MobileRemoteModal isOpen={remoteOpen} onClose={() => setRemoteOpen(false)} />
       <SponsorModal isOpen={sponsorOpen} onClose={() => setSponsorOpen(false)} />
+      <CommunityModal isOpen={communityOpen} onClose={() => setCommunityOpen(false)} />
     </>
   )
 }

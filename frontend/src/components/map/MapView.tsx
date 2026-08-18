@@ -1,7 +1,10 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { MapOverlay } from '../panels/types'
+
+import { createCachedTileLayer } from './CachedTileLayer'
+import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -141,12 +144,15 @@ type Props = {
   livePositions?: Record<string, LatLng>
   overlays?: Record<string, MapOverlay>
   flyTo?: FlyTarget | null
+  tileProvider?: TileProviderConfig
   children?: ReactNode
 }
 
-export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelectedPointDragEnd, livePositions, overlays, flyTo, children }: Props) {
+export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelectedPointDragEnd, livePositions, overlays, flyTo, tileProvider, children }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
+  const [isTileLoading, setIsTileLoading] = useState(false)
   const selectedPointMarkerRef = useRef<L.Marker | null>(null)
   const liveMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayMarkersRef = useRef<Map<string, L.Marker>>(new Map())
@@ -169,11 +175,6 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
 
     const map = L.map(containerRef.current).setView(DEFAULT_CENTER, DEFAULT_ZOOM)
     mapRef.current = map
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map)
 
     // Dedicated panes so route casing/line, direction arrows, and waypoint badges always
     // stack in this exact order regardless of add/remove timing (default markerPane would
@@ -205,6 +206,38 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
       mapRef.current = null
     }
   }, [])
+
+  // Dynamically attach and hot-swap tileLayer when tileProvider changes
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove()
+      tileLayerRef.current = null
+    }
+
+    const provider = tileProvider ?? DEFAULT_TILE_PROVIDER
+
+    const tileLayer = createCachedTileLayer(provider.url, {
+      provider,
+      attribution: provider.attribution,
+      maxZoom: provider.maxZoom,
+      subdomains: provider.subdomains,
+      updateWhenZooming: false,
+      updateWhenIdle: true,
+      keepBuffer: 2,
+    }).addTo(map)
+
+    tileLayer.on('loading', () => setIsTileLoading(true))
+    tileLayer.on('load', () => setIsTileLoading(false))
+    tileLayerRef.current = tileLayer
+
+    return () => {
+      tileLayer.remove()
+      tileLayerRef.current = null
+    }
+  }, [tileProvider])
 
   useEffect(() => {
     const map = mapRef.current
@@ -599,12 +632,29 @@ export function MapView({ onMapClick, focusedDeviceId, selectedPoint, onSelected
   useEffect(() => {
     const map = mapRef.current
     if (!map || !flyTo) return
-    map.flyTo([flyTo.lat, flyTo.lng], Math.max(map.getZoom(), 14))
+
+    map.stop()
+
+    const target = L.latLng(flyTo.lat, flyTo.lng)
+    const distance = map.getCenter().distanceTo(target)
+    const zoom = Math.max(map.getZoom(), 14)
+
+    if (distance > 5_000) {
+      map.setView(target, zoom, { animate: false })
+    } else {
+      map.flyTo(target, zoom, { duration: 0.6 })
+    }
   }, [flyTo])
 
   return (
     <div className="map-view-wrapper">
       <div ref={containerRef} className="map-view" />
+      {isTileLoading && (
+        <div className="map-tile-loading-badge" role="status" aria-live="polite">
+          <span className="map-tile-loading-spinner" />
+          <span>載入圖資中...</span>
+        </div>
+      )}
       {children}
     </div>
   )

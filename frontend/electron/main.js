@@ -45,6 +45,10 @@ function backendExecutablePath() {
   return path.join(process.resourcesPath, 'backend', exeName)
 }
 
+function authorizationHelperPath() {
+  return path.join(process.resourcesPath, 'ArcWayfarer.app', 'Contents', 'MacOS', 'applet')
+}
+
 function isPortOpen(host, port, timeoutMs = 1000) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port })
@@ -83,13 +87,10 @@ async function startTunneld() {
   console.log('[electron] spawning pymobiledevice3 tunneld:', exe)
 
   if (process.platform === 'darwin') {
-    // Kernel tunnels require root on macOS. osascript provides the native
-    // authorization prompt while keeping the bundled backend self-contained.
+    // Kernel tunnels require root on macOS. The bundled AppleScript applet
+    // preserves the native prompt but gives it the ArcWayfarer app name.
     const command = `${shellQuote(exe)} --tunneld >/tmp/arcwayfarer-tunneld.log 2>&1 & echo $!`
-    const privileged = spawn('osascript', [
-      '-e',
-      `do shell script ${JSON.stringify(command)} with administrator privileges`,
-    ])
+    const privileged = spawn(authorizationHelperPath(), [command])
     let output = ''
     let errors = ''
     privileged.stdout.on('data', (data) => { output += data })
