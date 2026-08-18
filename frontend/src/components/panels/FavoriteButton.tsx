@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Combobox, Group, Modal, Stack, Text, TextInput, Tooltip, useCombobox } from '@mantine/core'
 import { IconStar, IconStarFilled } from '@tabler/icons-react'
 import { addFavorite, listFavorites } from '../../services/api'
 import { useT } from '../../i18n'
@@ -16,6 +16,10 @@ export function FavoriteButton({ point }: Props) {
   const [name, setName] = useState('')
   const [group, setGroup] = useState('')
   const [existingGroups, setExistingGroups] = useState<string[]>([])
+  const combobox = useCombobox({
+    onDropdownClose: () => combobox.resetSelectedOption(),
+    onDropdownOpen: () => combobox.updateSelectedOptionIndex('active'),
+  })
   useEffect(() => {
     if (isNaming) {
       listFavorites()
@@ -46,6 +50,8 @@ export function FavoriteButton({ point }: Props) {
     }
   }
 
+  const matchingGroups = existingGroups.filter((item) => item.toLocaleLowerCase().includes(group.toLocaleLowerCase()))
+
   return (
     <>
       <Tooltip label={t('favorites.add')}>
@@ -58,8 +64,36 @@ export function FavoriteButton({ point }: Props) {
           <Stack gap="sm">
             <Text size="sm" c="dimmed">{point.lat.toFixed(6)}, {point.lng.toFixed(6)}</Text>
             <TextInput autoFocus value={name} maxLength={80} onChange={(event) => setName(event.currentTarget.value)} placeholder={t('favorites.name_placeholder')} />
-            <TextInput value={group} maxLength={40} onChange={(event) => setGroup(event.currentTarget.value)} placeholder={t('favorites.group_placeholder')} list="fav-add-groups" />
-            <datalist id="fav-add-groups">{existingGroups.map((item) => <option key={item} value={item} />)}</datalist>
+            <Combobox
+              store={combobox}
+              withinPortal={false}
+              onOptionSubmit={(value) => {
+                setGroup(value)
+                combobox.closeDropdown()
+              }}
+            >
+              <Combobox.Target>
+                <TextInput
+                  value={group}
+                  maxLength={40}
+                  placeholder={t('favorites.group_placeholder')}
+                  rightSection={<Combobox.Chevron />}
+                  rightSectionPointerEvents="none"
+                  onFocus={() => combobox.openDropdown()}
+                  onClick={() => combobox.openDropdown()}
+                  onChange={(event) => {
+                    setGroup(event.currentTarget.value)
+                    combobox.openDropdown()
+                    combobox.updateSelectedOptionIndex()
+                  }}
+                />
+              </Combobox.Target>
+              <Combobox.Dropdown hidden={matchingGroups.length === 0}>
+                <Combobox.Options>
+                  {matchingGroups.map((item) => <Combobox.Option value={item} key={item}>{item}</Combobox.Option>)}
+                </Combobox.Options>
+              </Combobox.Dropdown>
+            </Combobox>
             <Group justify="flex-end"><Button variant="default" onClick={() => setIsNaming(false)}>{t('favorites.cancel')}</Button><Button type="submit" disabled={!name.trim()}>{t('favorites.save')}</Button></Group>
           </Stack>
         </form>}

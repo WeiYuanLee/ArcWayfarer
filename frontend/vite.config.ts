@@ -10,5 +10,8 @@ export default defineConfig(({ mode }) => {
     base: mobile ? '/mobile/' : './',
     build: mobile ? { outDir: resolve(__dirname, 'mobile-dist'), emptyOutDir: true } : undefined,
     server: { port: 5173 },
+    test: {
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'mobile-dist/**'],
+    },
   }
 })

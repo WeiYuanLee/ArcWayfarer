@@ -40,6 +40,7 @@
     "concurrently": "^8.2.2",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^27.0.1",
     "typescript": "^5.5.0",
     "vite": "^5.3.0",
@@ -56,6 +57,7 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    "afterPack": "electron/after-pack.js",
     "extraResources": [
       {
         "from": "mobile-dist",

@@ -94,6 +94,13 @@ export const STRINGS = {
   'devmenu.lang_label': { zh: '語言', en: 'Language' },
   'devmenu.remote': { zh: '手機遙控', en: 'Mobile Remote' },
   'devmenu.sponsor': { zh: '支持開發者', en: 'Support the Developer' },
+  'devmenu.community': { zh: '社群討論區', en: 'Community' },
+
+  // Community
+  'community.title': { zh: '加入 ArcWayfarer LINE 社群', en: 'Join the ArcWayfarer LINE Community' },
+  'community.description': { zh: '掃描 QR Code，或按下方按鈕使用 LINE 加入討論。', en: 'Scan the QR code or use the button below to join the discussion on LINE.' },
+  'community.qr_alt': { zh: 'ArcWayfarer LINE 社群 QR Code', en: 'ArcWayfarer LINE community QR code' },
+  'community.open_line': { zh: '開啟 LINE 社群', en: 'Open LINE Community' },
 
   // Mode selector
   'mode.teleport': { zh: '瞬移', en: 'Teleport' },

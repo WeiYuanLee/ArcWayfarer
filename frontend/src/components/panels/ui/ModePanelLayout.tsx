@@ -42,12 +42,12 @@ export function ModePanelLayout({
       aria-label={typeof title === 'string' ? title : undefined}
       style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column' }}
     >
-      <Group justify="space-between" align="center" mb="md" wrap="nowrap">
+      <Group align="center" gap="xs" mb="md" wrap="nowrap">
         <Group gap="xs" wrap="nowrap">
           <Title order={2} size="h4" fw={600}>{title}</Title>
+          {headerAction}
           {titleStatus}
         </Group>
-        {headerAction}
       </Group>
 
       {scrollable ? (
