@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import device, favorites, history, location, mobile, multi_stop, navigate, random_walk, route_loop, websocket
+from api import device, favorites, history, location, map, mobile, multi_stop, navigate, random_walk, route_loop, websocket
 from config import API_HOST, API_PORT, ensure_app_data_dir
 from core import events
 from services.mobile_auth import valid_session
@@ -54,6 +54,7 @@ app.add_middleware(
 app.include_router(device.router)
 app.include_router(mobile.router)
 app.include_router(location.router)
+app.include_router(map.router)
 app.include_router(history.router)
 app.include_router(favorites.router)
 app.include_router(navigate.router)
