@@ -394,11 +394,109 @@ body {
   }
 }
 
+.map-engine-control {
+  position: absolute;
+  top: 274px;
+  right: 16px;
+  z-index: 450;
+}
+
+.map-engine-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-map-control-bg);
+  color: var(--aw-map-control-icon);
+  box-shadow: var(--mantine-shadow-xs);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.map-engine-trigger:hover:not(:disabled) {
+  background: var(--aw-surface-raised);
+  border-color: var(--mantine-color-arcBlue-5);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+.map-engine-trigger.active {
+  border-color: var(--mantine-color-arcBlue-5);
+  background: var(--mantine-color-arcBlue-light);
+  color: var(--mantine-color-arcBlue-7);
+  box-shadow: none;
+}
+
+.map-engine-trigger:focus-visible {
+  outline: 2px solid #8bd5ff;
+  outline-offset: 2px;
+}
+
+.map-engine-trigger svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-engine-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.map-engine-menu {
+  position: absolute;
+  right: 54px;
+  top: 0;
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--aw-border);
+  border-radius: 10px;
+  background: var(--aw-surface-floating, #fff);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.map-engine-menu strong {
+  display: block;
+  padding: 3px 6px 7px;
+  font-size: 12px;
+}
+
+.map-engine-menu button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.map-engine-menu button:hover,
+.map-engine-menu button.active {
+  background: var(--mantine-color-arcBlue-light);
+}
+
+.map-engine-menu small {
+  color: var(--aw-text-secondary);
+  font-size: 11px;
+}
+
 .map-overlay-container {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 10;
+  z-index: 450;
 }
 
 .overlay-top-center {
@@ -450,6 +548,28 @@ body {
 .panel-scroll-body::-webkit-scrollbar-thumb {
   background: #555;
   border-radius: 3px;
+}
+
+/* Keep Route Loop's circle settings compact so the fixed Start action remains reachable. */
+.route-loop-circle-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-lg);
+  max-height: min(38dvh, 340px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aw-border) transparent;
+}
+
+.route-loop-circle-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.route-loop-circle-scroll::-webkit-scrollbar-thumb {
+  background: var(--aw-border);
+  border-radius: 999px;
 }
 
 .waypoint-list {
@@ -511,7 +631,7 @@ body {
   position: fixed;
   bottom: 16px;
   right: 16px;
-  z-index: 25;
+  z-index: 450;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -522,7 +642,7 @@ body {
   position: absolute;
   top: 16px;
   right: 16px;
-  z-index: 20;
+  z-index: 450;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -628,6 +748,100 @@ body {
   cursor: not-allowed;
   transform: none;
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Keep MapLibre's zoom control visually joined to the action rail identically to Leaflet */
+.map-view-wrapper .maplibregl-ctrl-top-right {
+  top: 168px;
+  right: 16px;
+}
+
+.map-view-wrapper .maplibregl-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.map-view-wrapper .maplibregl-ctrl-group button {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-map-control-bg);
+  color: var(--aw-map-control-icon);
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 300;
+  line-height: 1;
+  box-shadow: var(--mantine-shadow-xs);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  cursor: pointer;
+}
+
+.map-view-wrapper .maplibregl-ctrl-group button:hover {
+  background: var(--aw-surface-raised);
+  border-color: var(--mantine-color-arcBlue-5);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+.map-view-wrapper .maplibregl-ctrl-group button:focus-visible {
+  outline: 2px solid #8bd5ff;
+  outline-offset: 2px;
+}
+
+.map-view-wrapper .maplibregl-ctrl-group button svg,
+.map-view-wrapper .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  display: none;
+}
+
+.map-view-wrapper .maplibregl-ctrl-zoom-in::after {
+  content: '+';
+  display: block;
+}
+
+.map-view-wrapper .maplibregl-ctrl-zoom-out::after {
+  content: '−';
+  display: block;
+}
+
+/* Style MapLibre attribution bar to match Leaflet's flat bottom-right attribution */
+.map-view-wrapper .maplibregl-ctrl-bottom-right {
+  bottom: 0;
+  right: 0;
+  margin: 0;
+}
+
+.map-view-wrapper .maplibregl-ctrl-attrib {
+  margin: 0;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #333333;
+  box-shadow: none;
+}
+
+.map-view-wrapper .maplibregl-ctrl-attrib a {
+  color: #0078A8;
+  text-decoration: none;
+}
+
+.map-view-wrapper .maplibregl-ctrl-attrib a:hover {
+  text-decoration: underline;
+}
+
+.map-view-wrapper .maplibregl-ctrl-attrib-button {
+  display: none;
 }
 
 .flyout-panel {
@@ -1654,7 +1868,7 @@ body {
   position: fixed;
   right: 24px;
   bottom: 96px;
-  z-index: 20;
+  z-index: 1200;
   pointer-events: auto;
 }
 

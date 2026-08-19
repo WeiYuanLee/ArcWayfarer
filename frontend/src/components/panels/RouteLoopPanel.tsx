@@ -82,7 +82,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   })
   const lastWaypointRef = useRef<HTMLDivElement | null>(null)
   const focusNewWaypointRef = useRef(false)
-  const suppressPointPickerRef = useRef(false)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'looping'
@@ -107,7 +106,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       lastWaypointRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       const input = lastWaypointRef.current?.querySelector('input')
       if (input) {
-        suppressPointPickerRef.current = true
         input.focus()
       }
     })
@@ -162,10 +160,11 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 color: WAYPOINT_COLOR,
                 label: String(idx + 1),
                 title: `Stop #${idx + 1} (${item.point.lat.toFixed(5)}, ${item.point.lng.toFixed(5)})`,
-                draggable: !isLocked && subMode === 'manual',
+                draggable: !isLocked,
                 pathIndex: idx,
                 onDragEnd: (lat: number, lng: number) => {
-                  if (isLocked || subMode === 'circle') return
+                  if (isLocked) return
+                  if (subMode === 'circle') setSubMode('manual')
                   updateWaypoint(idx, { lat, lng })
                 },
                 onContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
@@ -247,6 +246,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 setCircleCenterText(formatPoint(pt))
                 if (subMode !== 'circle') {
                   setSubMode('circle')
+                  setStraightLine(false)
                 }
               },
             },
@@ -396,6 +396,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             <SegmentedControl fullWidth size="xs" disabled={isActive} value={subMode} onChange={(value) => {
               if (value === 'circle') {
                   setSubMode('circle')
+                  setStraightLine(false)
                   if (circleCenter) {
                     const generated = pointsOnCircle(circleCenter, circleRadiusKm * 1000, circleCount)
                     setAllWaypoints(generated)
@@ -417,10 +418,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                         value={item.rawText}
                         style={{ flex: 1 }}
                         onFocus={() => {
-                          if (suppressPointPickerRef.current) {
-                            suppressPointPickerRef.current = false
-                            return
-                          }
                           requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
                         }}
                         onChange={(value) => handleTextChange(idx, value)}
@@ -453,7 +450,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 </Group>
             </PanelSection>
           ) : (
-            <PanelSection>
+            <div className="route-loop-circle-scroll">
+              <PanelSection>
                 <CoordinateField label={t('routeloop.circle.center')}
                     placeholder="Center (lat, lng or URL)"
                     value={circleCenterText}
@@ -503,46 +501,87 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                       setCircleCount(val)
                     }}
                   />
-            </PanelSection>
+              </PanelSection>
+
+              <PanelSection>
+                <SwitchBar
+                  label={t('multistop.straight_line')}
+                  checked={straightLine}
+                  onChange={setStraightLine}
+                  disabled={isActive}
+                />
+
+                <SwitchBar
+                  label={t('panel.pause_toggle')}
+                  subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
+                  checked={pauseEnabled}
+                  onChange={setPauseEnabled}
+                  disabled={isActive}
+                >
+                  {pauseEnabled && <NumberRangeField
+                    min={pauseMin}
+                    max={pauseMax}
+                    minLabel={t('panel.pause_min')}
+                    maxLabel={t('panel.pause_max')}
+                    onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                    onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                    minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                    maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                  />}
+                </SwitchBar>
+              </PanelSection>
+
+              <PanelSection>
+                <SpeedSlider
+                  valueKmh={speedKmh}
+                  navMode={navMode}
+                  onChange={setSpeedKmh}
+                  onNavModeChange={setNavMode}
+                  disabled={isActive}
+                />
+              </PanelSection>
+            </div>
           )}
 
-          <PanelSection>
-            <SwitchBar
-              label={t('multistop.straight_line')}
-              checked={straightLine}
-              onChange={setStraightLine}
-              disabled={isActive}
-            />
+          {subMode === 'manual' && <>
+            <PanelSection>
+              <SwitchBar
+                label={t('multistop.straight_line')}
+                checked={straightLine}
+                onChange={setStraightLine}
+                disabled={isActive}
+              />
 
-            <SwitchBar
-              label={t('panel.pause_toggle')}
-              subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
-              checked={pauseEnabled}
-              onChange={setPauseEnabled}
-              disabled={isActive}
-            >
-              {pauseEnabled && <NumberRangeField
-                min={pauseMin}
-                max={pauseMax}
-                minLabel={t('panel.pause_min')}
-                maxLabel={t('panel.pause_max')}
-                onMinChange={(value) => setPauseMin(Number(value) || 0)}
-                onMaxChange={(value) => setPauseMax(Number(value) || 0)}
-                minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
-                maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
-              />}
-            </SwitchBar>
-          </PanelSection>
+              <SwitchBar
+                label={t('panel.pause_toggle')}
+                subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
+                checked={pauseEnabled}
+                onChange={setPauseEnabled}
+                disabled={isActive}
+              >
+                {pauseEnabled && <NumberRangeField
+                  min={pauseMin}
+                  max={pauseMax}
+                  minLabel={t('panel.pause_min')}
+                  maxLabel={t('panel.pause_max')}
+                  onMinChange={(value) => setPauseMin(Number(value) || 0)}
+                  onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                  minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                  maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
+                />}
+              </SwitchBar>
+            </PanelSection>
 
-          <PanelSection>
-            <SpeedSlider
-              valueKmh={speedKmh}
-              navMode={navMode}
-              onChange={setSpeedKmh}
-              onNavModeChange={setNavMode}
-              disabled={isActive}
-            />
-          </PanelSection>
+            <PanelSection>
+              <SpeedSlider
+                valueKmh={speedKmh}
+                navMode={navMode}
+                onChange={setSpeedKmh}
+                onNavModeChange={setNavMode}
+                disabled={isActive}
+              />
+            </PanelSection>
+          </>}
         </>
       )}
       </ModePanelLayout>

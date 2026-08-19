@@ -127,7 +127,7 @@ PyInstaller does **not** cross-compile — each platform must be built on its na
 
 Each GitHub Release is automatically published with bilingual release notes: Traditional Chinese first, followed by English, including download and first-install instructions.
 
-Before creating a tag, add a non-empty Markdown file at `docs/releases/vX.Y.Z.md` (for example, `docs/releases/v0.1.3.md`). This file is required and becomes the version-specific "What's new" section at the top of the release notes; without it, the workflow will not publish a Release.
+Before creating a tag, add a non-empty Markdown file at `docs/releases/vX.Y.Z.md` (for example, `docs/releases/v0.1.3.md`) and update the version plus all installer links in `website/index.html`. The workflow validates both, so a release cannot publish while its website download details are out of date.
 
 ```bash
 git tag v1.0.0

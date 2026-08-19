@@ -1,6 +1,6 @@
 # Release notes
 
-Before publishing version `vX.Y.Z`, create `vX.Y.Z.md` in this directory. The release workflow requires this non-empty file and places its contents at the top of the GitHub Release notes.
+Before publishing version `vX.Y.Z`, create `vX.Y.Z.md` in this directory and update the version, release link, and all three installer links in `website/index.html`. The release workflow requires both the non-empty notes file and matching website download details; it fails if either is missing or out of date.
 
 Use Traditional Chinese first, followed by English. For example:
 

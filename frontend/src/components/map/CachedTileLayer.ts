@@ -86,10 +86,15 @@ export class CachedTileLayer extends L.TileLayer {
           fetch(tileUrl, { signal: abortController.signal })
             .then((res) => {
               if (!res.ok) throw new Error(`HTTP ${res.status}`)
+              const contentType = res.headers.get('content-type') || ''
+              if (contentType && !contentType.includes('image/')) {
+                throw new Error(`Invalid content-type: ${contentType}`)
+              }
               return res.blob()
             })
             .then((newBlob) => {
               if (handle.isRemoved) return
+              if (!newBlob || newBlob.size === 0) return
               saveCachedTile(tileCacheKey, tileUrl, newBlob).catch(() => {})
               const objectUrl = URL.createObjectURL(newBlob)
               handle.objectUrl = objectUrl

@@ -101,7 +101,19 @@ export default function App() {
   }, [devices])
 
   function handleModeChange(udid: string, mode: Mode) {
+    // A mode owns its temporary map input.  Clear it here rather than relying on
+    // panel unmount cleanup, so both map engines receive the same empty state.
+    const currentMode = modeByDevice[udid] ?? 'teleport'
+    if (currentMode === mode) return
+
     setModeByDevice((prev) => ({ ...prev, [udid]: mode }))
+    pendingPickRef.current = null
+    setPointByDevice((prev) => ({ ...prev, [udid]: null }))
+    setOverlaysByDevice((prev) => {
+      if (!(udid in prev)) return prev
+      const { [udid]: _clearedOverlay, ...remainingOverlays } = prev
+      return remainingOverlays
+    })
   }
 
   function handleFocusChange(udid: string) {
@@ -182,6 +194,9 @@ export default function App() {
   const focusedPosition = focusedDeviceId ? positions[focusedDeviceId] ?? null : null
   const focusedDeviceState = (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle'
   const focusedPoint = focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null
+  const isMapEngineSwitchLocked = Object.values(states).some((state) =>
+    ['navigating', 'looping', 'random_walk', 'joystick', 'paused'].includes(state)
+  )
 
   return (
     <div className="app">
@@ -212,6 +227,7 @@ export default function App() {
           livePositions={livePositions}
           overlays={overlaysByDevice}
           flyTo={flyTo}
+          isEngineSwitchLocked={isMapEngineSwitchLocked}
         >
           <ControlsOverlay
             devices={devices}

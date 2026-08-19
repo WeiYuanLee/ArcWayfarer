@@ -14,7 +14,7 @@ export const DEFAULT_TILE_PROVIDER: TileProviderConfig = {
   url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
-  cacheNamespace: 'osm',
+  cacheNamespace: 'osm-v2',
   maxZoom: 19,
   subdomains: 'abc',
 }

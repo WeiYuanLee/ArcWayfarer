@@ -37,9 +37,17 @@ export function SpeedSlider({ valueKmh, navMode, onChange, onNavModeChange, disa
   const [modeSpeeds, setModeSpeeds] = useState<Record<NavMode, number> | null>(null)
 
   useEffect(() => {
+    let mounted = true
     getNavModeSpeeds()
-      .then(setModeSpeeds)
-      .catch(() => setModeSpeeds(null))
+      .then((data) => {
+        if (mounted) setModeSpeeds(data)
+      })
+      .catch(() => {
+        if (mounted) setModeSpeeds(null)
+      })
+    return () => {
+      mounted = false
+    }
   }, [])
 
   function handleModeSelect(mode: NavMode) {

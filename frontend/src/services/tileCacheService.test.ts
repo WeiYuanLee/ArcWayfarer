@@ -13,16 +13,21 @@ describe('tileCacheService (IndexedDB)', () => {
     await clearTileCache()
   })
 
-  it('saves and retrieves a tile from IndexedDB cache', async () => {
+  it('saves and retrieves a tile from cache via L1 RAM and L2 IndexedDB', async () => {
     const tileKey = 'osm:14:100:200'
     const tileUrl = 'https://tile.openstreetmap.org/14/100/200.png'
     const blob = new Blob(['mock-tile-content-png'], { type: 'image/png' })
 
     await saveCachedTile(tileKey, tileUrl, blob)
 
-    const cached = await getCachedTile(tileKey)
-    expect(cached).not.toBeNull()
-    expect(cached?.size).toBe(blob.size)
+    // First retrieve hits L1 RAM cache instantly
+    const cached1 = await getCachedTile(tileKey)
+    expect(cached1).not.toBeNull()
+    expect(cached1?.size).toBe(blob.size)
+
+    // Subsequent retrieval also hits L1 RAM cache
+    const cached2 = await getCachedTile(tileKey)
+    expect(cached2).toBe(cached1)
   })
 
   it('isolates cache keys across different provider namespaces', async () => {

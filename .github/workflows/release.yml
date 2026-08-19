@@ -9,7 +9,32 @@ permissions:
   contents: write
 
 jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require release notes for this version
+        run: |
+          NOTES_FILE="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "Release notes are required: $NOTES_FILE" >&2
+            exit 1
+          fi
+
+      - name: Require website download details for this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          WEBSITE_FILE="website/index.html"
+          grep -Fq "\"softwareVersion\": \"$VERSION\"" "$WEBSITE_FILE"
+          grep -Fq "最新版本 <strong>${GITHUB_REF_NAME}</strong>" "$WEBSITE_FILE"
+          grep -Fq "releases/download/${GITHUB_REF_NAME}/ArcWayfarer-${VERSION}-arm64.dmg" "$WEBSITE_FILE"
+          grep -Fq "releases/download/${GITHUB_REF_NAME}/ArcWayfarer-${VERSION}-x64.dmg" "$WEBSITE_FILE"
+          grep -Fq "releases/download/${GITHUB_REF_NAME}/ArcWayfarer.Setup.${VERSION}.exe" "$WEBSITE_FILE"
+          grep -Fq "releases/tag/${GITHUB_REF_NAME}" "$WEBSITE_FILE"
+
   build:
+    needs: validate-release
     strategy:
       matrix:
         include:
@@ -67,7 +92,7 @@ jobs:
           path: frontend/release/*.exe
 
   release:
-    needs: build
+    needs: [validate-release, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,14 +104,6 @@ jobs:
 
       - name: List artifacts
         run: ls -la artifacts
-
-      - name: Require release notes for this version
-        run: |
-          NOTES_FILE="docs/releases/${GITHUB_REF_NAME}.md"
-          if [ ! -s "$NOTES_FILE" ]; then
-            echo "Release notes are required: $NOTES_FILE" >&2
-            exit 1
-          fi
 
       - name: Build release notes
         run: |

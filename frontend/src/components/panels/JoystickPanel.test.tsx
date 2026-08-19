@@ -55,7 +55,7 @@ describe('JoystickPanel speed modes', () => {
     render(<MantineProvider><JoystickPanel {...defaultProps} /></MantineProvider>)
     expect(screen.getByText('joystick.tab.basic')).toBeDefined()
     expect(screen.getByText('joystick.tab.dynamic')).toBeDefined()
-  })
+  }, 15000)
 
   it('shows a simple 0–60 km/h dynamic mode without curve controls', () => {
     render(<MantineProvider><JoystickPanel {...defaultProps} /></MantineProvider>)

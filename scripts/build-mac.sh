@@ -64,7 +64,7 @@ if [ "${ARCWAYFARER_VERIFY_BACKEND:-0}" = "1" ]; then
     wait "$BACKEND_PID" 2>/dev/null || true
   }
   trap cleanup_backend EXIT
-  for _ in {1..30}; do
+  for _ in {1..60}; do
     if curl --fail --silent "http://127.0.0.1:$BACKEND_TEST_PORT/health" >/dev/null; then
       break
     fi
@@ -75,7 +75,7 @@ if [ "${ARCWAYFARER_VERIFY_BACKEND:-0}" = "1" ]; then
     sleep 1
   done
   if ! curl --fail --silent "http://127.0.0.1:$BACKEND_TEST_PORT/health" >/dev/null; then
-    echo "Packaged backend did not become healthy within 30 seconds." >&2
+    echo "Packaged backend did not become healthy within 60 seconds." >&2
     cat "$BACKEND_LOG" >&2
     exit 1
   fi

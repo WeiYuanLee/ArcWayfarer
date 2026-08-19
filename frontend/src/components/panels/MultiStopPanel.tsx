@@ -95,7 +95,6 @@ export function MultiStopPanel({
   })
   const lastWaypointRef = useRef<HTMLDivElement | null>(null)
   const focusNewWaypointRef = useRef(false)
-  const suppressPointPickerRef = useRef(false)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -134,7 +133,6 @@ export function MultiStopPanel({
       lastWaypointRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       const input = lastWaypointRef.current?.querySelector('input')
       if (input) {
-        suppressPointPickerRef.current = true
         input.focus()
       }
     })
@@ -504,10 +502,6 @@ export function MultiStopPanel({
                     value={item.rawText}
                     style={{ flex: 1 }}
                     onFocus={() => {
-                      if (suppressPointPickerRef.current) {
-                        suppressPointPickerRef.current = false
-                        return
-                      }
                       requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
                     }}
                     onChange={(value) => handleTextChange(idx, value)}

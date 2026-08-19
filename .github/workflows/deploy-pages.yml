@@ -6,6 +6,8 @@ on:
     paths:
       - website/**
       - .github/workflows/deploy-pages.yml
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # A published release deploys the website from its exact tag, so its
+          # version and installer links match the installers users can download.
+          ref: ${{ github.event.release.tag_name || github.ref }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true
