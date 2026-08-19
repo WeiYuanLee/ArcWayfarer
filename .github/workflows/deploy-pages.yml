@@ -6,8 +6,9 @@ on:
     paths:
       - website/**
       - .github/workflows/deploy-pages.yml
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release macOS & Windows builds"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -28,9 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # A published release deploys the website from its exact tag, so its
-          # version and installer links match the installers users can download.
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          # Deploy the exact commit whose release workflow succeeded, so the
+          # website version and installer links match the published artifacts.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true
