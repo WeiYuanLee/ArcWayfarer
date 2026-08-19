@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ActionIcon, Button, Combobox, Group, Modal, Stack, Text, TextInput, Tooltip, useCombobox } from '@mantine/core'
 import { IconStar, IconStarFilled } from '@tabler/icons-react'
-import { addFavorite, listFavorites } from '../../services/api'
+import { addFavorite, listFavoriteGroups, listFavorites } from '../../services/api'
 import { useT } from '../../i18n'
 import type { LatLng } from './types'
 
@@ -22,9 +22,9 @@ export function FavoriteButton({ point }: Props) {
   })
   useEffect(() => {
     if (isNaming) {
-      listFavorites()
-        .then((favs) => {
-          const groups = Array.from(new Set(favs.map((f) => f.group).filter(Boolean))).sort()
+      Promise.all([listFavorites(), listFavoriteGroups()])
+        .then(([favs, savedGroups]) => {
+          const groups = Array.from(new Set([...savedGroups, ...favs.map((f) => f.group).filter(Boolean)])).sort()
           setExistingGroups(groups)
         })
         .catch(() => {})

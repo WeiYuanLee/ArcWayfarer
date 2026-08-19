@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { deleteFavorite, listFavorites, reorderFavorites, updateFavorite, type Favorite } from '../services/api'
+import { addFavoriteGroup, deleteFavorite, listFavoriteGroups, listFavorites, reorderFavorites, updateFavorite, type Favorite } from '../services/api'
 
 export type SortMode = 'manual' | 'name' | 'date'
 
@@ -16,6 +16,7 @@ function sortFavorites(favorites: Favorite[], mode: SortMode): Favorite[] {
 
 export function useFavorites() {
   const [favorites, setFavorites] = useState<Favorite[]>([])
+  const [savedGroups, setSavedGroups] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [sortMode, setSortMode] = useState<SortMode>('manual')
   const [search, setSearch] = useState('')
@@ -24,8 +25,11 @@ export function useFavorites() {
   pendingDeletesRef.current = pendingDeletes
 
   const refresh = useCallback(() => {
-    return listFavorites()
-      .then(setFavorites)
+    return Promise.all([listFavorites(), listFavoriteGroups()])
+      .then(([nextFavorites, nextGroups]) => {
+        setFavorites(nextFavorites)
+        setSavedGroups(nextGroups)
+      })
       .catch(() => {})
   }, [])
 
@@ -39,11 +43,14 @@ export function useFavorites() {
     return f.name.toLowerCase().includes(q) || f.group.toLowerCase().includes(q) || f.notes.toLowerCase().includes(q)
   })
 
-  const groups = Array.from(new Set(displayed.map((f) => f.group || ''))).sort((a, b) => {
+  const allGroups = Array.from(new Set([...savedGroups, ...favorites.map((f) => f.group || '')])).sort((a, b) => {
     if (a === '') return 1
     if (b === '') return -1
     return a.localeCompare(b)
   })
+  const groups = !search.trim()
+    ? allGroups
+    : allGroups.filter((group) => group.toLowerCase().includes(search.toLowerCase()) || displayed.some((favorite) => (favorite.group || '') === group))
 
   function requestDelete(favorite: Favorite) {
     setFavorites((prev) => prev.filter((f) => f.id !== favorite.id))
@@ -84,6 +91,12 @@ export function useFavorites() {
     return updated
   }
 
+  async function handleCreateGroup(name: string) {
+    const group = await addFavoriteGroup(name)
+    setSavedGroups((prev) => Array.from(new Set([...prev, group])).sort((a, b) => a.localeCompare(b)))
+    return group
+  }
+
   async function handleReorder(reordered: Favorite[]) {
     const items = reordered.map((f, i) => ({ id: f.id, order: i }))
     setFavorites((prev) => {
@@ -111,6 +124,7 @@ export function useFavorites() {
     requestDelete,
     undoDelete,
     handleUpdate,
+    handleCreateGroup,
     handleReorder,
     refresh,
   }

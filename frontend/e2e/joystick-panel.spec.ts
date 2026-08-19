@@ -7,8 +7,7 @@ test.describe('Joystick Panel', () => {
     await page.locator('.leaflet-container').waitFor({ timeout: 10_000 })
 
     // 切換到搖桿模式
-    const joystickBtn = page.locator('.capsule-item', { hasText: '搖桿' })
-    await joystickBtn.click()
+    await page.locator('.mode-switcher input[value="joystick"]').evaluate((input: HTMLInputElement) => input.click())
   })
 
   test('搖桿面板應顯示', async ({ page }) => {
@@ -16,14 +15,14 @@ test.describe('Joystick Panel', () => {
   })
 
   test('應顯示固定速度與動態模式分頁', async ({ page }) => {
-    await expect(page.locator('.sub-tab', { hasText: '固定速度' })).toBeVisible()
-    await expect(page.locator('.sub-tab', { hasText: '動態模式' })).toBeVisible()
+    await expect(page.getByText('固定速度', { exact: true })).toBeVisible()
+    await expect(page.getByText('動態模式', { exact: true })).toBeVisible()
   })
 
   test('點擊動態模式分頁應切換', async ({ page }) => {
-    const dynamicTab = page.locator('.sub-tab', { hasText: '動態模式' })
-    await dynamicTab.click()
-    await expect(dynamicTab).toHaveClass(/active/)
+    const dynamicTab = page.locator('.panel input[value="dynamic"]')
+    await dynamicTab.evaluate((input: HTMLInputElement) => input.click())
+    await expect(dynamicTab).toBeChecked()
   })
 
   test('尚未啟動時不應顯示搖桿浮動底座', async ({ page }) => {

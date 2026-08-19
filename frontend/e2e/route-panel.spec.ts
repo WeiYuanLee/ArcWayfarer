@@ -7,8 +7,7 @@ test.describe('MultiStop Panel', () => {
     await page.locator('.leaflet-container').waitFor({ timeout: 10_000 })
 
     // 切換到多點巡迴模式
-    const multiStopBtn = page.locator('.capsule-item', { hasText: '多點巡迴' })
-    await multiStopBtn.click()
+    await page.locator('.mode-switcher input[value="multi-stop"]').evaluate((input: HTMLInputElement) => input.click())
   })
 
   test('多點巡迴面板應顯示', async ({ page }) => {
@@ -16,24 +15,22 @@ test.describe('MultiStop Panel', () => {
   })
 
   test('應顯示新增路徑點按鈕', async ({ page }) => {
-    const addBtn = page.locator('.swap-button', { hasText: '新增路徑' })
-    await expect(addBtn.first()).toBeVisible()
+    await expect(page.getByRole('button', { name: '新增路徑' })).toBeVisible()
   })
 
   test('點擊新增路徑點後應新增一列', async ({ page }) => {
-    const addBtn = page.locator('.swap-button', { hasText: '新增路徑' })
+    const addBtn = page.getByRole('button', { name: '新增路徑' })
 
     // 初始狀態
-    const initialRows = await page.locator('.coord-row').count()
+    const initialRows = await page.locator('.route-loop-waypoint-row').count()
 
-    await addBtn.first().click()
+    await addBtn.click()
 
     // 應多出一列
-    await expect(page.locator('.coord-row')).toHaveCount(initialRows + 1)
+    await expect(page.locator('.route-loop-waypoint-row')).toHaveCount(initialRows + 1)
   })
 
   test('應顯示全清點位按鈕', async ({ page }) => {
-    const clearBtn = page.locator('.swap-button', { hasText: '全清點位' })
-    await expect(clearBtn.first()).toBeVisible()
+    await expect(page.getByRole('button', { name: '全清點位' })).toBeVisible()
   })
 })

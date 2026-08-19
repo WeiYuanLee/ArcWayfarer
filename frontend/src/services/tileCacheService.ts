@@ -1,12 +1,10 @@
 /**
- * Bounded LRU Map Tile Cache with TTL.
+ * Two-Tier Bounded LRU Map Tile Cache with TTL.
  *
- * Implements a managed local tile cache for Leaflet:
- * - Uses IndexedDB for persistent storage across sessions in Electron and browsers.
- * - Gracefully falls back to an in-memory LRU cache if IndexedDB is unavailable.
- * - Only passively caches tiles requested by the user during normal map usage.
- * - Enforces a maximum storage budget (e.g., 200 MB) with LRU eviction.
- * - Enforces Time-To-Live (TTL, e.g., 14 days) to prevent stale map data.
+ * Architecture:
+ * - Tier 1 (L1 RAM Cache): In-memory LRU cache of up to 120 most recently used tiles (0ms instant lookup).
+ * - Tier 2 (L2 Disk Cache): IndexedDB persistent storage with 200 MB budget and 14-day TTL.
+ * - Graceful fallback: If IndexedDB is unavailable, operates seamlessly via in-memory storage.
  */
 
 export interface CacheConfig {
@@ -16,7 +14,7 @@ export interface CacheConfig {
 }
 
 export const DEFAULT_CACHE_CONFIG: CacheConfig = {
-  maxSizeBytes: 200 * 1024 * 1024, // 200 MB maximum cache budget
+  maxSizeBytes: 200 * 1024 * 1024, // 200 MB target cache budget
   ttlMs: 14 * 24 * 60 * 60 * 1000,   // 14 days expiration
   pruneBatchBytes: 20 * 1024 * 1024, // Evict 20 MB when exceeding limit
 }
@@ -36,7 +34,68 @@ const STORE_TILES = 'tiles'
 const STORE_META = 'metadata'
 const META_KEY_TOTAL_SIZE = 'total_size'
 
-// In-memory fallback cache when IndexedDB is unavailable
+// ==========================================
+// Tier 1 (L1): In-Memory Fast LRU Cache
+// ==========================================
+interface L1CacheEntry {
+  blob: Blob
+  timestamp: number
+  lastAccessed: number
+}
+
+class L1MemoryTileCache {
+  private cache = new Map<string, L1CacheEntry>()
+  private maxEntries: number
+
+  constructor(maxEntries = 120) {
+    this.maxEntries = maxEntries
+  }
+
+  get(key: string, ttlMs: number): Blob | null {
+    const entry = this.cache.get(key)
+    if (!entry) return null
+    const now = Date.now()
+    if (now - entry.timestamp >= ttlMs) {
+      this.cache.delete(key)
+      return null
+    }
+    entry.lastAccessed = now
+    // Re-insert to maintain LRU order in Map iteration
+    this.cache.delete(key)
+    this.cache.set(key, entry)
+    return entry.blob
+  }
+
+  set(key: string, blob: Blob, timestamp = Date.now()): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key)
+    } else if (this.cache.size >= this.maxEntries) {
+      const oldestKey = this.cache.keys().next().value
+      if (oldestKey) {
+        this.cache.delete(oldestKey)
+      }
+    }
+    this.cache.set(key, { blob, timestamp, lastAccessed: Date.now() })
+  }
+
+  delete(key: string): void {
+    this.cache.delete(key)
+  }
+
+  clear(): void {
+    this.cache.clear()
+  }
+
+  get size(): number {
+    return this.cache.size
+  }
+}
+
+const l1MemoryCache = new L1MemoryTileCache(120)
+
+// ==========================================
+// Fallback In-Memory Engine when IndexedDB is unavailable
+// ==========================================
 class InMemoryTileCache {
   private tiles = new Map<string, CachedTileRecord>()
   private totalBytes = 0
@@ -172,13 +231,20 @@ export async function getTotalCacheSize(): Promise<number> {
 }
 
 /**
- * Look up a tile in the local cache.
+ * Look up a tile across the Two-Tier cache (L1 RAM -> L2 IndexedDB).
  * Returns the cached Blob if found and unexpired, otherwise null.
  */
 export async function getCachedTile(
   key: string,
   ttlMs = DEFAULT_CACHE_CONFIG.ttlMs
 ): Promise<Blob | null> {
+  // 1. Check L1 In-Memory RAM cache (0ms instant lookup)
+  const l1Blob = l1MemoryCache.get(key, ttlMs)
+  if (l1Blob) {
+    return l1Blob
+  }
+
+  // 2. Check L2 IndexedDB persistent disk cache
   try {
     const db = await openDatabase()
     const record = await new Promise<CachedTileRecord | undefined>((resolve, reject) => {
@@ -201,9 +267,16 @@ export async function getCachedTile(
     // Touch lastAccessed for LRU ordering
     touchTileAccess(db, key, now).catch(() => {})
 
+    // Promote to L1 RAM cache
+    l1MemoryCache.set(key, record.blob, record.timestamp)
+
     return record.blob
   } catch {
-    return memoryFallback.getTile(key, ttlMs)
+    const fallbackBlob = await memoryFallback.getTile(key, ttlMs)
+    if (fallbackBlob) {
+      l1MemoryCache.set(key, fallbackBlob)
+    }
+    return fallbackBlob
   }
 }
 
@@ -228,7 +301,7 @@ async function touchTileAccess(db: IDBDatabase, key: string, timestamp: number):
 }
 
 /**
- * Saves a downloaded tile blob into the cache and enforces LRU budget limits.
+ * Saves a downloaded tile blob into L1 RAM and L2 IndexedDB cache.
  */
 export async function saveCachedTile(
   key: string,
@@ -236,8 +309,15 @@ export async function saveCachedTile(
   blob: Blob,
   config: CacheConfig = DEFAULT_CACHE_CONFIG
 ): Promise<void> {
+  // Never save empty blobs or non-image payloads into cache
+  if (!blob || blob.size <= 0) return
+  if (blob.type && !blob.type.startsWith('image/')) return
+
   const size = blob.size || 0
   const now = Date.now()
+
+  // 1. Immediately store in Tier 1 (L1 RAM Cache) for 0ms subsequent lookups
+  l1MemoryCache.set(key, blob, now)
 
   const record: CachedTileRecord = {
     key,
@@ -248,9 +328,11 @@ export async function saveCachedTile(
     lastAccessed: now,
   }
 
+  // 2. Persist to Tier 2 (L2 IndexedDB)
   try {
     const db = await openDatabase()
 
+    let needPrune = false
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction([STORE_TILES, STORE_META], 'readwrite')
       const tileStore = tx.objectStore(STORE_TILES)
@@ -268,6 +350,9 @@ export async function saveCachedTile(
           const currentTotal = typeof metaReq.result === 'number' ? metaReq.result : 0
           const newTotal = currentTotal - prevSize + size
           metaStore.put(newTotal, META_KEY_TOTAL_SIZE)
+          if (newTotal > config.maxSizeBytes) {
+            needPrune = true
+          }
         }
       }
 
@@ -275,8 +360,7 @@ export async function saveCachedTile(
       tx.onerror = () => reject(tx.error)
     })
 
-    const currentSize = await getTotalCacheSize()
-    if (currentSize > config.maxSizeBytes) {
+    if (needPrune) {
       await pruneLruTiles(config.maxSizeBytes - config.pruneBatchBytes)
     }
   } catch {
@@ -285,9 +369,10 @@ export async function saveCachedTile(
 }
 
 /**
- * Deletes a single tile from cache.
+ * Deletes a single tile from cache (both L1 RAM and L2 IndexedDB).
  */
 export async function deleteCachedTile(key: string): Promise<void> {
+  l1MemoryCache.delete(key)
   try {
     const db = await openDatabase()
     await new Promise<void>((resolve, reject) => {
@@ -358,9 +443,10 @@ export async function pruneLruTiles(targetBytes: number): Promise<number> {
 }
 
 /**
- * Clears all cached tiles and resets metadata.
+ * Clears all cached tiles from both L1 RAM and L2 IndexedDB.
  */
 export async function clearTileCache(): Promise<void> {
+  l1MemoryCache.clear()
   try {
     const db = await openDatabase()
     await new Promise<void>((resolve, reject) => {

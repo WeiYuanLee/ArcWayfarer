@@ -8,6 +8,7 @@ API_PORT = int(os.environ.get("ARCWAYFARER_API_PORT", "8787"))
 APP_DATA_DIR = Path.home() / ".arcwayfarer"
 SETTINGS_FILE = APP_DATA_DIR / "settings.json"
 BOOKMARKS_FILE = APP_DATA_DIR / "bookmarks.json"
+FAVORITE_GROUPS_FILE = APP_DATA_DIR / "favorite_groups.json"
 ROUTES_FILE = APP_DATA_DIR / "routes.json"
 HISTORY_FILE = APP_DATA_DIR / "history.json"
 

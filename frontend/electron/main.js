@@ -90,7 +90,7 @@ async function startTunneld() {
     // Kernel tunnels require root on macOS. The bundled AppleScript applet
     // preserves the native prompt but gives it the ArcWayfarer app name.
     const command = `${shellQuote(exe)} --tunneld >/tmp/arcwayfarer-tunneld.log 2>&1 & echo $!`
-    const privileged = spawn(authorizationHelperPath(), [command])
+    const privileged = spawn(authorizationHelperPath(), [`--arcwayfarer-command=${encodeURIComponent(command)}`])
     let output = ''
     let errors = ''
     privileged.stdout.on('data', (data) => { output += data })
@@ -236,21 +236,22 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   try {
-    // The tunnel may need extra time to initialise its USB monitors. It must
-    // not prevent the application and its normal backend from opening.
-    startTunneld().catch((err) => {
-      console.error('[electron] iOS tunnel service failed to start:', err.message)
-    })
+    // On packaged macOS builds, request the administrator authorization before
+    // showing any application UI. A remote iOS device cannot be used until
+    // tunneld is running, so opening a half-ready frontend is misleading.
+    await startTunneld()
     await startBackend()
   } catch (err) {
-    console.error('[electron] Failed to start backend:', err.message)
+    console.error('[electron] Startup failed:', err.message)
     const gatekeeperHint = process.platform === 'darwin'
       ? '\n\n如果這是首次開啟 ArcWayfarer：\n1. 關閉此視窗\n2. 前往「系統設定 → 隱私權與安全性」\n3. 找到「已阻擋 ArcWayfarer」→ 點「仍要打開」\n4. 重新啟動 ArcWayfarer\n\nIf this is your first launch, macOS may be scanning the app.\nGo to System Settings → Privacy & Security → click "Open Anyway", then relaunch.'
       : ''
     dialog.showErrorBox(
       'Startup Error',
-      'The backend server failed to start.\n\n' + err.message + gatekeeperHint
+      'ArcWayfarer could not obtain the required tunnel permission or start its backend.\n\n' + err.message + gatekeeperHint
     )
+    app.quit()
+    return
   }
   createWindow()
 

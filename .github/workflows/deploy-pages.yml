@@ -6,6 +6,9 @@ on:
     paths:
       - website/**
       - .github/workflows/deploy-pages.yml
+  workflow_run:
+    workflows: ["Release macOS & Windows builds"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -19,12 +22,17 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Deploy the exact commit whose release workflow succeeded, so the
+          # website version and installer links match the published artifacts.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true
