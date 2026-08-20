@@ -234,13 +234,40 @@ export function LeafletMapView({
       onViewportChangeRef.current?.({ lat: center.lat, lng: center.lng, zoom: map.getZoom() })
     })
 
+    // The engine switch mounts Leaflet into a freshly replaced container.
+    // Re-measure it after layout so tiles and overlays use the new dimensions.
+    const resizeFrameId = requestAnimationFrame(() => {
+      map.invalidateSize({ pan: false })
+    })
+
     return () => {
+      cancelAnimationFrame(resizeFrameId)
       for (const frameId of arrowAnimationFramesRef.current.values()) {
         cancelAnimationFrame(frameId)
       }
       arrowAnimationFramesRef.current.clear()
       map.remove()
       mapRef.current = null
+
+      // React StrictMode intentionally tears effects down and recreates them.
+      // Leaflet removes every layer with the old map, so retaining these layer
+      // instances would make the next setup mistake detached layers for live
+      // ones and skip adding the markers/routes to the replacement map.
+      selectedPointMarkerRef.current = null
+      liveMarkersRef.current.clear()
+      overlayMarkersRef.current.clear()
+      overlayMarkerIconKeysRef.current.clear()
+      draggingMarkerIdsRef.current.clear()
+      draggingOverlayIdsRef.current.clear()
+      overlayPathCasingsRef.current.clear()
+      overlayPathsRef.current.clear()
+      overlayArrowsRef.current.clear()
+      overlayActivePathsRef.current.clear()
+      overlayActivePathKeysRef.current.clear()
+      overlayCirclesRef.current.clear()
+      overlayMarkerCallbacksRef.current.clear()
+      overlayDragCallbacksRef.current.clear()
+      overlayDragEndCallbacksRef.current.clear()
     }
   }, [])
 
@@ -528,6 +555,7 @@ export function LeafletMapView({
             weight: 12,
             opacity: 0.55,
             pane: 'routeLinePane',
+            className: 'leaflet-route-casing',
           }).addTo(map)
           overlayPathCasingsRef.current.set(deviceId, casing)
         } else {
@@ -541,6 +569,7 @@ export function LeafletMapView({
             weight: 8,
             opacity: 0.95,
             pane: 'routeLinePane',
+            className: 'leaflet-route-path',
           }).addTo(map)
           overlayPathsRef.current.set(deviceId, polyline)
         } else {
@@ -559,6 +588,7 @@ export function LeafletMapView({
               weight: 10,
               opacity: 0.9,
               pane: 'routeLinePane',
+              className: 'leaflet-active-route-path',
             }).addTo(map)
             overlayActivePathsRef.current.set(deviceId, activePolyline)
             overlayActivePathKeysRef.current.set(deviceId, activeKey)

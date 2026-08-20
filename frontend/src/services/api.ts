@@ -82,9 +82,12 @@ export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string 
   return postJsonWithResponse(`/api/devices/${udid}/amfi/reveal-developer-mode`, {})
 }
 
-async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> {
+async function postJsonWithResponse<T>(path: string, body: unknown, externalSignal?: AbortSignal): Promise<T> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason)
+  if (externalSignal?.aborted) abortFromExternalSignal()
+  else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true })
   try {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
@@ -99,11 +102,13 @@ async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> 
     return payload as T
   } catch (err: any) {
     if (err.name === 'AbortError') {
+      if (externalSignal?.aborted) throw err
       throw new Error('Request timed out (15s). Please check device connection.')
     }
     throw err
   } finally {
     clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal)
   }
 }
 
@@ -136,6 +141,19 @@ export function goldDitto(udid: string, lat: number, lng: number): Promise<void>
 
 export type NavMode = 'walk' | 'bike' | 'drive'
 export type LatLng = { lat: number; lng: number }
+
+export function previewNavigate(
+  navMode: NavMode,
+  start: LatLng,
+  end: LatLng,
+  signal?: AbortSignal
+): Promise<{ status: string; route: LatLng[]; distance_m: number }> {
+  return postJsonWithResponse('/api/navigate/preview', {
+    nav_mode: navMode,
+    start,
+    end,
+  }, signal)
+}
 
 export async function getNavModeSpeeds(): Promise<Record<NavMode, number>> {
   const res = await fetch(`${API_BASE_URL}/api/navigate/modes`, { headers: authHeaders() })

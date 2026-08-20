@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Badge, Button, Group, Paper, Text } from '@mantine/core'
-import { pauseNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
+import { useEffect, useRef, useState } from 'react'
+import { Badge, Button, Group, Paper, Stack, Text } from '@mantine/core'
+import { pauseNavigate, previewNavigate, pushHistory, resumeNavigate, setLocation, startNavigate, stopNavigate, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { estimateDurationMinutes, formatEta, formatPoint, haversineDistanceKm, parsePoint } from './coords'
@@ -15,6 +15,7 @@ import { useT } from '../../i18n'
 import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type PreviewStatus = { kind: 'idle' | 'loading' | 'ready' | 'error' }
 
 export function NavigatePanel({ deviceId, device, deviceState, livePosition, liveEtaSeconds, liveStopIndex, connected, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
@@ -26,6 +27,10 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [routePath, setRoutePath] = useState<LatLng[]>([])
+  const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null)
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>({ kind: 'idle' })
+  const [previewRevision, setPreviewRevision] = useState(0)
+  const previewRequestIdRef = useRef(0)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; title?: string; items: ContextMenuItem[] } | null>(null)
 
   const deviceReady = device?.status === 'ready'
@@ -42,9 +47,46 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     }
   }, [livePosition, start, startText])
 
-  const canStart = deviceReady && !isActive && start !== null && end !== null && !isBusy
+  const canStart = deviceReady && !isActive && start !== null && end !== null && !isBusy && previewStatus.kind === 'ready' && routePath.length >= 2
 
   const isLocked = isActive || isBusy
+
+  useEffect(() => {
+    if (isActive) return
+
+    previewRequestIdRef.current += 1
+    const requestId = previewRequestIdRef.current
+    if (!start || !end) {
+      setRoutePath([])
+      setRouteDistanceMeters(null)
+      setPreviewStatus({ kind: 'idle' })
+      return
+    }
+
+    const controller = new AbortController()
+    setRoutePath([])
+    setRouteDistanceMeters(null)
+    setPreviewStatus({ kind: 'loading' })
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await previewNavigate(navMode, start, end, controller.signal)
+        if (requestId !== previewRequestIdRef.current || result.route.length < 2) return
+        setRoutePath(result.route)
+        setRouteDistanceMeters(result.distance_m)
+        setPreviewStatus({ kind: 'ready' })
+      } catch (error) {
+        if (controller.signal.aborted || requestId !== previewRequestIdRef.current) return
+        setRoutePath([])
+        setRouteDistanceMeters(null)
+        setPreviewStatus({ kind: 'error' })
+      }
+    }, 500)
+
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [start?.lat, start?.lng, end?.lat, end?.lng, navMode, isActive, previewRevision])
 
   useEffect(() => {
     setOverlay({
@@ -90,6 +132,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     try {
       const result = await startNavigate(deviceId, navMode, start, end, speedKmh)
       setRoutePath(result.route)
+      setPreviewStatus({ kind: 'ready' })
       pushHistory({ lat: start.lat, lng: start.lng, kind: 'navigate' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
@@ -102,7 +145,6 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     setStatus({ kind: 'busy' })
     try {
       await stopNavigate(deviceId)
-      setRoutePath([])
       setStatus({ kind: 'idle' })
     } catch (e) {
       setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_stop') })
@@ -125,18 +167,19 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
   }
 
   function handleStartTextChange(value: string) {
+    setStatus({ kind: 'idle' })
     setStartText(value)
-    const parsed = parsePoint(value)
-    if (parsed) setStart(parsed)
+    setStart(parsePoint(value))
   }
 
   function handleEndTextChange(value: string) {
+    setStatus({ kind: 'idle' })
     setEndText(value)
-    const parsed = parsePoint(value)
-    if (parsed) setEnd(parsed)
+    setEnd(parsePoint(value))
   }
 
   function handleSwap() {
+    setStatus({ kind: 'idle' })
     const s = start
     setStart(end)
     setEnd(s)
@@ -144,7 +187,14 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     setEndText(formatPoint(s))
   }
 
-  const distanceKm = start && end ? haversineDistanceKm(start, end) : null
+  function handleNavModeChange(value: NavMode) {
+    setStatus({ kind: 'idle' })
+    setNavMode(value)
+  }
+
+  const distanceKm = routeDistanceMeters !== null
+    ? routeDistanceMeters / 1000
+    : start && end ? haversineDistanceKm(start, end) : null
   const durationMin = distanceKm !== null ? estimateDurationMinutes(distanceKm, speedKmh) : null
   const notices = <>
     {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
@@ -163,7 +213,12 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         status={
           status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
             : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
-              : undefined
+              : previewStatus.kind === 'loading' ? <PanelStatus state="busy" message={t('navigate.preview.planning')} />
+                : previewStatus.kind === 'error' ? <Stack gap="xs">
+                  <PanelStatus state="error" message={t('navigate.preview.failed')} />
+                  <Button size="compact-sm" variant="default" onClick={() => setPreviewRevision((value) => value + 1)}>{t('navigate.preview.retry')}</Button>
+                </Stack>
+                  : undefined
         }
       >
         {isActive ? <ActiveFlightHUD isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} legLabel={t('navigate.active_leg')} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>
@@ -193,7 +248,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
           />
         </PanelSection>
         <PanelSection>
-          <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={setNavMode} disabled={isActive} />
+          <SpeedSlider valueKmh={speedKmh} navMode={navMode} onChange={setSpeedKmh} onNavModeChange={handleNavModeChange} disabled={isActive} />
         </PanelSection>
         </>}
       </ModePanelLayout>

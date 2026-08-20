@@ -186,6 +186,9 @@ export const STRINGS = {
   'navigate.status.failed_start': { zh: '導航啟動失敗。', en: 'Failed to start navigation.' },
   'navigate.status.failed_stop': { zh: '導航停止失敗。', en: 'Failed to stop navigation.' },
   'navigate.status.failed_update': { zh: '導航更新失敗。', en: 'Failed to update navigation.' },
+  'navigate.preview.planning': { zh: '正在規劃路線…', en: 'Planning route…' },
+  'navigate.preview.failed': { zh: '無法規劃路線，請檢查起點與終點後重試。', en: 'Unable to plan a route. Check the start and destination, then try again.' },
+  'navigate.preview.retry': { zh: '重新規劃', en: 'Plan again' },
 
   // Route loop panel
   'routeloop.title': { zh: '路線循環', en: 'Route Loop' },

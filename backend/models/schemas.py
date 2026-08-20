@@ -47,6 +47,12 @@ class NavigateStartRequest(BaseModel):
     custom_speed_kmh: Optional[float] = None
 
 
+class NavigatePreviewRequest(BaseModel):
+    nav_mode: NavMode
+    start: LatLng
+    end: LatLng
+
+
 class NavigateStopRequest(BaseModel):
     udid: str
 
