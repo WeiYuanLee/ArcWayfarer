@@ -13,6 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require release commit on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME must point to a commit already merged into main." >&2
+            echo "Merge the release commit into main before pushing the tag so future website deployments retain this release page." >&2
+            exit 1
+          fi
 
       - name: Require release notes for this version
         run: |
