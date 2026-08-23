@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcWayfarer 使用指南｜iPhone GPS 虛擬定位教學</title>
+  <meta name="description" content="ArcWayfarer 完整使用指南：下載安裝、連接 iPhone、開啟 Developer Mode、Teleport、Navigate、Route Loop、Multi-stop、Joystick、Mobile Remote、還原真實 GPS 與常見問題。">
+  <meta name="keywords" content="ArcWayfarer 教學, iPhone 虛擬定位教學, iOS Developer Mode, iPhone GPS 模擬, iOS 26 虛擬定位, Pikmin Bloom 虛擬定位, Pokemon GO Error 12">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://weiyuanlee.github.io/ArcWayfarer/user-guide.html">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://weiyuanlee.github.io/ArcWayfarer/user-guide.html">
+  <meta property="og:title" content="ArcWayfarer 使用指南">
+  <meta property="og:description" content="從第一次安裝到進階路線操作，完整學會 ArcWayfarer。">
+  <meta property="og:image" content="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/docs/screenshot.png">
+  <meta property="og:locale" content="zh_TW">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/frontend/build/arcwayfarer-icon.png">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/frontend/build/arcwayfarer-icon.png">
+  <link rel="stylesheet" href="style.css?v=20260817-v6">
+  <link rel="stylesheet" href="user-guide.css?v=20260823-v1">
+</head>
+<body class="guide-body">
+<header class="nav guide-topbar">
+  <a class="brand" href="./" aria-label="回到 ArcWayfarer 首頁">
+    <img class="brand-icon" src="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/frontend/build/arcwayfarer-icon.png" alt="">
+    ArcWayfarer
+  </a>
+  <nav aria-label="使用指南導覽">
+    <a href="./">官網首頁</a>
+    <a href="#quick-start">快速開始</a>
+    <a href="#modes">功能指南</a>
+    <a href="#troubleshooting">疑難排解</a>
+  </nav>
+  <a class="nav-cta" href="./#download">免費下載 →</a>
+</header>
+
+<div class="guide-mobile-nav">
+  <button id="guideMenuButton" type="button" aria-expanded="false" aria-controls="guideSidebar">☰ 使用指南目錄</button>
+</div>
+
+<div class="guide-layout">
+  <aside class="guide-sidebar" id="guideSidebar">
+    <div class="sidebar-title">使用指南</div>
+    <a class="active" href="#overview">開始使用</a>
+    <a href="#requirements">系統需求</a>
+    <a href="#install">下載與安裝</a>
+    <a href="#first-launch">第一次啟動</a>
+    <a href="#connect">連接 iPhone</a>
+    <a href="#developer-mode">開發者模式</a>
+    <a href="#quick-start">第一次定位</a>
+    <div class="sidebar-label">功能指南</div>
+    <a href="#modes">六種移動模式</a>
+    <a href="#favorites">搜尋／收藏／歷史</a>
+    <a href="#routes">GPX／JSON 路線</a>
+    <a href="#remote">手機遙控</a>
+    <a href="#multi-device">多裝置</a>
+    <a href="#restore">恢復真實 GPS</a>
+    <div class="sidebar-label">相容性與支援</div>
+    <a href="#apps">遊戲與 App 相容性</a>
+    <a href="#troubleshooting">疑難排解</a>
+    <a href="#support">支持創作者</a>
+  </aside>
+
+  <main class="guide-main">
+    <section class="guide-hero" id="overview">
+      <p class="eyebrow">ARCWAYFARER USER GUIDE</p>
+      <h1>第一次使用也能<br><em>一步一步完成定位。</em></h1>
+      <p class="guide-lede">這份指南從安裝、連接 iPhone、開啟開發者模式，到 Teleport、路線導航與手機遙控，完整說明 ArcWayfarer 的實際操作流程。</p>
+      <div class="guide-badges">
+        <span>iOS 16+</span><span>macOS Apple Silicon / Intel</span><span>Windows 10 / 11</span><span>免越獄</span>
+      </div>
+      <div class="guide-hero-actions">
+        <a class="button" href="#quick-start">開始第一次定位 →</a>
+        <a class="guide-link" href="./#download">下載 ArcWayfarer</a>
+      </div>
+      <img class="guide-screenshot" src="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/docs/screenshot.png" alt="ArcWayfarer 桌面版操作介面">
+    </section>
+
+    <section class="guide-section" id="requirements">
+      <div class="section-kicker">01 · 使用前準備</div>
+      <h2>開始前先確認這些條件</h2>
+      <div class="guide-cards three">
+        <article><span class="card-icon">⌘</span><h3>macOS</h3><p>支援 Apple Silicon 與 Intel Mac。iOS 17+ 建立開發者服務通道時，系統可能要求額外權限。</p></article>
+        <article><span class="card-icon">⊞</span><h3>Windows</h3><p>支援 Windows 10 / 11 64-bit。請確保已安裝 iTunes 或 Apple Mobile Device Support。</p></article>
+        <article><span class="card-icon">◉</span><h3>iPhone</h3><p>支援 iOS 16 以上。需使用可傳輸資料的 USB 線，並完成「信任這部電腦」。</p></article>
+      </div>
+      <div class="guide-callout success"><strong>iPhone 17 / iOS 26.6：</strong>Apple Silicon Mac 的裝置偵測相容性問題已於 ArcWayfarer v0.1.10 修正。若仍使用較舊版本，請先更新。</div>
+    </section>
+
+    <section class="guide-section" id="install">
+      <div class="section-kicker">02 · 安裝</div>
+      <h2>下載與安裝 ArcWayfarer</h2>
+      <p>請從 ArcWayfarer 官網下載最新版本，依電腦架構選擇 Apple Silicon、Intel 或 Windows 安裝檔。</p>
+      <div class="guide-steps">
+        <article><b>1</b><div><h3>下載正確版本</h3><p>Apple Silicon 選 ARM64；Intel Mac 選 x64；Windows 使用 64-bit 安裝程式。</p></div></article>
+        <article><b>2</b><div><h3>完成安裝</h3><p>macOS 將 App 安裝至「應用程式」；Windows 執行安裝程式即可。</p></div></article>
+        <article><b>3</b><div><h3>第一次安全性提示</h3><p>macOS 若遭 Gatekeeper 阻擋，可在 Finder 對 App 按右鍵 →「打開」；Windows SmartScreen 可選「更多資訊」→「仍要執行」。</p></div></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="first-launch">
+      <div class="section-kicker">03 · 第一次啟動</div>
+      <h2>看到系統權限提示是正常的</h2>
+      <p>ArcWayfarer 已封裝成完整桌面 App，一般使用者不需要另外安裝 Python、Xcode 或自行執行 <code>pymobiledevice3</code>。</p>
+      <div class="guide-callout info">ArcWayfarer 啟動時要求的系統權限，是為了啟動底層 iPhone Developer Services 通訊環境，其中包含 pymobiledevice3 所需服務。請依系統提示允許。</div>
+    </section>
+
+    <section class="guide-section" id="connect">
+      <div class="section-kicker">04 · 裝置連線</div>
+      <h2>連接你的 iPhone</h2>
+      <div class="guide-steps compact">
+        <article><b>1</b><div><h3>解鎖 iPhone</h3><p>保持螢幕解鎖，並以可傳輸資料的 USB 線連接電腦。</p></div></article>
+        <article><b>2</b><div><h3>信任這部電腦</h3><p>iPhone 跳出提示時選擇「信任」，並輸入解鎖密碼。</p></div></article>
+        <article><b>3</b><div><h3>回到 ArcWayfarer</h3><p>裝置通常會自動出現在裝置選擇區。多裝置時請確認目前選取的 iPhone。</p></div></article>
+      </div>
+      <div class="guide-tip"><strong>找不到裝置？</strong>先換 USB 線與 USB Port，再確認 Windows 的 Apple Mobile Device Support 是否正常。</div>
+    </section>
+
+    <section class="guide-section" id="developer-mode">
+      <div class="section-kicker">05 · 必要設定</div>
+      <h2>開啟 Developer Mode／開發者模式</h2>
+      <p>Developer Mode 是 ArcWayfarer 使用 iOS Developer Services 模擬定位的必要條件。</p>
+      <div class="guide-cards two">
+        <article><span class="card-icon">A</span><h3>從 ArcWayfarer 協助開啟</h3><p>若裝置尚未啟用 Developer Mode，可使用 ArcWayfarer 左上角提供的開發者模式協助功能，依畫面指示進行。</p></article>
+        <article><span class="card-icon">B</span><h3>在 iPhone 手動開啟</h3><p>前往「設定 → 隱私權與安全性 → 開發者模式」。啟用後 iPhone 會重新啟動，開機後需再次確認並輸入密碼。</p></article>
+      </div>
+      <div class="guide-callout warn"><strong>設定裡沒有「開發者模式」？</strong>先將 iPhone 接上電腦並完成信任，再使用 ArcWayfarer 左上角的 Developer Mode 協助功能，之後重新檢查 iPhone 設定。</div>
+    </section>
+
+    <section class="guide-section featured" id="quick-start">
+      <div class="section-kicker">06 · QUICK START</div>
+      <h2>用 Teleport 完成第一次定位</h2>
+      <p>第一次測試建議先使用 Teleport。只要 Apple Maps 能正確顯示模擬位置，就代表基本環境已完成。</p>
+      <ol class="quick-list">
+        <li><span>01</span><div><strong>USB 連接並選取 iPhone</strong><p>確認裝置狀態正常。</p></div></li>
+        <li><span>02</span><div><strong>確認 Developer Mode 已開啟</strong><p>尚未啟用時先完成上一節設定。</p></div></li>
+        <li><span>03</span><div><strong>搜尋地點</strong><p>例如「台北 101」，或直接點選地圖上的位置。</p></div></li>
+        <li><span>04</span><div><strong>選擇 Teleport</strong><p>執行定位後開啟 iPhone 的 Apple Maps 驗證。</p></div></li>
+      </ol>
+      <div class="guide-callout info"><strong>第一次較久是正常的。</strong>ArcWayfarer 可能需要準備 Developer Disk Image、Developer Services 與 RemoteXPC 通道；這些流程會自動完成，不需要安裝 Xcode。</div>
+    </section>
+
+    <section class="guide-section" id="modes">
+      <div class="section-kicker">07 · 功能指南</div>
+      <h2>六種移動模式</h2>
+      <div class="mode-grid">
+        <article><span>01</span><h3>Teleport／瞬間移動</h3><p>搜尋地點或點選地圖，立即將 iPhone 模擬位置切換到指定座標。適合快速測試不同地區。</p></article>
+        <article><span>02</span><h3>Navigate／導航</h3><p>建立起點到目的地的道路路線，設定步行、跑步、騎車或其他移動速度後開始移動。</p></article>
+        <article><span>03</span><h3>Route Loop／路線循環</h3><p>將規劃好的路線重複播放，適合長時間固定路線測試，也可搭配 GPX／JSON 匯入。</p></article>
+        <article><span>04</span><h3>Multi-stop／多點路徑</h3><p>依序加入多個航點，並可拖曳調整航點順序。拖曳時前後相連路徑會同步更新。</p></article>
+        <article><span>05</span><h3>Joystick／搖桿</h3><p>使用畫面搖桿或鍵盤即時控制方向與速度，適合需要手動探索的情境。</p></article>
+        <article><span>06</span><h3>Random Walk／隨機漫步</h3><p>在指定區域內持續隨機移動，適合模擬公園、社區或固定範圍活動。</p></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="favorites">
+      <div class="section-kicker">08 · 常用工具</div>
+      <h2>搜尋、收藏與歷史紀錄</h2>
+      <div class="guide-cards three">
+        <article><h3>Place Search</h3><p>輸入地點名稱、地址、景點或關鍵字，搜尋結果可以直接拿來 Teleport 或建立路線。</p></article>
+        <article><h3>Favorites</h3><p>儲存常用位置、建立群組並拖曳排序，避免每次重新搜尋。</p></article>
+        <article><h3>History</h3><p>快速回到近期使用過的位置，特別適合反覆驗證多個測試座標。</p></article>
+      </div>
+      <p class="shortcut">快速指令：macOS <kbd>⌘</kbd> + <kbd>K</kbd> ／ Windows <kbd>Ctrl</kbd> + <kbd>K</kbd></p>
+    </section>
+
+    <section class="guide-section" id="routes">
+      <div class="section-kicker">09 · 路線資料</div>
+      <h2>匯入 GPX 或 JSON Waypoints</h2>
+      <p>已有既定軌跡時，可以直接匯入 ArcWayfarer，不需要重新在地圖逐點建立。</p>
+      <div class="guide-cards two">
+        <article><h3>GPX</h3><p>適合 GPS、運動與地圖工具匯出的軌跡。匯入後先確認起點、終點與航點順序再執行。</p></article>
+        <article><h3>JSON Waypoints</h3><p>適合自建固定測試座標集合或從其他工具搬移資料，可搭配多點與循環路線使用。</p></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="remote">
+      <div class="section-kicker">10 · MOBILE REMOTE</div>
+      <h2>用手機遙控 ArcWayfarer</h2>
+      <div class="guide-steps compact">
+        <article><b>1</b><div><h3>桌面版開啟 Mobile Remote</h3><p>ArcWayfarer 會產生配對 QR Code。</p></div></article>
+        <article><b>2</b><div><h3>手機掃描 QR Code</h3><p>不需要另外下載手機 App，直接由瀏覽器開啟控制頁。</p></div></article>
+        <article><b>3</b><div><h3>開始無線控制</h3><p>建議手機與電腦連接同一個 Wi-Fi；公司、學校或公共網路可能禁止裝置互通。</p></div></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="multi-device">
+      <div class="section-kicker">11 · MULTI-DEVICE</div>
+      <h2>同時管理多部 iPhone</h2>
+      <p>ArcWayfarer 支援多裝置管理。切換裝置後，每次執行 Teleport、Navigate、Joystick 或路線模擬前，請先確認目前控制的 iPhone 是否正確。</p>
+    </section>
+
+    <section class="guide-section" id="restore">
+      <div class="section-kicker">12 · 結束模擬</div>
+      <h2>恢復真實 GPS 位置</h2>
+      <p>不再需要模擬位置時，使用 ArcWayfarer 的還原／Restore Location 功能停止目前的 Developer Location Simulation。</p>
+      <div class="guide-callout info"><strong>不一定會瞬間跳回真實位置。</strong>停止模擬後，iPhone 需要重新取得 GPS、Wi-Fi、基地台與其他 Location Services 資訊，實際重新校準可能需要約 30 秒到 2 分鐘。</div>
+      <p>若 Apple Maps 暫時仍顯示舊位置，保持定位服務開啟並稍等，再重新開啟使用定位的 App。</p>
+    </section>
+
+    <section class="guide-section" id="apps">
+      <div class="section-kicker">13 · 第三方 APP</div>
+      <h2>遊戲與 App 相容性</h2>
+      <p>ArcWayfarer 修改的是 iPhone Developer Location Simulation。不同 App 可以自行加入額外定位驗證，因此「系統位置已成功修改」不代表所有 App 都一定接受。</p>
+      <div class="compat-app-grid">
+        <article class="app-ok"><div class="status-dot"></div><div><h3>Pikmin Bloom</h3><p>目前可用於 ArcWayfarer 的系統 GPS 模擬情境。但遊戲廠商可能隨版本調整定位驗證方式，因此未來版本相容性不作永久保證。</p></div></article>
+        <article class="app-limit"><div class="status-dot"></div><div><h3>Pokémon GO</h3><p><strong>目前不宣稱支援。</strong>現行版本可能偵測 Developer Location Simulation 並顯示「Failed to detect location. (12)」／Error 12。ArcWayfarer 不提供 Error 12 bypass、修改版 IPA 或遊戲客戶端。</p></div></article>
+      </div>
+    </section>
+
+    <section class="guide-section" id="troubleshooting">
+      <div class="section-kicker">14 · TROUBLESHOOTING</div>
+      <h2>常見問題與疑難排解</h2>
+      <details open><summary>ArcWayfarer 找不到我的 iPhone</summary><p>確認 iPhone 已解鎖、USB 線支援資料傳輸、已選擇「信任這部電腦」。重新插拔並重啟 ArcWayfarer。Windows 另外確認 iTunes 或 Apple Mobile Device Support。</p></details>
+      <details><summary>已經按過「信任」，為什麼還是找不到？</summary><p>「信任」只代表 pairing 已完成。裝置偵測仍可能受 USB 通訊、Apple Device Driver、Developer Services、RemoteXPC 或系統權限影響。請允許 ArcWayfarer 啟動時要求的權限並重新連線。</p></details>
+      <details><summary>為什麼 ArcWayfarer 啟動要系統權限？</summary><p>ArcWayfarer 需要建立與 iPhone Developer Services 的通訊環境，底層包含 pymobiledevice3 相關服務。一般使用者只需要接受系統授權，不需要自行執行指令。</p></details>
+      <details><summary>Developer Mode 找不到</summary><p>先用 USB 連接 iPhone、完成信任，再使用 ArcWayfarer 左上角的 Developer Mode 協助功能。之後回到「設定 → 隱私權與安全性」重新查看。</p></details>
+      <details><summary>第一次 Teleport 為什麼比較久？</summary><p>第一次可能正在準備 Developer Disk Image、Developer Services 或 RemoteXPC 通道。流程由 ArcWayfarer 自動完成，不需要安裝 Xcode。</p></details>
+      <details><summary>需要安裝 Xcode、Python 或 pymobiledevice3 嗎？</summary><p>不需要。ArcWayfarer 已封裝成完整 App，這些是內部實作所使用的技術元件。</p></details>
+      <details><summary>定位成功，但某個 App 的位置沒有變</summary><p>先用 Apple Maps 驗證。如果 Apple Maps 已顯示模擬位置，但特定 App 沒有改變，該 App 可能有定位快取或自己的模擬位置偵測機制。</p></details>
+      <details><summary>按 Restore 後為什麼還停在模擬位置？</summary><p>iPhone 重新取得真實位置可能需要約 30 秒到 2 分鐘。稍等後重新開啟地圖 App，並確認系統定位服務仍開啟。</p></details>
+      <details><summary>手機遙控掃 QR Code 後連不上</summary><p>確認手機和電腦位於可互相連線的網路，重新產生 QR Code，並檢查電腦防火牆或 Wi-Fi 是否啟用 Client Isolation。</p></details>
+    </section>
+
+    <section class="guide-section support-box" id="support">
+      <p class="eyebrow">SUPPORT ARCWAYFARER</p>
+      <h2>喜歡 ArcWayfarer？<br><em>幫它走得更遠。</em></h2>
+      <p>你的支持能協助我們持續處理新版 iOS、新款 iPhone、macOS / Windows 相容性、Bug 修正與新功能開發。</p>
+      <div class="guide-hero-actions">
+        <a class="button" href="https://portaly.cc/lence0620/support" target="_blank" rel="noopener noreferrer">台灣使用者支持 →</a>
+        <a class="guide-link" href="https://ko-fi.com/arcwayfarer" target="_blank" rel="noopener noreferrer">Ko-fi International</a>
+      </div>
+    </section>
+
+    <section class="guide-disclaimer">
+      <h2>使用提醒</h2>
+      <p>ArcWayfarer 是 GPS Location Simulation 工具，主要提供軟體開發、測試、研究與個人定位模擬用途。部分第三方服務可能禁止模擬定位或採用額外偵測機制。使用前請自行確認並遵守相關服務條款與所在地規範。</p>
+    </section>
+
+    <footer class="guide-footer">
+      <span>ArcWayfarer User Guide</span>
+      <div><a href="./">回官網</a><a href="./#download">下載</a><a href="https://github.com/WeiYuanLee/ArcWayfarer" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+    </footer>
+  </main>
+</div>
+
+<script>
+  const button = document.getElementById('guideMenuButton');
+  const sidebar = document.getElementById('guideSidebar');
+  button.addEventListener('click', () => {
+    const open = sidebar.classList.toggle('open');
+    button.setAttribute('aria-expanded', String(open));
+  });
+  sidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    button.setAttribute('aria-expanded', 'false');
+  }));
+
+  const sections = [...document.querySelectorAll('.guide-main section[id]')];
+  const links = [...sidebar.querySelectorAll('a[href^="#"]')];
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((link) => link.classList.toggle('active', link.getAttribute('href') === '#' + entry.target.id));
+    });
+  }, { rootMargin: '-22% 0px -68% 0px' });
+  sections.forEach((section) => observer.observe(section));
+</script>
+</body>
+</html>
