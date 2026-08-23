@@ -4,7 +4,7 @@ export const WS_URL = isMobileRemote
   ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/mobile`
   : 'ws://127.0.0.1:8787/ws/status'
 
-function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
+export function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
   const session = isMobileRemote ? sessionStorage.getItem('arcwayfarer.mobile.session') : null
   return session ? { ...headers, Authorization: `Bearer ${session}` } : headers
 }
@@ -18,10 +18,21 @@ export type Device = {
   transport: 'lockdown' | 'rsd'
   status: DeviceStatus
   detail: string | null
+  /** Physical discovery path, when supplied by newer backends. */
+  connection_type?: 'usb' | 'wifi' | 'unknown'
 }
 
 export type MobilePairing = { url: string; pin: string; expires_in: number; qr_data_url: string }
 export type MobileRemoteStatus = { paired_sessions: number; connected_phones: number }
+export type DeviceDiscoveryDiagnostic = {
+  code: 'usb_discovery_failed'
+  occurred_at: string
+  error_type: string
+  message: string
+  python_version: string
+  platform: string
+  pymobiledevice3_version: string
+}
 
 export async function createMobilePairing(): Promise<MobilePairing> {
   return postJsonWithResponse('/api/mobile/pairings', {})
@@ -44,16 +55,24 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-export async function listDevices(): Promise<Device[]> {
+export async function listDevices({ includeWifi = false }: { includeWifi?: boolean } = {}): Promise<Device[]> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
   try {
-    const res = await fetch(`${API_BASE_URL}/api/devices`, {
+    // USB-only is the backend default, so omit the query in that common path.
+    // It also keeps older clients' request URL stable for integrations.
+    const query = includeWifi ? '?include_wifi=true' : ''
+    const res = await fetch(`${API_BASE_URL}/api/devices${query}`, {
       headers: authHeaders(),
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
-    return res.json()
+    const devices = await res.json() as Device[]
+    // The API filter is intentionally duplicated here until all packaged
+    // backend versions understand include_wifi. Unknown is retained for
+    // backwards compatibility with older backends that did not report a
+    // physical connection type.
+    return includeWifi ? devices : devices.filter((device) => device.connection_type !== 'wifi')
   } catch (err: any) {
     if (err.name === 'AbortError') {
       throw new Error('Device scan timed out (15s). Please check device connection.')
@@ -62,6 +81,11 @@ export async function listDevices(): Promise<Device[]> {
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+export async function getDeviceDiscoveryDiagnostic(): Promise<DeviceDiscoveryDiagnostic | null> {
+  const response = await getJson<{ usb_discovery: DeviceDiscoveryDiagnostic | null }>('/api/devices/diagnostics')
+  return response.usb_discovery
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -352,12 +376,55 @@ export type Favorite = {
   order: number
 }
 
+export type FavoriteExportItem = {
+  name: string
+  lat: number
+  lng: number
+  group: string
+  notes: string
+  created_at: number
+  order: number
+}
+
+export type FavoriteExportDocument = {
+  format: 'arcwayfarer-favorites'
+  schema_version: 1
+  exported_at: string
+  groups: string[]
+  favorites: FavoriteExportItem[]
+}
+
+export type FavoriteImportPreview = {
+  total: number
+  additions: number
+  duplicates: number
+  groups_to_add: string[]
+}
+
+export type FavoriteImportResult = FavoriteImportPreview & {
+  imported: number
+}
+
 export function listFavorites(): Promise<Favorite[]> {
   return getJson('/api/favorites')
 }
 
 export function listFavoriteGroups(): Promise<string[]> {
   return getJson('/api/favorites/groups')
+}
+
+export function exportFavorites(groups: string[]): Promise<FavoriteExportDocument> {
+  const params = new URLSearchParams()
+  groups.forEach((group) => params.append('groups', group))
+  return getJson(`/api/favorites/export?${params.toString()}`)
+}
+
+export function previewFavoriteImport(document: FavoriteExportDocument): Promise<FavoriteImportPreview> {
+  return postJsonWithResponse('/api/favorites/import/preview', document)
+}
+
+export function importFavorites(document: FavoriteExportDocument): Promise<FavoriteImportResult> {
+  return postJsonWithResponse('/api/favorites/import', document)
 }
 
 export function addFavoriteGroup(name: string): Promise<string> {

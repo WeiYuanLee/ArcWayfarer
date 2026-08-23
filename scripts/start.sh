@@ -12,6 +12,7 @@ if [ ! -d venv ]; then
 fi
 source venv/bin/activate
 pip install -q -r requirements.txt
+echo "Using pymobiledevice3 $(python -c 'from importlib.metadata import version; print(version("pymobiledevice3"))')"
 
 # Check and start pymobiledevice3 remote tunneld (iOS 17+ support)
 TUNNELD_PID=""

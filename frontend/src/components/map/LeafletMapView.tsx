@@ -5,7 +5,7 @@ import type { MapOverlay } from '../panels/types'
 
 import { createCachedTileLayer } from './CachedTileLayer'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
-import { API_BASE_URL } from '../../services/api'
+import { API_BASE_URL, authHeaders } from '../../services/api'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -300,6 +300,9 @@ export function LeafletMapView({
       updateWhenZooming: false,
       updateWhenIdle: true,
       keepBuffer: 2,
+      // LAN mobile requests need the paired-session header. Do not pass it to
+      // a custom third-party provider, where it would disclose the token.
+      requestHeaders: provider.id === DEFAULT_TILE_PROVIDER.id ? authHeaders : undefined,
     }).addTo(map)
 
     tileLayer.on('loading', () => setIsTileLoading(true))

@@ -9,7 +9,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapOverlay } from '../panels/types'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
-import { API_BASE_URL } from '../../services/api'
+import { API_BASE_URL, authHeaders } from '../../services/api'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -405,6 +405,14 @@ export function MapLibreMapView({
     const map = new MapLibreMap({
       container: containerRef.current,
       attributionControl: false,
+      // MapLibre loads raster tiles itself, so it does not inherit the
+      // application's fetch headers. Limit the session token to our backend;
+      // custom providers must never receive it.
+      transformRequest: (url) => (
+        provider.id === DEFAULT_TILE_PROVIDER.id && url.startsWith(`${API_BASE_URL}/api/map/`)
+          ? { url, headers: authHeaders() }
+          : { url }
+      ),
       style: {
         version: 8,
         sources: {

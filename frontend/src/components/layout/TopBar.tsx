@@ -3,7 +3,7 @@ import { ConnectionStatus } from '../ConnectionStatus'
 import { DevMenuButton } from './DevMenuButton'
 import { VersionBadge } from '../common/VersionBadge'
 import { ColorSchemeControl } from './ColorSchemeControl'
-import type { Device } from '../../services/api'
+import type { Device, DeviceDiscoveryDiagnostic } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
 import type { LivePosition } from '../../hooks/useWebSocket'
@@ -20,6 +20,9 @@ type Props = {
   overlaysByDevice?: Record<string, MapOverlay>
   devicesLoading: boolean
   onRefreshDevices: () => void
+  includeWifi: boolean
+  onIncludeWifiChange: (enabled: boolean) => void
+  discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
   onOpenCmdPalette?: () => void
   version: string
   hasUpdate: boolean
@@ -39,6 +42,9 @@ export function TopBar({
   overlaysByDevice,
   devicesLoading,
   onRefreshDevices,
+  includeWifi,
+  onIncludeWifiChange,
+  discoveryDiagnostic,
   onOpenCmdPalette,
   version,
   hasUpdate,
@@ -78,6 +84,9 @@ export function TopBar({
         overlaysByDevice={overlaysByDevice}
         loading={devicesLoading}
         onRefresh={onRefreshDevices}
+        includeWifi={includeWifi}
+        onIncludeWifiChange={onIncludeWifiChange}
+        discoveryDiagnostic={discoveryDiagnostic}
       />
       <ColorSchemeControl />
       <ConnectionStatus connected={connected} />

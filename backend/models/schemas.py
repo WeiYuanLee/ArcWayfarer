@@ -1,8 +1,9 @@
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Transport = Literal["lockdown", "rsd"]
+DeviceConnectionType = Literal["usb", "wifi", "unknown"]
 DeviceStatus = Literal["ready", "mounting", "tunnel_required", "error"]
 
 
@@ -11,6 +12,9 @@ class DeviceInfo(BaseModel):
     name: str
     ios_version: str
     transport: Transport
+    # The physical path used to discover the device. This is intentionally
+    # separate from ``transport``, which selects the location-service API.
+    connection_type: DeviceConnectionType = "unknown"
     status: DeviceStatus
     detail: Optional[str] = None
 
@@ -160,3 +164,52 @@ class FavoriteReorderItem(BaseModel):
 
 class FavoriteReorderRequest(BaseModel):
     items: list[FavoriteReorderItem]
+
+
+class FavoriteExportItem(BaseModel):
+    """Portable favorite representation. IDs are intentionally excluded."""
+
+    name: str = Field(min_length=1, max_length=80)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    group: str = Field(default="", max_length=40)
+    notes: str = Field(default="", max_length=200)
+    created_at: int = Field(ge=0)
+    order: int = Field(ge=0)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Favorite name cannot be empty.")
+        return normalized
+
+    @field_validator("group", "notes")
+    @classmethod
+    def trim_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class FavoriteExportDocument(BaseModel):
+    format: Literal["arcwayfarer-favorites"] = "arcwayfarer-favorites"
+    schema_version: Literal[1] = 1
+    exported_at: str
+    groups: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=500)
+    favorites: list[FavoriteExportItem] = Field(default_factory=list, max_length=10_000)
+
+    @field_validator("groups")
+    @classmethod
+    def normalize_groups(cls, values: list[str]) -> list[str]:
+        return [value.strip() for value in values if value.strip()]
+
+
+class FavoriteImportPreview(BaseModel):
+    total: int
+    additions: int
+    duplicates: int
+    groups_to_add: list[str]
+
+
+class FavoriteImportResult(FavoriteImportPreview):
+    imported: int

@@ -155,6 +155,19 @@ body {
   white-space: nowrap;
 }
 
+.device-diagnostic {
+  position: relative;
+}
+
+.device-diagnostic-copy {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  padding: 1px;
+  border-radius: 2px;
+  background: var(--aw-surface-raised);
+}
+
 .device-tab-wrapper {
   position: relative;
   display: inline-flex;

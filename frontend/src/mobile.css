@@ -53,21 +53,31 @@
   height: 100%;
 }
 
-.mobile-app .mapp-fabs {
-  position: absolute;
-  z-index: var(--aw-map-overlay-z-index);
-  top: var(--mantine-spacing-md);
-  left: var(--mantine-spacing-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--mantine-spacing-sm);
+/* Share the desktop right-side map action rail, so both map engines use the
+ * same control hierarchy, dimensions, spacing, and visual weight. */
+.mobile-app .icon-rail {
+  top: 16px;
+  right: 16px;
 }
 
-.mobile-app .mapp-fab {
-  border-color: var(--aw-border);
-  background: var(--aw-map-control-bg);
-  color: var(--aw-text-primary);
-  box-shadow: var(--mantine-shadow-sm);
+.mobile-app .icon-rail button,
+.mobile-app .map-view-wrapper .leaflet-control-zoom a,
+.mobile-app .map-view-wrapper .maplibregl-ctrl-group button,
+.mobile-app .map-engine-trigger {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+}
+
+.mobile-app .map-view-wrapper .leaflet-top.leaflet-left,
+.mobile-app .map-view-wrapper .maplibregl-ctrl-top-right {
+  top: 168px;
+  right: 16px;
+}
+
+.mobile-app .map-engine-control {
+  top: 274px;
+  right: 16px;
 }
 
 .mobile-app .mapp-pick-hint {

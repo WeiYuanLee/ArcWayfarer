@@ -7,6 +7,8 @@ export interface CachedTileLayerOptions extends L.TileLayerOptions {
   cacheNamespace?: string
   enableCache?: boolean
   ttlMs?: number
+  /** Headers resolved for each proxied tile request. Never use for third-party tile URLs. */
+  requestHeaders?: () => HeadersInit
 }
 
 interface PendingTileHandle {
@@ -30,6 +32,7 @@ export class CachedTileLayer extends L.TileLayer {
   private cacheNamespace: string
   private isCacheEnabled: boolean
   private customTtlMs?: number
+  private requestHeaders?: () => HeadersInit
 
   constructor(urlTemplate: string, options?: CachedTileLayerOptions) {
     super(urlTemplate, options)
@@ -39,6 +42,7 @@ export class CachedTileLayer extends L.TileLayer {
     this.cacheNamespace = options?.cacheNamespace || options?.provider?.cacheNamespace || 'osm'
     this.isCacheEnabled = options?.enableCache !== false
     this.customTtlMs = options?.ttlMs
+    this.requestHeaders = options?.requestHeaders
   }
 
   createTile(coords: L.Coords, done: L.DoneCallback): HTMLElement {
@@ -83,7 +87,7 @@ export class CachedTileLayer extends L.TileLayer {
           tile.src = objectUrl
         } else {
           // Cache miss: fetch from network with AbortSignal
-          fetch(tileUrl, { signal: abortController.signal })
+          fetch(tileUrl, { signal: abortController.signal, headers: this.requestHeaders?.() })
             .then((res) => {
               if (!res.ok) throw new Error(`HTTP ${res.status}`)
               const contentType = res.headers.get('content-type') || ''

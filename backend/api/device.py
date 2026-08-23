@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pymobiledevice3.exceptions import DeviceNotFoundError
 
 from core import device_manager
@@ -8,8 +8,15 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/devices")
-async def get_devices() -> list[DeviceInfo]:
-    return await device_manager.list_devices()
+async def get_devices(include_wifi: bool = Query(default=False)) -> list[DeviceInfo]:
+    """List USB devices and, when requested, devices discovered over Wi-Fi."""
+    return await device_manager.list_devices(include_wifi=include_wifi)
+
+
+@router.get("/devices/diagnostics")
+async def get_device_diagnostics() -> dict:
+    """Return the latest USB discovery failure without triggering a rescan."""
+    return {"usb_discovery": device_manager.get_usb_discovery_diagnostic()}
 
 
 @router.post("/devices/{udid}/amfi/reveal-developer-mode")

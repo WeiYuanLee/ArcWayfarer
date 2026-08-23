@@ -3,21 +3,23 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from 
 import type { DragEndEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { ActionIcon, Badge, Drawer, Group, SegmentedControl, Stack, Text, TextInput, Tooltip } from '@mantine/core'
-import { IconFolderPlus, IconHeart, IconSearch, IconX } from '@tabler/icons-react'
+import { IconDownload, IconFolderPlus, IconHeart, IconSearch, IconUpload, IconX } from '@tabler/icons-react'
 import { useT } from '../../i18n'
 import { useFavorites } from '../../hooks/useFavorites'
 import { FavoriteGroupSection } from './FavoriteGroupSection'
 import { UndoToast } from '../common/UndoToast'
 import type { Favorite } from '../../services/api'
+import { FavoriteTransferModal } from './FavoriteTransferModal'
 
 type Props = { isOpen: boolean; onClose: () => void; onSelectFavorite: (lat: number, lng: number) => void }
 
 export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
   const t = useT()
-  const { displayed, groups, loading, sortMode, setSortMode, search, setSearch, pendingDeletes, requestDelete, undoDelete, handleUpdate, handleCreateGroup, handleReorder, refresh } = useFavorites()
+  const { displayed, allGroups, groups, loading, sortMode, setSortMode, search, setSearch, pendingDeletes, requestDelete, undoDelete, handleUpdate, handleCreateGroup, handleReorder, refresh } = useFavorites()
   const searchRef = useRef<HTMLInputElement>(null)
   const [newGroup, setNewGroup] = useState('')
   const [creatingGroup, setCreatingGroup] = useState(false)
+  const [transferMode, setTransferMode] = useState<'export' | 'import' | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +84,10 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
           onChange={(value) => setSortMode(value as typeof sortMode)}
           data={(['manual', 'name', 'date'] as const).map((value) => ({ value, label: t(`favorites.sort.${value}` as Parameters<typeof t>[0]) }))}
         />
+        <Group grow>
+          <ActionIcon variant="default" size="lg" aria-label={t('favorites.export')} onClick={() => setTransferMode('export')}><Tooltip label={t('favorites.export')}><IconDownload size={17} /></Tooltip></ActionIcon>
+          <ActionIcon variant="default" size="lg" aria-label={t('favorites.import')} onClick={() => setTransferMode('import')}><Tooltip label={t('favorites.import')}><IconUpload size={17} /></Tooltip></ActionIcon>
+        </Group>
         {loading && <Text c="dimmed" size="sm">{t('generic.working')}</Text>}
         {!loading && groups.length === 0 && <Text c="dimmed" size="sm">{search ? t('favorites.empty_search') : t('favorites.empty')}</Text>}
         {!loading && groups.length > 0 && (
@@ -95,6 +101,7 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
           </DndContext>
         )}
       </Stack>
+      <FavoriteTransferModal mode={transferMode} groups={allGroups} onClose={() => setTransferMode(null)} onImported={refresh} />
       <UndoToast pendingDeletes={pendingDeletes} onUndo={undoDelete} />
     </Drawer>
   )

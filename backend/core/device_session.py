@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 
 _DEAD_CONNECTION_ERRORS = (ConnectionTerminatedError, ConnectionError, OSError, asyncio.TimeoutError, TimeoutError)
 
+# LocationSimulation.clear() uses a DTX call that does not wait for a device
+# reply. Keep the channel alive long enough for the command to be flushed, then
+# close it: iOS map apps can otherwise retain the simulation source and delay
+# their transition back to a fresh real-location update.
+CLEAR_DELIVERY_SETTLE_SECONDS = 1.0
+CLEAR_DELIVERY_ATTEMPTS = 1
+
 
 class DeviceSession:
     """A persistent location-simulation connection for one device.
@@ -154,13 +161,31 @@ async def set_location(udid: str, lat: float, lng: float, max_retries: int = 3, 
             await asyncio.sleep(retry_delay)
 
 
-async def clear_location(udid: str, max_retries: int = 2) -> None:
-    """Stops location simulation on the device and restores real GPS location."""
+async def clear_location(
+    udid: str,
+    max_retries: int = 2,
+    settle_seconds: float = CLEAR_DELIVERY_SETTLE_SECONDS,
+    delivery_attempts: int = CLEAR_DELIVERY_ATTEMPTS,
+) -> None:
+    """Stop simulation, optionally flush the DTX command, then release its session.
+
+    Normal restores use a short settle window so map apps promptly release their
+    simulated source. If sending the clear command or tearing down the session fails
+    (e.g., due to a stale connection), the outer retry loop will establish a fresh
+    connection and try again. Time-sensitive workflows such as Gold Ditto can opt out
+    of the settle delay and retain their established set-to-clear timing.
+    """
+    if delivery_attempts < 1:
+        raise ValueError("delivery_attempts must be at least 1")
+
     for attempt in range(1, max_retries + 1):
         try:
-            session = await get_session(udid)
-            await session.clear()
-            await close_session(udid)
+            for _ in range(delivery_attempts):
+                session = await get_session(udid)
+                await session.clear()
+                if settle_seconds > 0:
+                    await asyncio.sleep(settle_seconds)
+                await close_session(udid)
             return
         except Exception as e:
             await close_session(udid)
@@ -168,5 +193,3 @@ async def clear_location(udid: str, max_retries: int = 2) -> None:
                 logger.warning("Failed to clear location for %s (attempt %d/%d): %s", udid, attempt, max_retries, e)
                 raise
             await asyncio.sleep(1.0)
-
-
