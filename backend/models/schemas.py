@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -72,6 +72,28 @@ class RouteLoopStartRequest(BaseModel):
     custom_speed_kmh: Optional[float] = None
 
 
+class FlowerOptions(BaseModel):
+    radius_m: float = Field(30.0, ge=5.0, le=100.0)
+    circles: float = Field(1.0, ge=0.5, le=10.0)
+    segments: int = Field(8, ge=4, le=64)
+    # Center spiral is the safe default: it crosses the flower center and
+    # changes radius between rings instead of replaying one perimeter.
+    path_strategy: Literal["center_spiral", "perimeter"] = "center_spiral"
+    inner_radius_m: Optional[float] = Field(None, ge=5.0, le=100.0)
+    jitter_m: float = Field(1.5, ge=0.0, le=3.0)
+    pre_wait_seconds: float = Field(0.0, ge=0.0, le=300.0)
+    post_wait_seconds: float = Field(2.0, ge=0.0, le=300.0)
+    route_type: Literal["stop_at_end", "return_to_start", "loop_forever"] = "stop_at_end"
+    rounds: Union[int, Literal["infinite"]] = 1
+
+    @field_validator("rounds")
+    @classmethod
+    def valid_rounds(cls, value):
+        if value != "infinite" and value < 1:
+            raise ValueError("rounds must be at least 1")
+        return value
+
+
 class MultiStopStartRequest(BaseModel):
     udid: str
     nav_mode: NavMode
@@ -84,6 +106,15 @@ class MultiStopStartRequest(BaseModel):
     jump_pre_delay: float = 0.0
     jump_post_delay: float = 0.0
     custom_speed_kmh: Optional[float] = None
+    mode: Literal["basic", "flower"] = "basic"
+    flower: Optional[FlowerOptions] = None
+
+
+class FlowerMultiStopStartRequest(MultiStopStartRequest):
+    # Keep this required.  If omitted, a legacy/basic request must resolve to
+    # MultiStopStartRequest rather than silently selecting the Flower branch.
+    mode: Literal["flower"]
+    flower: FlowerOptions = Field(default_factory=FlowerOptions)
 
 
 class RandomWalkStartRequest(BaseModel):

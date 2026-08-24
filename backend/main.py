@@ -18,6 +18,8 @@ async def lifespan(_app: FastAPI):
     ensure_app_data_dir()
     events.on_position = websocket.broadcast_position
     events.on_state_change = websocket.broadcast_state
+    events.on_restored = websocket.broadcast_restored
+    events.on_flower_progress = websocket.broadcast_flower_progress
     yield
 
 

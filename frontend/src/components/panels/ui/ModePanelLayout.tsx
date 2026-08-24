@@ -17,6 +17,8 @@ export type ModePanelLayoutProps = {
   status?: ReactNode
   /** Disables the internal scroll body for compact panels. */
   scrollable?: boolean
+  /** Keeps a visible draggable scrollbar for long, settings-heavy panels. */
+  alwaysShowScrollbar?: boolean
 }
 
 /**
@@ -33,6 +35,7 @@ export function ModePanelLayout({
   footer,
   status,
   scrollable = true,
+  alwaysShowScrollbar = false,
 }: ModePanelLayoutProps) {
   const body = <Stack gap="lg">{notices}{children}</Stack>
 
@@ -51,7 +54,7 @@ export function ModePanelLayout({
       </Group>
 
       {scrollable ? (
-        <ScrollArea type="auto" style={{ minHeight: 0, flex: 1 }}>
+        <ScrollArea type={alwaysShowScrollbar ? "always" : "auto"} offsetScrollbars style={{ minHeight: 0, flex: 1 }}>
           <Box>{body}</Box>
         </ScrollArea>
       ) : body}

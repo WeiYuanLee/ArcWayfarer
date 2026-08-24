@@ -21,7 +21,11 @@ async def set_location(udid: str, lat: float, lng: float) -> None:
 async def clear_location(udid: str) -> None:
     async def operation() -> None:
         await device_session.clear_location(udid)
+        # Always publish a terminal state for restore, including when the device
+        # was already idle before this command.
+        await simulation_engine.set_state(udid, SimulationState.IDLE)
         await events.emit_position(udid, None, None)
+        await events.emit_restored(udid)
 
     await simulation_engine.run_exclusive(udid, operation)
 
@@ -42,6 +46,7 @@ async def gold_ditto(udid: str, lat: float, lng: float) -> None:
             # game. Do not add the normal map-refresh settle window here.
             await device_session.clear_location(udid, settle_seconds=0, delivery_attempts=1)
             await events.emit_position(udid, None, None)
+            await events.emit_restored(udid)
         finally:
             await simulation_engine.set_state(udid, SimulationState.IDLE)
 

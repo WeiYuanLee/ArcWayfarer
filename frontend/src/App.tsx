@@ -12,6 +12,7 @@ import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
 import { UpdateModal } from './components/common/UpdateModal'
+import { clearLocation } from './services/api'
 
 const WIFI_DISCOVERY_STORAGE_KEY = 'arcwayfarer.include-wifi-discovery'
 
@@ -31,7 +32,7 @@ export default function App() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [includeWifi, setIncludeWifi] = useState(readWifiDiscoveryPreference)
-  const { connected, positions, states, send } = useWebSocket()
+  const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
   const { devices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
   const {
     checkResult,
@@ -189,6 +190,15 @@ export default function App() {
     return overlayCallbacksRef.current[udid]
   }, [setOverlayForDevice])
 
+  const restoreAll = useCallback(async () => {
+    const restoreTargets = devices.filter((device) => device.status === 'ready')
+    const results = await Promise.allSettled(restoreTargets.map((device) => clearLocation(device.udid)))
+    return {
+      restored: results.filter((result) => result.status === 'fulfilled').length,
+      failed: results.filter((result) => result.status === 'rejected').length,
+    }
+  }, [devices])
+
   function panelPropsFor(udid: string): PanelProps {
     const device = devices.find((d) => d.udid === udid) ?? null
     const position = positions[udid]
@@ -198,8 +208,11 @@ export default function App() {
       deviceState: states[udid] ?? 'idle',
       point: pointByDevice[udid] ?? null,
       livePosition: position ? { lat: position.lat, lng: position.lng } : null,
+      liveSpeedMps: position?.speedMps ?? null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
+      flowerProgress: flowerProgress[udid] ?? null,
+      restoredAt: restoredAt[udid],
       connected,
       setPoint: (point) => setPointByDevice((prev) => ({ ...prev, [udid]: point })),
       requestPoint,
@@ -207,6 +220,7 @@ export default function App() {
       setOverlay: getSetOverlayForDevice(udid),
       requestFlyTo,
       sendWs: send,
+      restoreAll: devices.length > 1 ? restoreAll : undefined,
     }
   }
 

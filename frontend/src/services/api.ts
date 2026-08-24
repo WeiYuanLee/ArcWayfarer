@@ -265,6 +265,7 @@ export function startMultiStop(
   return postJsonWithResponse('/api/multi-stop/start', {
     udid,
     nav_mode: navMode,
+    mode: 'basic',
     waypoints,
     pause_enabled: stationPause.enabled,
     pause_min: stationPause.min,
@@ -277,8 +278,47 @@ export function startMultiStop(
   })
 }
 
+export type FlowerOptions = {
+  radius_m: number
+  circles: number
+  segments: number
+  path_strategy: 'center_spiral' | 'perimeter'
+  inner_radius_m: number | null
+  jitter_m: number
+  pre_wait_seconds: number
+  post_wait_seconds: number
+  route_type: 'stop_at_end' | 'return_to_start' | 'loop_forever'
+  rounds: number | 'infinite'
+}
+
+/** Starts Flower mode through the multi-stop controller. Flower is a mode
+ * payload, rather than a separate endpoint, so older multi-stop controls
+ * remain untouched. */
+export function startFlower(
+  udid: string,
+  navMode: NavMode,
+  waypoints: LatLng[],
+  flower: FlowerOptions,
+  options: Pick<MultiStopOptions, 'straightLine' | 'jumpMode' | 'customSpeedKmh'> = {},
+): Promise<{ status: string; route: LatLng[]; legs: LatLng[][] }> {
+  return postJsonWithResponse('/api/multi-stop/start', {
+    udid,
+    nav_mode: navMode,
+    mode: 'flower',
+    waypoints,
+    flower,
+    straight_line: options.straightLine ?? false,
+    jump_mode: options.jumpMode ?? false,
+    custom_speed_kmh: options.customSpeedKmh ?? null,
+  })
+}
+
 export function stopMultiStop(udid: string): Promise<void> {
   return postJson('/api/multi-stop/stop', { udid })
+}
+
+export function skipFlower(udid: string): Promise<void> {
+  return postJson('/api/multi-stop/skip', { udid })
 }
 
 export function pauseMultiStop(udid: string): Promise<void> {

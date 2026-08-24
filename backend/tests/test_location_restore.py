@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from core import device_session, simulation_engine
+from core import device_session, events, simulation_engine, teleport
 
 
 class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
@@ -74,6 +74,24 @@ class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(simulation_engine.is_running(udid))
         simulation_engine._sessions.pop(udid, None)
+
+    async def test_restore_broadcasts_terminal_state_position_and_confirmation(self) -> None:
+        async def run_now(_udid: str, operation):
+            return await operation()
+
+        with (
+            patch.object(simulation_engine, "run_exclusive", side_effect=run_now),
+            patch.object(simulation_engine, "set_state", AsyncMock()) as set_state,
+            patch.object(device_session, "clear_location", AsyncMock()) as clear_location,
+            patch.object(events, "emit_position", AsyncMock()) as emit_position,
+            patch.object(events, "emit_restored", AsyncMock()) as emit_restored,
+        ):
+            await teleport.clear_location("device-4")
+
+        clear_location.assert_awaited_once_with("device-4")
+        set_state.assert_awaited_once_with("device-4", simulation_engine.SimulationState.IDLE)
+        emit_position.assert_awaited_once_with("device-4", None, None)
+        emit_restored.assert_awaited_once_with("device-4")
 
 
 if __name__ == "__main__":

@@ -939,19 +939,16 @@ export function MapLibreMapView({
         arrowAnimationFramesRef.current.delete(deviceId)
       }
 
-      // Circle Overlay
-      if (overlay?.circle && typeof overlay.circle.lat === 'number' && typeof overlay.circle.lng === 'number') {
-        const circleGeoJSON = createCircleGeoJSON(overlay.circle, overlay.circle.radiusMeters)
-        setGeoJSONSource(circleSourceId, circleGeoJSON)
-        ensureFillLayer(map, circleFillLayerId, circleSourceId, '#4a9af0', 0.1)
-        ensureLineLayer(map, circleLineLayerId, circleSourceId, '#4a9af0', 2, 1)
-        trackedLayersRef.current.add(circleFillLayerId)
-        trackedLayersRef.current.add(circleLineLayerId)
-      } else {
-        removeLayerSafe(circleFillLayerId)
-        removeLayerSafe(circleLineLayerId)
-        removeSourceSafe(circleSourceId)
-      }
+      // Circle Overlay is rendered by the projected pass below.  It supports
+      // the legacy `circle` field and Flower's per-waypoint `circles` array.
+      // Circle styling (dash, opacity and active color) is per overlay item.
+      // The GPU layers previously used one hard-coded blue style for every
+      // circle, then drew underneath the projected SVG fallback.  That made
+      // WebGL visibly diverge from Leaflet.  Use the projected pass as the
+      // single source of circle rendering in both cases.
+      removeLayerSafe(circleFillLayerId)
+      removeLayerSafe(circleLineLayerId)
+      removeSourceSafe(circleSourceId)
     }
 
     syncVisibleRouteLayers(
@@ -1005,21 +1002,33 @@ export function MapLibreMapView({
       if (!overlay.path || overlay.path.length < 2) return []
       return [{ id, points: projectPath(overlay.path) }]
     })
-    const circles = Object.entries(overlays ?? []).flatMap(([id, overlay]) => {
-      if (!overlay.circle || overlay.circle.radiusMeters <= 0) return []
-      const ring = createCircleGeoJSON(overlay.circle, overlay.circle.radiusMeters).geometry.coordinates[0]
-      const points = ring.map(([lng, lat]) => {
-        const projected = map.project([lng, lat])
-        return `${projected.x},${projected.y}`
-      }).join(' ')
-      return [{ id, points }]
-    })
+    const circles = Object.entries(overlays ?? []).flatMap(([id, overlay]) => (
+      (overlay.circles ?? (overlay.circle ? [overlay.circle] : []))
+        .filter((circle) => circle.radiusMeters > 0)
+        .map((circle, index) => {
+          const ring = createCircleGeoJSON(circle, circle.radiusMeters).geometry.coordinates[0]
+          const points = ring.map(([lng, lat]) => {
+            const projected = map.project([lng, lat])
+            return `${projected.x},${projected.y}`
+          }).join(' ')
+          return { id: `${id}-${circle.id ?? index}`, points, circle }
+        })
+    ))
+    const links = Object.entries(overlays ?? []).flatMap(([id, overlay]) => (
+      (overlay.links ?? []).filter((link) => (
+        Number.isFinite(link.from.lat) && Number.isFinite(link.from.lng) && Number.isFinite(link.to.lat) && Number.isFinite(link.to.lng)
+      )).map((link) => {
+        const from = map.project([link.from.lng, link.from.lat])
+        const to = map.project([link.to.lng, link.to.lat])
+        return { id: `${id}-${link.id}`, points: `${from.x},${from.y} ${to.x},${to.y}`, link }
+      })
+    ))
     const activeRoutes = Object.entries(overlays ?? []).flatMap(([id, overlay]) => {
       const activePath = activeLegFromDrawnPath(overlay.path, overlay.activePath)
       if (!activePath || activePath.length < 2) return []
       return [{ id, points: projectPath(activePath) }]
     })
-    if (!routes.length && !circles.length) return null
+    if (!routes.length && !circles.length && !links.length) return null
 
     return (
       <svg
@@ -1035,12 +1044,18 @@ export function MapLibreMapView({
             className="maplibre-projected-circle"
             data-route-id={circle.id}
             points={circle.points}
-            fill="#4a9af0"
-            fillOpacity="0.1"
-            stroke="#4a9af0"
-            strokeOpacity="1"
-            strokeWidth="2"
+            fill={circle.circle.fillColor ?? circle.circle.color ?? '#4a9af0'}
+            fillOpacity={circle.circle.fillOpacity ?? 0.1}
+            stroke={circle.circle.color ?? '#4a9af0'}
+            strokeOpacity={circle.circle.opacity ?? 1}
+            strokeWidth={circle.circle.weight ?? 2}
+            strokeDasharray={circle.circle.dashArray}
           />
+        ))}
+        {links.map((link) => (
+          <polyline key={link.id} points={link.points} fill="none" stroke={link.link.color ?? '#62a850'}
+            strokeOpacity={link.link.opacity ?? 0.8} strokeWidth={link.link.weight ?? 2}
+            strokeDasharray={link.link.dashArray ?? '4 6'} />
         ))}
         {routes.map((route) => (
           <g key={route.id} className="maplibre-route-path" data-route-id={route.id} fill="none" strokeLinecap="round" strokeLinejoin="round">

@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { WS_URL } from '../services/api'
 
 export type LivePosition = { lat: number; lng: number; speedMps: number; etaSeconds: number; stopIndex: number | null }
+export type FlowerProgress = {
+  flowerIndex: number
+  totalFlowers: number
+  circle: number
+  totalCircles: number
+  phase: string
+}
 type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
 type PositionMessage = {
   type: 'position'
@@ -13,12 +20,16 @@ type PositionMessage = {
   stop_index: number | null
 }
 type StateMessage = { type: 'state'; udid: string; state: DeviceState }
-type Message = PositionMessage | StateMessage
+type RestoredMessage = { type: 'restored'; udid: string }
+type FlowerProgressMessage = { type: 'flower_progress'; udid: string; flower_index?: number; flower_total?: number; total_flowers?: number; circle?: number; round?: number; total_circles?: number; phase?: string; lat?: number; lng?: number }
+type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgressMessage
 
 export function useWebSocket() {
   const [connected, setConnected] = useState(false)
   const [positions, setPositions] = useState<Record<string, LivePosition>>({})
   const [states, setStates] = useState<Record<string, DeviceState>>({})
+  const [restoredAt, setRestoredAt] = useState<Record<string, number>>({})
+  const [flowerProgress, setFlowerProgress] = useState<Record<string, FlowerProgress>>({})
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectAttemptRef = useRef(0)
 
@@ -79,6 +90,32 @@ export function useWebSocket() {
             }
           } else if (message.type === 'state') {
             setStates((prev) => ({ ...prev, [message.udid]: message.state }))
+          } else if (message.type === 'restored') {
+            setRestoredAt((prev) => ({ ...prev, [message.udid]: Date.now() }))
+          } else if (message.type === 'flower_progress') {
+            if (typeof message.lat === 'number' && typeof message.lng === 'number') {
+              setPositions((prev) => ({
+                ...prev,
+                [message.udid]: {
+                  // Flower progress follows the regular position event.  It may
+                  // refine the coordinate, but must not erase its live speed.
+                  lat: message.lat!, lng: message.lng!,
+                  speedMps: prev[message.udid]?.speedMps ?? 0,
+                  etaSeconds: prev[message.udid]?.etaSeconds ?? 0,
+                  stopIndex: message.flower_index ?? null,
+                },
+              }))
+            }
+            setFlowerProgress((prev) => ({
+              ...prev,
+              [message.udid]: {
+                flowerIndex: message.flower_index ?? 1,
+                totalFlowers: message.flower_total ?? message.total_flowers ?? 1,
+                circle: message.circle ?? message.round ?? 1,
+                totalCircles: message.total_circles ?? 1,
+                phase: message.phase ?? 'traveling',
+              },
+            }))
           }
         } catch {
           // ignore malformed messages
@@ -99,5 +136,5 @@ export function useWebSocket() {
     socketRef.current?.send(JSON.stringify({ type, data, udid }))
   }, [])
 
-  return { connected, positions, states, send }
+  return { connected, positions, states, restoredAt, flowerProgress, send }
 }

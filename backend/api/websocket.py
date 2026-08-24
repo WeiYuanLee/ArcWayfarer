@@ -101,3 +101,11 @@ async def broadcast_position(
 
 async def broadcast_state(udid: str, state: str) -> None:
     await _broadcast({"type": "state", "udid": udid, "state": state})
+
+
+async def broadcast_restored(udid: str) -> None:
+    await _broadcast({"type": "restored", "udid": udid})
+
+
+async def broadcast_flower_progress(udid: str, progress: dict) -> None:
+    await _broadcast({"type": "flower_progress", "udid": udid, **progress})

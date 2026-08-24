@@ -411,7 +411,7 @@ body {
   position: absolute;
   top: 274px;
   right: 16px;
-  z-index: 450;
+  z-index: var(--aw-map-control-z-index);
 }
 
 .map-engine-trigger {
@@ -509,7 +509,7 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 450;
+  z-index: var(--aw-map-overlay-z-index);
 }
 
 .overlay-top-center {
@@ -535,6 +535,17 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Multi-stop stays content-sized in its base mode.  Switching to Flower
+   explicitly enables a bounded, scrollable editor for its extra settings. */
+.overlay-panel-card--scrollable {
+  box-sizing: border-box;
+  height: auto;
+}
+
+.overlay-panel-card--scrollable:has(.multistop-panel--flower-editor) {
+  height: calc(100dvh - 54px);
 }
 
 .panel {
@@ -644,7 +655,7 @@ body {
   position: fixed;
   bottom: 16px;
   right: 16px;
-  z-index: 450;
+  z-index: var(--aw-map-overlay-z-index);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -655,7 +666,7 @@ body {
   position: absolute;
   top: 16px;
   right: 16px;
-  z-index: 450;
+  z-index: var(--aw-map-overlay-z-index);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1083,11 +1094,6 @@ body {
 .mode-switcher .mantine-SegmentedControl-indicator { border: 1px solid var(--mantine-color-arcBlue-5); background: var(--mantine-color-arcBlue-light); border-radius: 6px; }
 .mode-switcher-item { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; font-size: 13px; white-space: nowrap; }
 
-.teleport-footer-actions { display: grid; grid-template-columns: max-content 1fr; width: 100%; }
-.teleport-footer-actions .teleport-primary-action { grid-column: 1 / -1; width: 100%; }
-.teleport-footer-actions.gold { grid-template-columns: 1fr 1fr; }
-.teleport-footer-actions.gold .teleport-primary-action { grid-column: auto; }
-
 .playback-controls-row {
   width: 100%;
   margin-top: 0;
@@ -1097,6 +1103,37 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.active-flight-summary {
+  overflow: hidden;
+}
+
+.active-flight-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--mantine-color-blue-filled);
+  box-shadow: 0 0 0 4px var(--mantine-color-blue-light);
+}
+
+.active-flight-state-dot.paused {
+  background: var(--mantine-color-yellow-filled);
+  box-shadow: 0 0 0 4px var(--mantine-color-yellow-light);
+}
+
+.active-flight-metrics {
+  border-top: 1px solid var(--aw-border);
+  padding-top: 8px;
+}
+
+.active-flight-metric {
+  min-width: 0;
+}
+
+.active-flight-metric-icon {
+  display: inline-flex;
+  color: var(--mantine-color-dimmed);
 }
 
 @media (max-width: 640px) {
@@ -1111,6 +1148,9 @@ body {
   .overlay-panel-card {
     max-height: 60vh;
   }
+
+  .overlay-panel-card--scrollable { height: auto; }
+  .overlay-panel-card--scrollable:has(.multistop-panel--flower-editor) { height: 60dvh; }
 
   .overlay-top-center {
     top: 12px;

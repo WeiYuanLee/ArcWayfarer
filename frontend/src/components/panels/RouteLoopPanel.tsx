@@ -31,7 +31,7 @@ type SubMode = 'manual' | 'circle'
 
 const WAYPOINT_COLOR = '#4a9af0'
 
-export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay }: PanelProps) {
+export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay }: PanelProps) {
   const t = useT()
   const [subMode, setSubMode] = useState<SubMode>('manual')
   const {
@@ -381,6 +381,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           isBusy={isBusy}
           currentIndex={liveStopIndex ?? 1}
           totalPoints={validWaypoints.length || 2}
+          liveSpeedMps={liveSpeedMps ?? null}
           liveEtaSeconds={liveEtaSeconds}
           livePosition={livePosition}
           routePath={effectivePath}

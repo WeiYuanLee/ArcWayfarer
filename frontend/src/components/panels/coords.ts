@@ -128,6 +128,36 @@ export function routeLegForStop(
   return fallback
 }
 
+/** Estimates the remaining distance on the active route leg from the live position. */
+export function calculateRemainingDistanceMeters(
+  routePath: LatLng[] | undefined,
+  waypoints: (LatLng | null)[] | undefined,
+  livePosition: LatLng | null | undefined,
+  currentStop: number | null | undefined,
+  isLoop: boolean
+): number | null {
+  if (!livePosition) return null
+  const validWaypoints = (waypoints || []).filter((point): point is LatLng => point !== null)
+  const leg = routeLegForStop(routePath || [], validWaypoints, currentStop || 1, isLoop)
+  if (!leg || leg.length < 2) return null
+
+  let closestIndex = 0
+  let closestDistance = Infinity
+  for (let index = 0; index < leg.length; index++) {
+    const distance = haversineDistanceKm(livePosition, leg[index])
+    if (distance < closestDistance) {
+      closestDistance = distance
+      closestIndex = index
+    }
+  }
+
+  let remainingKm = closestDistance
+  for (let index = closestIndex + 1; index < leg.length; index++) {
+    remainingKm += haversineDistanceKm(leg[index - 1], leg[index])
+  }
+  return Math.max(0, remainingKm * 1000)
+}
+
 export function movePoint(center: LatLng, bearingDeg: number, distanceMeters: number): LatLng {
   const EARTH_RADIUS_M = 6371000.0
   const toRad = (deg: number) => (deg * Math.PI) / 180
@@ -246,4 +276,3 @@ export function calculateRouteProgressPct(
   const pct = (bestTraversedDist / totalDist) * 100
   return Math.min(100, Math.max(0, Math.round(pct)))
 }
-

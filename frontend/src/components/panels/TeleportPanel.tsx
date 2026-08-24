@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, SegmentedControl, Text } from '@mantine/core'
+import { Button, Group, SegmentedControl, Stack, Text } from '@mantine/core'
 import { clearLocation, goldDitto, pushHistory, setLocation } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -13,7 +13,7 @@ import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSectio
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
 
-export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo, setOverlay }: PanelProps) {
+export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo, setOverlay, restoredAt, restoreAll }: PanelProps) {
   const t = useT()
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
@@ -36,6 +36,11 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setTarget(point)
     setTargetText(formatPoint(point))
   }, [point])
+
+  useEffect(() => {
+    if (!restoredAt) return
+    setStatus({ kind: 'success', message: t('teleport.status.clear_success') })
+  }, [restoredAt, t])
 
   useEffect(() => {
     setOverlay({
@@ -163,6 +168,17 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     }
   }
 
+  async function handleClearAll() {
+    if (!restoreAll) return
+    setStatus({ kind: 'busy' })
+    const result = await restoreAll()
+    if (result.failed > 0) {
+      setStatus({ kind: 'error', message: t('teleport.status.clear_all_partial').replace('{count}', String(result.restored)).replace('{failed}', String(result.failed)) })
+      return
+    }
+    setStatus({ kind: 'success', message: t('teleport.status.clear_all_success').replace('{count}', String(result.restored)) })
+  }
+
   async function handleGoldDitto() {
     if (!deviceId || !target) return
     setStatus({ kind: 'busy' })
@@ -186,13 +202,44 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
         </>}
         footer={
           <PanelFooter justify="flex-end">
-            <Group className={`teleport-footer-actions ${teleportMode === 'gold' ? 'gold' : ''}`} gap="xs" wrap="nowrap">
-              {teleportMode === 'standard' && <Button color="red" variant="light" disabled={!deviceReady || status.kind === 'busy'} onClick={handleClear}>
-                {t('teleport.action.clear')}
-              </Button>}
-              <Button variant="default" disabled={!target} onClick={handlePreview}>{t('teleport.action.preview')}</Button>
-              <Button className="teleport-primary-action" disabled={!canAct} loading={status.kind === 'busy'} onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}>{teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}</Button>
-            </Group>
+            <Stack gap="xs" w="100%">
+              {teleportMode === 'standard' && (
+                <Group grow gap="xs">
+                  <Button
+                    color="red"
+                    variant="light"
+                    loading={status.kind === 'busy'}
+                    disabled={!deviceReady || status.kind === 'busy'}
+                    onClick={handleClear}
+                  >
+                    {t('teleport.action.clear')}
+                  </Button>
+                  {restoreAll && (
+                    <Button
+                      color="red"
+                      variant="light"
+                      loading={status.kind === 'busy'}
+                      disabled={status.kind === 'busy'}
+                      onClick={() => void handleClearAll()}
+                    >
+                      {t('teleport.action.clear_all')}
+                    </Button>
+                  )}
+                </Group>
+              )}
+              <Group grow gap="xs">
+                <Button variant="default" disabled={!target} onClick={handlePreview}>
+                  {t('teleport.action.preview')}
+                </Button>
+                <Button
+                  disabled={!canAct}
+                  loading={status.kind === 'busy'}
+                  onClick={teleportMode === 'gold' ? handleGoldDitto : handleSet}
+                >
+                  {teleportMode === 'gold' ? t('teleport.goldditto.action') : t('teleport.action.set_location')}
+                </Button>
+              </Group>
+            </Stack>
           </PanelFooter>
         }
         status={status.kind === 'idle' ? undefined : <PanelStatus state={status.kind} message={status.kind === 'busy' ? t('generic.working') : status.message} />}

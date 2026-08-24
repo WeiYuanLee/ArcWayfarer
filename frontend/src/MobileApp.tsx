@@ -25,7 +25,7 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 
 export default function MobileApp() {
   const t = useT()
-  const { connected, positions, states, send } = useWebSocket()
+  const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
   const { devices, refresh: refreshDevices } = useDevices()
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
@@ -112,8 +112,11 @@ export default function MobileApp() {
       deviceState: (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle',
       point: focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null,
       livePosition: position ? { lat: position.lat, lng: position.lng } : null,
+      liveSpeedMps: position?.speedMps ?? null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
+      flowerProgress: focusedDeviceId ? flowerProgress[focusedDeviceId] ?? null : null,
+      restoredAt: focusedDeviceId ? restoredAt[focusedDeviceId] : undefined,
       connected,
       setPoint: (point) => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: point }))

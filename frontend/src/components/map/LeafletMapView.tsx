@@ -177,6 +177,7 @@ export function LeafletMapView({
   const overlayActivePathKeysRef = useRef<Map<string, string>>(new Map())
   const arrowAnimationFramesRef = useRef<Map<string, number>>(new Map())
   const overlayCirclesRef = useRef<Map<string, L.Circle>>(new Map())
+  const overlayLinksRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlaysRef = useRef(overlays)
   overlaysRef.current = overlays
   const focusedDeviceIdRef = useRef(focusedDeviceId)
@@ -265,6 +266,7 @@ export function LeafletMapView({
       overlayActivePathsRef.current.clear()
       overlayActivePathKeysRef.current.clear()
       overlayCirclesRef.current.clear()
+      overlayLinksRef.current.clear()
       overlayMarkerCallbacksRef.current.clear()
       overlayDragCallbacksRef.current.clear()
       overlayDragEndCallbacksRef.current.clear()
@@ -526,10 +528,19 @@ export function LeafletMapView({
       }
     }
 
-    for (const [deviceId, circle] of overlayCirclesRef.current.entries()) {
+    for (const [key, circle] of overlayCirclesRef.current.entries()) {
+      const deviceId = key.split('::', 1)[0]
       if (!activeOverlayIds.has(deviceId)) {
         circle.remove()
-        overlayCirclesRef.current.delete(deviceId)
+        overlayCirclesRef.current.delete(key)
+      }
+    }
+
+    for (const [key, link] of overlayLinksRef.current.entries()) {
+      const deviceId = key.split('::', 1)[0]
+      if (!activeOverlayIds.has(deviceId)) {
+        link.remove()
+        overlayLinksRef.current.delete(key)
       }
     }
 
@@ -669,28 +680,57 @@ export function LeafletMapView({
         arrowAnimationFramesRef.current.delete(deviceId)
       }
 
-      if (overlay.circle) {
-        const { lat, lng, radiusMeters } = overlay.circle
-        const existingCircle = overlayCirclesRef.current.get(deviceId)
+      // `circle` is retained for older panels. A Flower preview publishes a
+      // `circles` array so every flower can be shown at once.
+      const circles = overlay.circles ?? (overlay.circle ? [overlay.circle] : [])
+      const wantedCircleKeys = new Set<string>()
+      circles.forEach((circle, index) => {
+        if (!Number.isFinite(circle.lat) || !Number.isFinite(circle.lng) || circle.radiusMeters <= 0) return
+        const key = `${deviceId}::${circle.id ?? index}`
+        wantedCircleKeys.add(key)
+        const existingCircle = overlayCirclesRef.current.get(key)
         if (existingCircle) {
-          existingCircle.setLatLng([lat, lng])
-          existingCircle.setRadius(radiusMeters)
+          existingCircle.setLatLng([circle.lat, circle.lng])
+          existingCircle.setRadius(circle.radiusMeters)
+          existingCircle.setStyle({
+            color: circle.color ?? '#4a9af0', fillColor: circle.fillColor ?? circle.color ?? '#4a9af0',
+            fillOpacity: circle.fillOpacity ?? 0.1, opacity: circle.opacity ?? 1,
+            weight: circle.weight ?? 2, dashArray: circle.dashArray,
+          })
         } else {
-          overlayCirclesRef.current.set(
-            deviceId,
-            L.circle([lat, lng], {
-              radius: radiusMeters,
-              color: '#4a9af0',
-              fillColor: '#4a9af0',
-              fillOpacity: 0.1,
-              opacity: 1,
-              weight: 2,
-            }).addTo(map)
-          )
+          overlayCirclesRef.current.set(key, L.circle([circle.lat, circle.lng], {
+            radius: circle.radiusMeters, color: circle.color ?? '#4a9af0',
+            fillColor: circle.fillColor ?? circle.color ?? '#4a9af0', fillOpacity: circle.fillOpacity ?? 0.1,
+            opacity: circle.opacity ?? 1, weight: circle.weight ?? 2, dashArray: circle.dashArray,
+          }).addTo(map))
         }
-      } else {
-        overlayCirclesRef.current.get(deviceId)?.remove()
-        overlayCirclesRef.current.delete(deviceId)
+      })
+      for (const [key, circle] of overlayCirclesRef.current.entries()) {
+        if (key.startsWith(`${deviceId}::`) && !wantedCircleKeys.has(key)) {
+          circle.remove()
+          overlayCirclesRef.current.delete(key)
+        }
+      }
+
+      const wantedLinkKeys = new Set<string>()
+      for (const link of overlay.links ?? []) {
+        if (!Number.isFinite(link.from.lat) || !Number.isFinite(link.from.lng) || !Number.isFinite(link.to.lat) || !Number.isFinite(link.to.lng)) continue
+        const key = `${deviceId}::${link.id}`
+        wantedLinkKeys.add(key)
+        const latLngs: [number, number][] = [[link.from.lat, link.from.lng], [link.to.lat, link.to.lng]]
+        const existingLink = overlayLinksRef.current.get(key)
+        if (existingLink) {
+          existingLink.setLatLngs(latLngs)
+          existingLink.setStyle({ color: link.color ?? '#62a850', opacity: link.opacity ?? 0.8, weight: link.weight ?? 2, dashArray: link.dashArray ?? '4 6' })
+        } else {
+          overlayLinksRef.current.set(key, L.polyline(latLngs, { color: link.color ?? '#62a850', opacity: link.opacity ?? 0.8, weight: link.weight ?? 2, dashArray: link.dashArray ?? '4 6', pane: 'routeLinePane', interactive: false }).addTo(map))
+        }
+      }
+      for (const [key, link] of overlayLinksRef.current.entries()) {
+        if (key.startsWith(`${deviceId}::`) && !wantedLinkKeys.has(key)) {
+          link.remove()
+          overlayLinksRef.current.delete(key)
+        }
       }
     }
   }, [overlays])
