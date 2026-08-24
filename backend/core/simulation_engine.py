@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from enum import Enum
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, TypeVar
 
 from core import device_session, events
 from services.interpolator import move_point
@@ -22,6 +22,7 @@ class SimulationState(str, Enum):
 
 
 NextLegFn = Callable[[Optional[tuple[float, float]]], Awaitable[Optional[tuple[list[tuple[float, float]], float]]]]
+T = TypeVar("T")
 
 
 class NavigationSession:
@@ -32,14 +33,19 @@ class NavigationSession:
         self.state: SimulationState = SimulationState.IDLE
         self.lock: asyncio.Lock = asyncio.Lock()
         self.task: Optional[asyncio.Task] = None
+        self.stopping_task: Optional[asyncio.Task] = None
         self.pause_event: asyncio.Event = asyncio.Event()
         self.pause_event.set()
         self.paused_from: Optional[SimulationState] = None
         self.joystick_input: Optional[dict] = None
         self.joystick_position: Optional[tuple[float, float]] = None
+        # Invalidate deferred starts (route planning happens before a task can be
+        # created) whenever a newer stop/restore command wins.
+        self.command_generation = 0
 
     def stop_task(self) -> bool:
         """Cancels and clears any active simulation task, returning True if a task was canceled."""
+        self.command_generation += 1
         self.pause_event.set()
         self.paused_from = None
         self.joystick_input = None
@@ -47,6 +53,7 @@ class NavigationSession:
         if self.task is None or self.task.done():
             self.task = None
             return False
+        self.stopping_task = self.task
         self.task.cancel()
         self.task = None
         return True
@@ -92,6 +99,19 @@ def stop(udid: str) -> bool:
     return session.stop_task()
 
 
+async def _stop_task_and_wait(session: NavigationSession) -> None:
+    """Cancel the current task and wait for its cleanup before replacing it."""
+    task = session.task or session.stopping_task
+    session.stop_task()
+    if task is not None and not task.done():
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    if session.stopping_task is task:
+        session.stopping_task = None
+
+
 async def _start_async(
     udid: str,
     points: list[tuple[float, float]],
@@ -101,10 +121,13 @@ async def _start_async(
     station_indices: frozenset[int],
     station_pause_range: tuple[float, float],
     stop_at: dict[int, int] | None,
+    expected_generation: int,
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
-        session.stop_task()
+        if expected_generation != session.command_generation:
+            return
+        await _stop_task_and_wait(session)
         active_state = SimulationState.LOOPING if loop else SimulationState.NAVIGATING
         session.task = asyncio.create_task(
             _run(
@@ -131,6 +154,8 @@ def start(
     station_pause_range: tuple[float, float] = (0.0, 0.0),
     stop_at: dict[int, int] | None = None,
 ) -> None:
+    session = get_navigation_session(udid)
+    expected_generation = session.command_generation
     asyncio.create_task(
         _start_async(
             udid,
@@ -141,6 +166,7 @@ def start(
             station_indices,
             station_pause_range,
             stop_at,
+            expected_generation,
         )
     )
 
@@ -150,16 +176,20 @@ async def _start_jump_async(
     points: list[tuple[float, float]],
     pre_delay: float,
     post_delay: float,
+    expected_generation: int,
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
-        session.stop_task()
+        if expected_generation != session.command_generation:
+            return
+        await _stop_task_and_wait(session)
         session.task = asyncio.create_task(_run_jump(session, points, pre_delay, post_delay))
 
 
 def start_jump(udid: str, points: list[tuple[float, float]], pre_delay: float, post_delay: float) -> None:
     """Teleport directly to each point in sequence, with configurable delays before/after each stop."""
-    asyncio.create_task(_start_jump_async(udid, points, pre_delay, post_delay))
+    expected_generation = get_navigation_session(udid).command_generation
+    asyncio.create_task(_start_jump_async(udid, points, pre_delay, post_delay, expected_generation))
 
 
 async def _start_dynamic_async(
@@ -167,16 +197,20 @@ async def _start_dynamic_async(
     next_leg_fn: NextLegFn,
     tick_seconds: float,
     speed_mps: float,
+    expected_generation: int,
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
-        session.stop_task()
+        if expected_generation != session.command_generation:
+            return
+        await _stop_task_and_wait(session)
         session.task = asyncio.create_task(_run_dynamic(session, next_leg_fn, tick_seconds, speed_mps))
 
 
 def start_dynamic(udid: str, next_leg_fn: NextLegFn, tick_seconds: float, speed_mps: float) -> None:
     """Like start(), but legs are generated on demand instead of known upfront."""
-    asyncio.create_task(_start_dynamic_async(udid, next_leg_fn, tick_seconds, speed_mps))
+    expected_generation = get_navigation_session(udid).command_generation
+    asyncio.create_task(_start_dynamic_async(udid, next_leg_fn, tick_seconds, speed_mps, expected_generation))
 
 
 async def _joystick_start_async(
@@ -185,23 +219,21 @@ async def _joystick_start_async(
     lng: float,
     speed_mps: float,
     tick_seconds: float,
+    expected_generation: int,
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
-        previous_task = session.task
-        session.stop_task()
-        if previous_task is not None and not previous_task.done():
-            try:
-                await previous_task
-            except asyncio.CancelledError:
-                pass
+        if expected_generation != session.command_generation:
+            return
+        await _stop_task_and_wait(session)
         session.joystick_position = (lat, lng)
         session.joystick_input = {"direction": 0.0, "intensity": 0.0}
         session.task = asyncio.create_task(_run_joystick(session, speed_mps, tick_seconds))
 
 
 def joystick_start(udid: str, lat: float, lng: float, speed_mps: float, tick_seconds: float) -> None:
-    asyncio.create_task(_joystick_start_async(udid, lat, lng, speed_mps, tick_seconds))
+    expected_generation = get_navigation_session(udid).command_generation
+    asyncio.create_task(_joystick_start_async(udid, lat, lng, speed_mps, tick_seconds, expected_generation))
 
 
 def joystick_move(udid: str, direction: float, intensity: float) -> None:
@@ -247,8 +279,30 @@ async def resume(udid: str) -> bool:
 
 
 async def ensure_stopped(udid: str) -> None:
-    stop(udid)
-    await set_state(udid, SimulationState.IDLE)
+    """Cancel and *wait for* the active task before another location command.
+
+    Cancellation alone is not sufficient: a route task may already be writing a
+    coordinate through the device session when a restore command arrives.
+    """
+    session = get_navigation_session(udid)
+    async with session.lock:
+        await _stop_task_and_wait(session)
+        if session.state != SimulationState.IDLE:
+            await set_state(udid, SimulationState.IDLE)
+
+
+async def run_exclusive(udid: str, operation: Callable[[], Awaitable[T]]) -> T:
+    """Run a location-changing command after the previous simulation is gone.
+
+    Holding the navigation lock through the operation prevents a newly scheduled
+    route from starting between task cancellation and a teleport/restore command.
+    """
+    session = get_navigation_session(udid)
+    async with session.lock:
+        await _stop_task_and_wait(session)
+        if session.state != SimulationState.IDLE:
+            await set_state(udid, SimulationState.IDLE)
+        return await operation()
 
 
 async def _run(

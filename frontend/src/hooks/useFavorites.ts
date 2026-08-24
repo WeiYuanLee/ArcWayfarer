@@ -114,6 +114,7 @@ export function useFavorites() {
     favorites,
     setFavorites,
     displayed,
+    allGroups,
     groups,
     loading,
     sortMode,

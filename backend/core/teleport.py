@@ -7,19 +7,27 @@ GOLD_DITTO_HOLD_SECONDS = 3.5
 
 
 async def set_location(udid: str, lat: float, lng: float) -> None:
-    await simulation_engine.ensure_stopped(udid)
-    await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
-    try:
-        await device_session.set_location(udid, lat, lng)
-        await events.emit_position(udid, lat, lng)
-    finally:
-        await simulation_engine.set_state(udid, SimulationState.IDLE)
+    async def operation() -> None:
+        await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
+        try:
+            await device_session.set_location(udid, lat, lng)
+            await events.emit_position(udid, lat, lng)
+        finally:
+            await simulation_engine.set_state(udid, SimulationState.IDLE)
+
+    await simulation_engine.run_exclusive(udid, operation)
 
 
 async def clear_location(udid: str) -> None:
-    await simulation_engine.ensure_stopped(udid)
-    await device_session.clear_location(udid)
-    await events.emit_position(udid, None, None)
+    async def operation() -> None:
+        await device_session.clear_location(udid)
+        # Always publish a terminal state for restore, including when the device
+        # was already idle before this command.
+        await simulation_engine.set_state(udid, SimulationState.IDLE)
+        await events.emit_position(udid, None, None)
+        await events.emit_restored(udid)
+
+    await simulation_engine.run_exclusive(udid, operation)
 
 
 async def gold_ditto(udid: str, lat: float, lng: float) -> None:
@@ -28,13 +36,18 @@ async def gold_ditto(udid: str, lat: float, lng: float) -> None:
     Used to "check in" at a spot a game expects the player to visit without
     actually staying there — e.g. a Pikmin Bloom gold flower point.
     """
-    await simulation_engine.ensure_stopped(udid)
-    await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
-    try:
-        await device_session.set_location(udid, lat, lng)
-        await events.emit_position(udid, lat, lng)
-        await asyncio.sleep(GOLD_DITTO_HOLD_SECONDS)
-        await device_session.clear_location(udid)
-        await events.emit_position(udid, None, None)
-    finally:
-        await simulation_engine.set_state(udid, SimulationState.IDLE)
+    async def operation() -> None:
+        await simulation_engine.set_state(udid, SimulationState.TELEPORTING)
+        try:
+            await device_session.set_location(udid, lat, lng)
+            await events.emit_position(udid, lat, lng)
+            await asyncio.sleep(GOLD_DITTO_HOLD_SECONDS)
+            # Gold Ditto depends on the set-to-clear timing observed by the
+            # game. Do not add the normal map-refresh settle window here.
+            await device_session.clear_location(udid, settle_seconds=0, delivery_attempts=1)
+            await events.emit_position(udid, None, None)
+            await events.emit_restored(udid)
+        finally:
+            await simulation_engine.set_state(udid, SimulationState.IDLE)
+
+    await simulation_engine.run_exclusive(udid, operation)

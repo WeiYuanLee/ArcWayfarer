@@ -9,7 +9,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapOverlay } from '../panels/types'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
-import { API_BASE_URL } from '../../services/api'
+import { API_BASE_URL, authHeaders } from '../../services/api'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -144,6 +144,7 @@ function makeBadgeElement(
   el.style.border = '2px solid #ffffff'
   el.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)'
   el.style.cursor = isDraggable ? 'grab' : 'default'
+  el.style.zIndex = '1000'
   el.textContent = label ?? ''
 
   if (onContextMenu && coords) {
@@ -171,7 +172,7 @@ function makeLiveMarkerElement(isFocused: boolean): HTMLElement {
   const coreColor = isFocused ? '#00e676' : '#3b82f6'
   const pulseColor = isFocused ? 'rgba(0, 230, 118, 0.45)' : 'rgba(59, 130, 246, 0.45)'
   const wrapper = document.createElement('div')
-  wrapper.style.position = 'relative'
+  wrapper.classList.add('arcwayfarer-live-position-marker')
   wrapper.style.width = '28px'
   wrapper.style.height = '28px'
   wrapper.style.display = 'flex'
@@ -195,10 +196,11 @@ function updateLiveMarkerElement(element: HTMLElement, isFocused: boolean) {
 
 function makeSelectedPointElement(): HTMLElement {
   const wrapper = document.createElement('div')
-  wrapper.style.position = 'relative'
+  wrapper.classList.add('arcwayfarer-selected-point-marker')
   wrapper.style.width = '30px'
   wrapper.style.height = '38px'
   wrapper.style.cursor = 'grab'
+  wrapper.style.zIndex = '1000'
   wrapper.style.filter = 'drop-shadow(0 3px 4px rgba(0,0,0,0.55))'
   wrapper.innerHTML = `
     <div style="position:absolute;left:3px;top:1px;width:24px;height:24px;background:#ff5e36;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-sizing:border-box;"></div>
@@ -211,6 +213,9 @@ function makeArrowElement(): HTMLElement {
   const wrapper = document.createElement('div')
   wrapper.style.width = '14px'
   wrapper.style.height = '14px'
+  wrapper.style.display = 'flex'
+  wrapper.style.alignItems = 'center'
+  wrapper.style.justifyContent = 'center'
   wrapper.style.pointerEvents = 'none'
   wrapper.style.zIndex = '3'
   wrapper.innerHTML = '<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #ffffff;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.45));"></div>'
@@ -400,6 +405,14 @@ export function MapLibreMapView({
     const map = new MapLibreMap({
       container: containerRef.current,
       attributionControl: false,
+      // MapLibre loads raster tiles itself, so it does not inherit the
+      // application's fetch headers. Limit the session token to our backend;
+      // custom providers must never receive it.
+      transformRequest: (url) => (
+        provider.id === DEFAULT_TILE_PROVIDER.id && url.startsWith(`${API_BASE_URL}/api/map/`)
+          ? { url, headers: authHeaders() }
+          : { url }
+      ),
       style: {
         version: 8,
         sources: {
@@ -558,8 +571,9 @@ export function MapLibreMapView({
         element: el,
         draggable: true,
         anchor: 'bottom',
-        // Match Leaflet's [15, 35] anchor for this 30x38 custom pin.
-        offset: [0, 3],
+        // The custom pin's sharp tip is at y=30 inside its 38px wrapper.
+        // Move the bottom-anchored wrapper down so that tip is the coordinate.
+        offset: [0, 8],
       })
         .setLngLat([selectedPoint.lng, selectedPoint.lat])
         .addTo(map)
@@ -925,19 +939,16 @@ export function MapLibreMapView({
         arrowAnimationFramesRef.current.delete(deviceId)
       }
 
-      // Circle Overlay
-      if (overlay?.circle && typeof overlay.circle.lat === 'number' && typeof overlay.circle.lng === 'number') {
-        const circleGeoJSON = createCircleGeoJSON(overlay.circle, overlay.circle.radiusMeters)
-        setGeoJSONSource(circleSourceId, circleGeoJSON)
-        ensureFillLayer(map, circleFillLayerId, circleSourceId, '#4a9af0', 0.1)
-        ensureLineLayer(map, circleLineLayerId, circleSourceId, '#4a9af0', 2, 1)
-        trackedLayersRef.current.add(circleFillLayerId)
-        trackedLayersRef.current.add(circleLineLayerId)
-      } else {
-        removeLayerSafe(circleFillLayerId)
-        removeLayerSafe(circleLineLayerId)
-        removeSourceSafe(circleSourceId)
-      }
+      // Circle Overlay is rendered by the projected pass below.  It supports
+      // the legacy `circle` field and Flower's per-waypoint `circles` array.
+      // Circle styling (dash, opacity and active color) is per overlay item.
+      // The GPU layers previously used one hard-coded blue style for every
+      // circle, then drew underneath the projected SVG fallback.  That made
+      // WebGL visibly diverge from Leaflet.  Use the projected pass as the
+      // single source of circle rendering in both cases.
+      removeLayerSafe(circleFillLayerId)
+      removeLayerSafe(circleLineLayerId)
+      removeSourceSafe(circleSourceId)
     }
 
     syncVisibleRouteLayers(
@@ -971,11 +982,10 @@ export function MapLibreMapView({
   }, [flyTo])
 
   // MapLibre markers are DOM nodes and work on all supported GPUs, but its
-  // runtime GeoJSON line pass is not reliably painted with the raster style on
-  // the affected renderer. Project both the complete route and its active leg
-  // through the same MapLibre camera as a DOM fallback. Keeping these as two
-  // separate passes matches Leaflet: the whole itinerary remains visible while
-  // only the leg currently being travelled receives the light-blue highlight.
+  // runtime GeoJSON pass is not reliably painted with the raster style on the
+  // affected renderer. Project circles, complete routes, and active legs
+  // through the same MapLibre camera as a DOM fallback. Keeping these as
+  // separate passes matches Leaflet and preserves their visual stacking.
   const projectedRouteOverlay = (() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return null
@@ -992,21 +1002,61 @@ export function MapLibreMapView({
       if (!overlay.path || overlay.path.length < 2) return []
       return [{ id, points: projectPath(overlay.path) }]
     })
+    const circles = Object.entries(overlays ?? []).flatMap(([id, overlay]) => (
+      (overlay.circles ?? (overlay.circle ? [overlay.circle] : []))
+        .filter((circle) => circle.radiusMeters > 0)
+        .map((circle, index) => {
+          const ring = createCircleGeoJSON(circle, circle.radiusMeters).geometry.coordinates[0]
+          const points = ring.map(([lng, lat]) => {
+            const projected = map.project([lng, lat])
+            return `${projected.x},${projected.y}`
+          }).join(' ')
+          return { id: `${id}-${circle.id ?? index}`, points, circle }
+        })
+    ))
+    const links = Object.entries(overlays ?? []).flatMap(([id, overlay]) => (
+      (overlay.links ?? []).filter((link) => (
+        Number.isFinite(link.from.lat) && Number.isFinite(link.from.lng) && Number.isFinite(link.to.lat) && Number.isFinite(link.to.lng)
+      )).map((link) => {
+        const from = map.project([link.from.lng, link.from.lat])
+        const to = map.project([link.to.lng, link.to.lat])
+        return { id: `${id}-${link.id}`, points: `${from.x},${from.y} ${to.x},${to.y}`, link }
+      })
+    ))
     const activeRoutes = Object.entries(overlays ?? []).flatMap(([id, overlay]) => {
       const activePath = activeLegFromDrawnPath(overlay.path, overlay.activePath)
       if (!activePath || activePath.length < 2) return []
       return [{ id, points: projectPath(activePath) }]
     })
-    if (!routes.length) return null
+    if (!routes.length && !circles.length && !links.length) return null
 
     return (
       <svg
         aria-hidden="true"
-        className="maplibre-projected-route-overlay"
+        className="maplibre-projected-route-overlay maplibre-projected-map-overlay"
         viewBox={`0 0 ${clientWidth} ${clientHeight}`}
         preserveAspectRatio="none"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}
       >
+        {circles.map((circle) => (
+          <polygon
+            key={circle.id}
+            className="maplibre-projected-circle"
+            data-route-id={circle.id}
+            points={circle.points}
+            fill={circle.circle.fillColor ?? circle.circle.color ?? '#4a9af0'}
+            fillOpacity={circle.circle.fillOpacity ?? 0.1}
+            stroke={circle.circle.color ?? '#4a9af0'}
+            strokeOpacity={circle.circle.opacity ?? 1}
+            strokeWidth={circle.circle.weight ?? 2}
+            strokeDasharray={circle.circle.dashArray}
+          />
+        ))}
+        {links.map((link) => (
+          <polyline key={link.id} points={link.points} fill="none" stroke={link.link.color ?? '#62a850'}
+            strokeOpacity={link.link.opacity ?? 0.8} strokeWidth={link.link.weight ?? 2}
+            strokeDasharray={link.link.dashArray ?? '4 6'} />
+        ))}
         {routes.map((route) => (
           <g key={route.id} className="maplibre-route-path" data-route-id={route.id} fill="none" strokeLinecap="round" strokeLinejoin="round">
             <polyline points={route.points} stroke="#1c2451" strokeOpacity="0.55" strokeWidth="12" />

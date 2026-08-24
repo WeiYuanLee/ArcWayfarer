@@ -4,7 +4,7 @@ export const WS_URL = isMobileRemote
   ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/mobile`
   : 'ws://127.0.0.1:8787/ws/status'
 
-function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
+export function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
   const session = isMobileRemote ? sessionStorage.getItem('arcwayfarer.mobile.session') : null
   return session ? { ...headers, Authorization: `Bearer ${session}` } : headers
 }
@@ -18,10 +18,21 @@ export type Device = {
   transport: 'lockdown' | 'rsd'
   status: DeviceStatus
   detail: string | null
+  /** Physical discovery path, when supplied by newer backends. */
+  connection_type?: 'usb' | 'wifi' | 'unknown'
 }
 
 export type MobilePairing = { url: string; pin: string; expires_in: number; qr_data_url: string }
 export type MobileRemoteStatus = { paired_sessions: number; connected_phones: number }
+export type DeviceDiscoveryDiagnostic = {
+  code: 'usb_discovery_failed'
+  occurred_at: string
+  error_type: string
+  message: string
+  python_version: string
+  platform: string
+  pymobiledevice3_version: string
+}
 
 export async function createMobilePairing(): Promise<MobilePairing> {
   return postJsonWithResponse('/api/mobile/pairings', {})
@@ -44,16 +55,24 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-export async function listDevices(): Promise<Device[]> {
+export async function listDevices({ includeWifi = false }: { includeWifi?: boolean } = {}): Promise<Device[]> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
   try {
-    const res = await fetch(`${API_BASE_URL}/api/devices`, {
+    // USB-only is the backend default, so omit the query in that common path.
+    // It also keeps older clients' request URL stable for integrations.
+    const query = includeWifi ? '?include_wifi=true' : ''
+    const res = await fetch(`${API_BASE_URL}/api/devices${query}`, {
       headers: authHeaders(),
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
-    return res.json()
+    const devices = await res.json() as Device[]
+    // The API filter is intentionally duplicated here until all packaged
+    // backend versions understand include_wifi. Unknown is retained for
+    // backwards compatibility with older backends that did not report a
+    // physical connection type.
+    return includeWifi ? devices : devices.filter((device) => device.connection_type !== 'wifi')
   } catch (err: any) {
     if (err.name === 'AbortError') {
       throw new Error('Device scan timed out (15s). Please check device connection.')
@@ -62,6 +81,11 @@ export async function listDevices(): Promise<Device[]> {
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+export async function getDeviceDiscoveryDiagnostic(): Promise<DeviceDiscoveryDiagnostic | null> {
+  const response = await getJson<{ usb_discovery: DeviceDiscoveryDiagnostic | null }>('/api/devices/diagnostics')
+  return response.usb_discovery
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -82,9 +106,12 @@ export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string 
   return postJsonWithResponse(`/api/devices/${udid}/amfi/reveal-developer-mode`, {})
 }
 
-async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> {
+async function postJsonWithResponse<T>(path: string, body: unknown, externalSignal?: AbortSignal): Promise<T> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason)
+  if (externalSignal?.aborted) abortFromExternalSignal()
+  else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true })
   try {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
@@ -99,11 +126,13 @@ async function postJsonWithResponse<T>(path: string, body: unknown): Promise<T> 
     return payload as T
   } catch (err: any) {
     if (err.name === 'AbortError') {
+      if (externalSignal?.aborted) throw err
       throw new Error('Request timed out (15s). Please check device connection.')
     }
     throw err
   } finally {
     clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal)
   }
 }
 
@@ -136,6 +165,19 @@ export function goldDitto(udid: string, lat: number, lng: number): Promise<void>
 
 export type NavMode = 'walk' | 'bike' | 'drive'
 export type LatLng = { lat: number; lng: number }
+
+export function previewNavigate(
+  navMode: NavMode,
+  start: LatLng,
+  end: LatLng,
+  signal?: AbortSignal
+): Promise<{ status: string; route: LatLng[]; distance_m: number }> {
+  return postJsonWithResponse('/api/navigate/preview', {
+    nav_mode: navMode,
+    start,
+    end,
+  }, signal)
+}
 
 export async function getNavModeSpeeds(): Promise<Record<NavMode, number>> {
   const res = await fetch(`${API_BASE_URL}/api/navigate/modes`, { headers: authHeaders() })
@@ -223,6 +265,7 @@ export function startMultiStop(
   return postJsonWithResponse('/api/multi-stop/start', {
     udid,
     nav_mode: navMode,
+    mode: 'basic',
     waypoints,
     pause_enabled: stationPause.enabled,
     pause_min: stationPause.min,
@@ -235,8 +278,47 @@ export function startMultiStop(
   })
 }
 
+export type FlowerOptions = {
+  radius_m: number
+  circles: number
+  segments: number
+  path_strategy: 'center_spiral' | 'perimeter'
+  inner_radius_m: number | null
+  jitter_m: number
+  pre_wait_seconds: number
+  post_wait_seconds: number
+  route_type: 'stop_at_end' | 'return_to_start' | 'loop_forever'
+  rounds: number | 'infinite'
+}
+
+/** Starts Flower mode through the multi-stop controller. Flower is a mode
+ * payload, rather than a separate endpoint, so older multi-stop controls
+ * remain untouched. */
+export function startFlower(
+  udid: string,
+  navMode: NavMode,
+  waypoints: LatLng[],
+  flower: FlowerOptions,
+  options: Pick<MultiStopOptions, 'straightLine' | 'jumpMode' | 'customSpeedKmh'> = {},
+): Promise<{ status: string; route: LatLng[]; legs: LatLng[][] }> {
+  return postJsonWithResponse('/api/multi-stop/start', {
+    udid,
+    nav_mode: navMode,
+    mode: 'flower',
+    waypoints,
+    flower,
+    straight_line: options.straightLine ?? false,
+    jump_mode: options.jumpMode ?? false,
+    custom_speed_kmh: options.customSpeedKmh ?? null,
+  })
+}
+
 export function stopMultiStop(udid: string): Promise<void> {
   return postJson('/api/multi-stop/stop', { udid })
+}
+
+export function skipFlower(udid: string): Promise<void> {
+  return postJson('/api/multi-stop/skip', { udid })
 }
 
 export function pauseMultiStop(udid: string): Promise<void> {
@@ -334,12 +416,55 @@ export type Favorite = {
   order: number
 }
 
+export type FavoriteExportItem = {
+  name: string
+  lat: number
+  lng: number
+  group: string
+  notes: string
+  created_at: number
+  order: number
+}
+
+export type FavoriteExportDocument = {
+  format: 'arcwayfarer-favorites'
+  schema_version: 1
+  exported_at: string
+  groups: string[]
+  favorites: FavoriteExportItem[]
+}
+
+export type FavoriteImportPreview = {
+  total: number
+  additions: number
+  duplicates: number
+  groups_to_add: string[]
+}
+
+export type FavoriteImportResult = FavoriteImportPreview & {
+  imported: number
+}
+
 export function listFavorites(): Promise<Favorite[]> {
   return getJson('/api/favorites')
 }
 
 export function listFavoriteGroups(): Promise<string[]> {
   return getJson('/api/favorites/groups')
+}
+
+export function exportFavorites(groups: string[]): Promise<FavoriteExportDocument> {
+  const params = new URLSearchParams()
+  groups.forEach((group) => params.append('groups', group))
+  return getJson(`/api/favorites/export?${params.toString()}`)
+}
+
+export function previewFavoriteImport(document: FavoriteExportDocument): Promise<FavoriteImportPreview> {
+  return postJsonWithResponse('/api/favorites/import/preview', document)
+}
+
+export function importFavorites(document: FavoriteExportDocument): Promise<FavoriteImportResult> {
+  return postJsonWithResponse('/api/favorites/import', document)
 }
 
 export function addFavoriteGroup(name: string): Promise<string> {

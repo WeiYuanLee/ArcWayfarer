@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { ActionIcon, Tooltip } from '@mantine/core'
-import { IconRefresh } from '@tabler/icons-react'
-import type { Device } from '../../services/api'
+import { IconAlertTriangle, IconCopy, IconRefresh, IconWifi, IconWifiOff } from '@tabler/icons-react'
+import type { Device, DeviceDiscoveryDiagnostic } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
 import type { LivePosition } from '../../hooks/useWebSocket'
 import { useT, type StringKey } from '../../i18n'
 import { calculateRouteProgressPct, formatEta } from '../panels/coords'
+import { showToast } from '../common/Toast'
 
 const RUNNING_STATES: DeviceState[] = ['teleporting', 'navigating', 'looping', 'random_walk', 'joystick']
 
@@ -58,6 +59,9 @@ type Props = {
   overlaysByDevice?: Record<string, MapOverlay>
   loading: boolean
   onRefresh: () => void
+  includeWifi: boolean
+  onIncludeWifiChange: (enabled: boolean) => void
+  discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
 }
 
 export function DeviceTabs({
@@ -70,14 +74,50 @@ export function DeviceTabs({
   overlaysByDevice = {},
   loading,
   onRefresh,
+  includeWifi,
+  onIncludeWifiChange,
+  discoveryDiagnostic,
 }: Props) {
   const t = useT()
   const [hoveredUdid, setHoveredUdid] = useState<string | null>(null)
+
+  async function copyDiscoveryDiagnostic() {
+    if (!discoveryDiagnostic) return
+    const report = [
+      'ArcWayfarer device discovery diagnostic',
+      `Code: ${discoveryDiagnostic.code}`,
+      `Time (UTC): ${discoveryDiagnostic.occurred_at}`,
+      `Error: ${discoveryDiagnostic.error_type}: ${discoveryDiagnostic.message}`,
+      `pymobiledevice3: ${discoveryDiagnostic.pymobiledevice3_version}`,
+      `Python: ${discoveryDiagnostic.python_version}`,
+      `Platform: ${discoveryDiagnostic.platform}`,
+    ].join('\n')
+    try {
+      await navigator.clipboard.writeText(report)
+      showToast(t('device.diagnostic.copied'))
+    } catch {
+      showToast(t('device.diagnostic.copy_failed'))
+    }
+  }
 
   return (
     <div className="device-tabs">
       {devices.length === 0 && (
         <span className="device-tabs-empty">{loading ? t('device.searching') : t('device.none')}</span>
+      )}
+      {discoveryDiagnostic && (
+        <Tooltip label={t('device.diagnostic.tooltip')}>
+          <ActionIcon
+            className="device-diagnostic"
+            variant="light"
+            color="orange"
+            onClick={() => void copyDiscoveryDiagnostic()}
+            aria-label={t('device.diagnostic.copy')}
+          >
+            <IconAlertTriangle size={16} />
+            <IconCopy size={11} className="device-diagnostic-copy" />
+          </ActionIcon>
+        </Tooltip>
       )}
       {devices.map((device) => {
         const state = deviceStates[device.udid] ?? 'idle'
@@ -155,6 +195,17 @@ export function DeviceTabs({
           </div>
         )
       })}
+      <Tooltip label={includeWifi ? t('device.wifi.enabled') : t('device.wifi.disabled')}>
+        <ActionIcon
+          className="device-wifi-discovery"
+          variant={includeWifi ? 'light' : 'default'}
+          color={includeWifi ? 'blue' : 'gray'}
+          onClick={() => onIncludeWifiChange(!includeWifi)}
+          aria-label={includeWifi ? t('device.wifi.disable') : t('device.wifi.enable')}
+        >
+          {includeWifi ? <IconWifi size={16} /> : <IconWifiOff size={16} />}
+        </ActionIcon>
+      </Tooltip>
       <Tooltip label={t('device.rescan')}>
         <ActionIcon className="device-refresh" variant="default" color="gray" loading={loading} onClick={onRefresh} aria-label={t('device.rescan')}>
           <IconRefresh size={16} />

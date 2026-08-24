@@ -8,10 +8,10 @@ pydantic>=2.0.0
 # the packaged backend fail before startup.  The 45.x macOS wheel bundles its
 # compatible OpenSSL implementation and works alongside sslpsk-pmd3.
 cryptography>=42,<46
-# Keep the frozen backend aligned with the development environment.  A broad
-# range let fresh CI builds install pymobiledevice3 10.x while local startup
-# used 9.40.0, producing different USB discovery behaviour.
-pymobiledevice3==9.40.0
+# Keep development, local packages, and CI on the same verified RSD/DVT stack.
+# 10.2.1 includes the current iOS 26 tunnel support while remaining compatible
+# with the cryptography 45.x cap above.
+pymobiledevice3==10.2.1
 packaging>=23.0
 gpxpy>=1.6.0
 pyimg4>=0.1.0

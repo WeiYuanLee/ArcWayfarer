@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActionIcon, Alert, Badge, NativeSelect, Tabs, Text, Tooltip } from '@mantine/core'
-import { IconClock, IconHeart, IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
+import { Alert, Badge, NativeSelect, Tabs, Text } from '@mantine/core'
+import { IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
 import { MapView } from './components/map/MapView'
-import { FavoritesDrawer } from './components/layout/FavoritesDrawer'
-import { HistoryDrawer } from './components/layout/HistoryDrawer'
+import { IconRail } from './components/layout/IconRail'
 import { ToastContainer } from './components/common/Toast'
 import { PANEL_BY_MODE } from './components/panels'
 import type { Mode } from './components/ModeSelector'
@@ -26,7 +25,7 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 
 export default function MobileApp() {
   const t = useT()
-  const { connected, positions, states, send } = useWebSocket()
+  const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
   const { devices, refresh: refreshDevices } = useDevices()
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
@@ -36,9 +35,6 @@ export default function MobileApp() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
 
   const [sheetState, setSheetState] = useState<SheetState>('half')
-  const [favOpen, setFavOpen] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
-
   // Bottom sheet drag
   const dragStartY = useRef<number | null>(null)
   const dragStartState = useRef<SheetState>('half')
@@ -93,6 +89,13 @@ export default function MobileApp() {
     }
   }, [focusedDeviceId, requestFlyTo])
 
+  const handlePlaceSelect = useCallback((lat: number, lng: number) => {
+    requestFlyTo(lat, lng)
+    if (focusedDeviceId) {
+      setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
+    }
+  }, [focusedDeviceId, requestFlyTo])
+
   const connectedIds = new Set(devices.map((d) => d.udid))
   const livePositions = Object.fromEntries(
     Object.entries(positions)
@@ -109,8 +112,11 @@ export default function MobileApp() {
       deviceState: (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle',
       point: focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null,
       livePosition: position ? { lat: position.lat, lng: position.lng } : null,
+      liveSpeedMps: position?.speedMps ?? null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
+      flowerProgress: focusedDeviceId ? flowerProgress[focusedDeviceId] ?? null : null,
+      restoredAt: focusedDeviceId ? restoredAt[focusedDeviceId] : undefined,
       connected,
       setPoint: (point) => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: point }))
@@ -183,21 +189,13 @@ export default function MobileApp() {
           livePositions={livePositions}
           overlays={overlaysMap}
           flyTo={flyTo}
-        />
-
-        {/* FAB: favorites & history */}
-        <div className="mapp-fabs" aria-label="Map actions">
-          <Tooltip label={t('favorites.title')} position="right">
-            <ActionIcon className="mapp-fab" onClick={() => setFavOpen(true)} aria-label={t('favorites.title')} size="lg" variant="default">
-              <IconHeart size={20} stroke={1.75} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label={t('history.title')} position="right">
-            <ActionIcon className="mapp-fab" onClick={() => setHistoryOpen(true)} aria-label={t('history.title')} size="lg" variant="default">
-              <IconClock size={20} stroke={1.75} />
-            </ActionIcon>
-          </Tooltip>
-        </div>
+        >
+          <IconRail
+            onFlyTo={requestFlyTo}
+            onSelectFavorite={handleFavoriteSelect}
+            onSelectPlace={handlePlaceSelect}
+          />
+        </MapView>
 
         {/* Pending pick hint */}
         {pendingPickRef.current && (
@@ -248,16 +246,6 @@ export default function MobileApp() {
         </div>
       </div>
 
-      <FavoritesDrawer
-        isOpen={favOpen}
-        onClose={() => setFavOpen(false)}
-        onSelectFavorite={handleFavoriteSelect}
-      />
-      <HistoryDrawer
-        isOpen={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        onFlyTo={requestFlyTo}
-      />
       <ToastContainer />
     </div>
   )

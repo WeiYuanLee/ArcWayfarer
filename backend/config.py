@@ -25,6 +25,8 @@ OSRM_FOSSGIS_BASE_URL = "https://routing.openstreetmap.de"
 NAV_MODE_PROFILE = {"walk": "foot", "bike": "bike", "drive": "car"}
 NAV_MODE_SPEED_MPS = {"walk": 5 / 3.6, "bike": 18.9 / 3.6, "drive": 40 / 3.6}
 NAVIGATE_TICK_SECONDS = 1.0
+ROUTE_CACHE_TTL_SECONDS = 120.0
+ROUTE_CACHE_MAX_ENTRIES = 128
 
 # Developer Disk Image mounting can involve a first-time download from Apple;
 # give it a generous ceiling so a stuck mount fails with a clear error instead

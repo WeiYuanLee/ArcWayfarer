@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from core.favorites import favorite_manager
-from models.schemas import Favorite, FavoriteCreateRequest, FavoriteGroupCreateRequest, FavoriteReorderRequest, FavoriteUpdateRequest
+from models.schemas import Favorite, FavoriteCreateRequest, FavoriteExportDocument, FavoriteGroupCreateRequest, FavoriteImportPreview, FavoriteImportResult, FavoriteReorderRequest, FavoriteUpdateRequest
 
 router = APIRouter(prefix="/api/favorites")
 
@@ -14,6 +14,21 @@ async def get_favorites() -> list[Favorite]:
 @router.get("/groups")
 async def get_favorite_groups() -> list[str]:
     return favorite_manager.list_groups()
+
+
+@router.get("/export", response_model=FavoriteExportDocument)
+async def get_favorites_export(groups: list[str] | None = Query(default=None)) -> FavoriteExportDocument:
+    return favorite_manager.export_document(groups)
+
+
+@router.post("/import/preview", response_model=FavoriteImportPreview)
+async def post_favorites_import_preview(body: FavoriteExportDocument) -> FavoriteImportPreview:
+    return favorite_manager.preview_import(body)
+
+
+@router.post("/import", response_model=FavoriteImportResult)
+async def post_favorites_import(body: FavoriteExportDocument) -> FavoriteImportResult:
+    return favorite_manager.import_document(body)
 
 
 @router.post("/groups")

@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
     root: mobile ? resolve(__dirname, 'mobile') : undefined,
     plugins: [react()],
     base: mobile ? '/mobile/' : './',
+    optimizeDeps: {
+      // MapLibre resolves its module worker relative to the package entry.
+      // Pre-bundling moves that entry into .vite/deps without its worker file.
+      exclude: ['maplibre-gl'],
+    },
     build: mobile ? { outDir: resolve(__dirname, 'mobile-dist'), emptyOutDir: true } : undefined,
     server: { port: 5173 },
     test: {

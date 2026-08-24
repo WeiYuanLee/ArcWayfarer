@@ -1,8 +1,9 @@
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Transport = Literal["lockdown", "rsd"]
+DeviceConnectionType = Literal["usb", "wifi", "unknown"]
 DeviceStatus = Literal["ready", "mounting", "tunnel_required", "error"]
 
 
@@ -11,6 +12,9 @@ class DeviceInfo(BaseModel):
     name: str
     ios_version: str
     transport: Transport
+    # The physical path used to discover the device. This is intentionally
+    # separate from ``transport``, which selects the location-service API.
+    connection_type: DeviceConnectionType = "unknown"
     status: DeviceStatus
     detail: Optional[str] = None
 
@@ -47,6 +51,12 @@ class NavigateStartRequest(BaseModel):
     custom_speed_kmh: Optional[float] = None
 
 
+class NavigatePreviewRequest(BaseModel):
+    nav_mode: NavMode
+    start: LatLng
+    end: LatLng
+
+
 class NavigateStopRequest(BaseModel):
     udid: str
 
@@ -62,6 +72,28 @@ class RouteLoopStartRequest(BaseModel):
     custom_speed_kmh: Optional[float] = None
 
 
+class FlowerOptions(BaseModel):
+    radius_m: float = Field(30.0, ge=5.0, le=100.0)
+    circles: float = Field(1.0, ge=0.5, le=10.0)
+    segments: int = Field(8, ge=4, le=64)
+    # Center spiral is the safe default: it crosses the flower center and
+    # changes radius between rings instead of replaying one perimeter.
+    path_strategy: Literal["center_spiral", "perimeter"] = "center_spiral"
+    inner_radius_m: Optional[float] = Field(None, ge=5.0, le=100.0)
+    jitter_m: float = Field(1.5, ge=0.0, le=3.0)
+    pre_wait_seconds: float = Field(0.0, ge=0.0, le=300.0)
+    post_wait_seconds: float = Field(2.0, ge=0.0, le=300.0)
+    route_type: Literal["stop_at_end", "return_to_start", "loop_forever"] = "stop_at_end"
+    rounds: Union[int, Literal["infinite"]] = 1
+
+    @field_validator("rounds")
+    @classmethod
+    def valid_rounds(cls, value):
+        if value != "infinite" and value < 1:
+            raise ValueError("rounds must be at least 1")
+        return value
+
+
 class MultiStopStartRequest(BaseModel):
     udid: str
     nav_mode: NavMode
@@ -74,6 +106,15 @@ class MultiStopStartRequest(BaseModel):
     jump_pre_delay: float = 0.0
     jump_post_delay: float = 0.0
     custom_speed_kmh: Optional[float] = None
+    mode: Literal["basic", "flower"] = "basic"
+    flower: Optional[FlowerOptions] = None
+
+
+class FlowerMultiStopStartRequest(MultiStopStartRequest):
+    # Keep this required.  If omitted, a legacy/basic request must resolve to
+    # MultiStopStartRequest rather than silently selecting the Flower branch.
+    mode: Literal["flower"]
+    flower: FlowerOptions = Field(default_factory=FlowerOptions)
 
 
 class RandomWalkStartRequest(BaseModel):
@@ -154,3 +195,52 @@ class FavoriteReorderItem(BaseModel):
 
 class FavoriteReorderRequest(BaseModel):
     items: list[FavoriteReorderItem]
+
+
+class FavoriteExportItem(BaseModel):
+    """Portable favorite representation. IDs are intentionally excluded."""
+
+    name: str = Field(min_length=1, max_length=80)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    group: str = Field(default="", max_length=40)
+    notes: str = Field(default="", max_length=200)
+    created_at: int = Field(ge=0)
+    order: int = Field(ge=0)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Favorite name cannot be empty.")
+        return normalized
+
+    @field_validator("group", "notes")
+    @classmethod
+    def trim_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class FavoriteExportDocument(BaseModel):
+    format: Literal["arcwayfarer-favorites"] = "arcwayfarer-favorites"
+    schema_version: Literal[1] = 1
+    exported_at: str
+    groups: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=500)
+    favorites: list[FavoriteExportItem] = Field(default_factory=list, max_length=10_000)
+
+    @field_validator("groups")
+    @classmethod
+    def normalize_groups(cls, values: list[str]) -> list[str]:
+        return [value.strip() for value in values if value.strip()]
+
+
+class FavoriteImportPreview(BaseModel):
+    total: int
+    additions: int
+    duplicates: int
+    groups_to_add: list[str]
+
+
+class FavoriteImportResult(FavoriteImportPreview):
+    imported: int
