@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ActionIcon, Tooltip } from '@mantine/core'
-import { IconAlertTriangle, IconCopy, IconRefresh, IconWifi, IconWifiOff } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCopy, IconDevices, IconRefresh, IconWifi, IconWifiOff } from '@tabler/icons-react'
 import type { Device, DeviceDiscoveryDiagnostic } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -27,6 +27,15 @@ const MODE_SHORT_NAMES: Record<Mode, string> = {
   'multi-stop': '巡迴',
   'random-walk': '漫遊',
   'joystick': '搖桿',
+}
+
+/**
+ * When Lockdown cannot provide DeviceName, the backend uses the UDID as a
+ * fallback name. Keep that tab compact while retaining normal device names.
+ */
+function displayDeviceName(device: Device): string {
+  if (device.name.toLowerCase() === device.udid.toLowerCase()) return device.udid.slice(-8)
+  return device.name
 }
 
 function statusColor(device: Device, state: DeviceState | undefined): string {
@@ -62,6 +71,7 @@ type Props = {
   includeWifi: boolean
   onIncludeWifiChange: (enabled: boolean) => void
   discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
+  onOpenDeviceManager: () => void
 }
 
 export function DeviceTabs({
@@ -77,6 +87,7 @@ export function DeviceTabs({
   includeWifi,
   onIncludeWifiChange,
   discoveryDiagnostic,
+  onOpenDeviceManager,
 }: Props) {
   const t = useT()
   const [hoveredUdid, setHoveredUdid] = useState<string | null>(null)
@@ -120,6 +131,7 @@ export function DeviceTabs({
         </Tooltip>
       )}
       {devices.map((device) => {
+        const displayName = displayDeviceName(device)
         const state = deviceStates[device.udid] ?? 'idle'
         const mode = modeByDevice[device.udid] || 'teleport'
         const pos = positions[device.udid]
@@ -154,10 +166,10 @@ export function DeviceTabs({
             <button
               className={`device-tab${device.udid === focusedDeviceId ? ' active' : ''}`}
               onClick={() => onFocusChange(device.udid)}
-              title={device.detail ?? undefined}
+              title={[device.detail, `UDID: ${device.udid}`].filter(Boolean).join('\n')}
             >
               <span className="device-tab-dot" style={{ background: statusColor(device, state) }} />
-              <span className="device-tab-name">{device.name}</span>
+              <span className="device-tab-name">{displayName}</span>
               {isActive && (
                 <span className="device-tab-mini-badge">
                   {MODE_SHORT_NAMES[mode] || mode} {pct !== null ? `${pct}%` : ''}
@@ -168,7 +180,7 @@ export function DeviceTabs({
             {hoveredUdid === device.udid && (
               <div className="device-tab-hover-card">
                 <div className="hover-card-header">
-                  <span className="hover-card-title">{device.name}</span>
+                  <span className="hover-card-title">{displayName}</span>
                   <span className={`hover-card-status ${state}`}>
                     {getStateLabel(state, mode, t)}
                   </span>
@@ -195,6 +207,17 @@ export function DeviceTabs({
           </div>
         )
       })}
+      <Tooltip label={t('device.manager.open')}>
+        <ActionIcon
+          className="device-manager"
+          variant="default"
+          color="gray"
+          onClick={onOpenDeviceManager}
+          aria-label={t('device.manager.open')}
+        >
+          <IconDevices size={16} />
+        </ActionIcon>
+      </Tooltip>
       <Tooltip label={includeWifi ? t('device.wifi.enabled') : t('device.wifi.disabled')}>
         <ActionIcon
           className="device-wifi-discovery"

@@ -23,6 +23,7 @@ type Props = {
   includeWifi: boolean
   onIncludeWifiChange: (enabled: boolean) => void
   discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
+  onOpenDeviceManager: () => void
   onOpenCmdPalette?: () => void
   version: string
   hasUpdate: boolean
@@ -45,6 +46,7 @@ export function TopBar({
   includeWifi,
   onIncludeWifiChange,
   discoveryDiagnostic,
+  onOpenDeviceManager,
   onOpenCmdPalette,
   version,
   hasUpdate,
@@ -87,6 +89,7 @@ export function TopBar({
         includeWifi={includeWifi}
         onIncludeWifiChange={onIncludeWifiChange}
         discoveryDiagnostic={discoveryDiagnostic}
+        onOpenDeviceManager={onOpenDeviceManager}
       />
       <ColorSchemeControl />
       <ConnectionStatus connected={connected} />

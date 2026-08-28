@@ -3,6 +3,7 @@ import { Alert, Button, Checkbox, FileButton, Group, Modal, Stack, Text } from '
 import { IconAlertCircle, IconDownload, IconFileUpload } from '@tabler/icons-react'
 import { useT, type StringKey } from '../../i18n'
 import { exportFavorites, importFavorites, previewFavoriteImport, type FavoriteExportDocument, type FavoriteImportPreview } from '../../services/api'
+import { normalizeFavoriteImport } from './favoriteImport'
 
 type TransferMode = 'export' | 'import'
 
@@ -32,6 +33,7 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(() => new Set(groups))
   const [preview, setPreview] = useState<FavoriteImportPreview | null>(null)
   const [importDocument, setImportDocument] = useState<FavoriteExportDocument | null>(null)
+  const [compatibleImport, setCompatibleImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
@@ -40,6 +42,7 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   const close = () => {
     setPreview(null)
     setImportDocument(null)
+    setCompatibleImport(false)
     setError(null)
     setSuccess(null)
     onClose()
@@ -72,19 +75,21 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
     setError(null)
     setPreview(null)
     setImportDocument(null)
+    setCompatibleImport(false)
     if (file.size > 5 * 1024 * 1024) {
       setError(t('favorites.transfer.invalid_file'))
       return
     }
     try {
-      const parsed: unknown = JSON.parse(await file.text())
-      if (!parsed || typeof parsed !== 'object' || (parsed as { format?: unknown }).format !== 'arcwayfarer-favorites') {
+      const parsed: unknown = JSON.parse((await file.text()).replace(/^\uFEFF/, ''))
+      const normalized = normalizeFavoriteImport(parsed)
+      if (!normalized) {
         throw new Error('invalid format')
       }
-      const document = parsed as FavoriteExportDocument
       setWorking(true)
-      const nextPreview = await previewFavoriteImport(document)
-      setImportDocument(document)
+      const nextPreview = await previewFavoriteImport(normalized.document)
+      setImportDocument(normalized.document)
+      setCompatibleImport(normalized.isCompatibleFormat)
       setPreview(nextPreview)
     } catch {
       setError(t('favorites.transfer.invalid_file'))
@@ -135,6 +140,7 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
               <Alert color="blue" title={t('favorites.transfer.preview')}>
                 <Stack gap="xs">
                   <Text size="sm">{format(t, 'favorites.transfer.preview_summary', { total: preview.total, additions: preview.additions, duplicates: preview.duplicates })}</Text>
+                  {compatibleImport && <Text size="sm">{t('favorites.transfer.compatible_format')}</Text>}
                   {preview.groups_to_add.length > 0 && <Text size="sm">{format(t, 'favorites.transfer.groups_to_add', { groups: preview.groups_to_add.join('、') })}</Text>}
                   <Text size="sm">{t('favorites.transfer.keep_existing')}</Text>
                   <Group justify="flex-end">

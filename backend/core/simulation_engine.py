@@ -39,6 +39,10 @@ class NavigationSession:
         self.paused_from: Optional[SimulationState] = None
         self.joystick_input: Optional[dict] = None
         self.joystick_position: Optional[tuple[float, float]] = None
+        # A mobile controller may connect after a task has already started.
+        # Keep a display-only task snapshot so it can show the active route.
+        self.active_path: list[tuple[float, float]] = []
+        self.task_kind: str | None = None
         # Invalidate deferred starts (route planning happens before a task can be
         # created) whenever a newer stop/restore command wins.
         self.command_generation = 0
@@ -50,6 +54,8 @@ class NavigationSession:
         self.paused_from = None
         self.joystick_input = None
         self.joystick_position = None
+        self.active_path = []
+        self.task_kind = None
         if self.task is None or self.task.done():
             self.task = None
             return False
@@ -78,6 +84,24 @@ _ACTIVE_STATES = (
 
 def get_state(udid: str) -> SimulationState:
     return get_navigation_session(udid).state
+
+
+def get_active_task_snapshots() -> list[dict]:
+    """Return display-only active task data for newly connected controllers."""
+    snapshots = []
+    for session in _sessions.values():
+        if session.state == SimulationState.IDLE:
+            continue
+        state = session.state.value
+        if session.state == SimulationState.PAUSED and session.paused_from:
+            state = f"paused:{session.paused_from.value}"
+        snapshots.append({
+            "udid": session.udid,
+            "state": state,
+            "kind": (session.task_kind or session.paused_from.value) if session.paused_from else (session.task_kind or state),
+            "path": [{"lat": lat, "lng": lng} for lat, lng in session.active_path],
+        })
+    return snapshots
 
 
 async def set_state(udid: str, state: SimulationState) -> None:
@@ -121,6 +145,7 @@ async def _start_async(
     station_indices: frozenset[int],
     station_pause_range: tuple[float, float],
     stop_at: dict[int, int] | None,
+    task_kind: str,
     expected_generation: int,
 ) -> None:
     session = get_navigation_session(udid)
@@ -128,6 +153,8 @@ async def _start_async(
         if expected_generation != session.command_generation:
             return
         await _stop_task_and_wait(session)
+        session.active_path = list(points)
+        session.task_kind = task_kind
         active_state = SimulationState.LOOPING if loop else SimulationState.NAVIGATING
         session.task = asyncio.create_task(
             _run(
@@ -153,6 +180,7 @@ def start(
     station_indices: frozenset[int] = frozenset(),
     station_pause_range: tuple[float, float] = (0.0, 0.0),
     stop_at: dict[int, int] | None = None,
+    task_kind: str = "navigate",
 ) -> None:
     session = get_navigation_session(udid)
     expected_generation = session.command_generation
@@ -166,6 +194,7 @@ def start(
             station_indices,
             station_pause_range,
             stop_at,
+            task_kind,
             expected_generation,
         )
     )
@@ -177,19 +206,22 @@ async def _start_jump_async(
     pre_delay: float,
     post_delay: float,
     expected_generation: int,
+    task_kind: str,
 ) -> None:
     session = get_navigation_session(udid)
     async with session.lock:
         if expected_generation != session.command_generation:
             return
         await _stop_task_and_wait(session)
+        session.active_path = list(points)
+        session.task_kind = task_kind
         session.task = asyncio.create_task(_run_jump(session, points, pre_delay, post_delay))
 
 
-def start_jump(udid: str, points: list[tuple[float, float]], pre_delay: float, post_delay: float) -> None:
+def start_jump(udid: str, points: list[tuple[float, float]], pre_delay: float, post_delay: float, task_kind: str = "multi_stop") -> None:
     """Teleport directly to each point in sequence, with configurable delays before/after each stop."""
     expected_generation = get_navigation_session(udid).command_generation
-    asyncio.create_task(_start_jump_async(udid, points, pre_delay, post_delay, expected_generation))
+    asyncio.create_task(_start_jump_async(udid, points, pre_delay, post_delay, expected_generation, task_kind))
 
 
 async def _start_dynamic_async(
@@ -341,6 +373,10 @@ async def _run(
     finally:
         await set_state(session.udid, SimulationState.IDLE)
         session.task = None
+        session.active_path = []
+        session.task_kind = None
+        session.active_path = []
+        session.task_kind = None
 
 
 async def _run_dynamic(
@@ -373,6 +409,8 @@ async def _run_dynamic(
     finally:
         await set_state(session.udid, SimulationState.IDLE)
         session.task = None
+        session.active_path = []
+        session.task_kind = None
 
 
 async def _sleep_with_eta_countdown(
@@ -429,6 +467,8 @@ async def _run_jump(
     finally:
         await set_state(session.udid, SimulationState.IDLE)
         session.task = None
+        session.active_path = []
+        session.task_kind = None
 
 
 async def _run_joystick(

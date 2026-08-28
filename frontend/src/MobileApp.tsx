@@ -25,7 +25,7 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 
 export default function MobileApp() {
   const t = useT()
-  const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
+  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, send } = useWebSocket()
   const { devices, refresh: refreshDevices } = useDevices()
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
@@ -33,6 +33,9 @@ export default function MobileApp() {
   const [overlay, setOverlay] = useState<MapOverlay>(EMPTY_OVERLAY)
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
+  const setActiveOverlay = useCallback((nextOverlay: MapOverlay) => {
+    setOverlay((current) => current === nextOverlay ? current : nextOverlay)
+  }, [])
 
   const [sheetState, setSheetState] = useState<SheetState>('half')
   // Bottom sheet drag
@@ -125,7 +128,7 @@ export default function MobileApp() {
       clearPoint: () => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: null }))
       },
-      setOverlay,
+      setOverlay: setActiveOverlay,
       requestFlyTo,
       sendWs: send,
     }
@@ -156,7 +159,12 @@ export default function MobileApp() {
   const focusedPoint = focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null
   const deviceName = focusedDeviceId ? (devices.find((d) => d.udid === focusedDeviceId)?.name ?? focusedDeviceId) : null
 
-  const overlaysMap: Record<string, MapOverlay> = focusedDeviceId ? { [focusedDeviceId]: overlay } : {}
+  const activeTask = focusedDeviceId ? activeTasks[focusedDeviceId] : undefined
+  const overlaysMap: Record<string, MapOverlay> = focusedDeviceId ? {
+    [focusedDeviceId]: activeTask?.path.length
+      ? { ...EMPTY_OVERLAY, path: activeTask.path, activePath: activeTask.path }
+      : overlay,
+  } : {}
 
   return (
     <div className="mapp mobile-app">
@@ -165,7 +173,7 @@ export default function MobileApp() {
         <Badge className="mapp-connection" color={connected ? 'teal' : 'gray'} variant="light" size="sm" leftSection={<span className="mapp-dot" />}>
           {connected ? 'Connected' : 'Offline'}
         </Badge>
-        <Text className="mapp-device-name" size="sm" fw={600} truncate>{deviceName ?? (connected ? t('panel.hint.select_device') : '未連線')}</Text>
+        <Text className="mapp-device-name" size="sm" fw={600} truncate>{activeTask ? `${deviceName ?? ''} · ${activeTask.kind === 'route_loop' ? t('routeloop.status.looping') : activeTask.kind === 'multi_stop' ? t('multistop.status.visiting') : activeTask.kind === 'flower' ? '種花模式' : t('navigate.status.running')}` : deviceName ?? (connected ? t('panel.hint.select_device') : '未連線')}</Text>
         {devices.length > 1 && (
           <NativeSelect
             className="mapp-device-picker"

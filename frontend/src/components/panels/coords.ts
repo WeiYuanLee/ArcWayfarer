@@ -45,21 +45,19 @@ export function parsePoint(text: string): LatLng | null {
   return { lat, lng }
 }
 
-const PASTE_LINE_PATTERN = /(-?\d+(?:\.\d+)?)[^-\d.]+(-?\d+(?:\.\d+)?)/
+// Match every pair in the pasted text instead of assuming one pair per line.
+// OCR commonly collapses line breaks or uses full-width punctuation.
+const PASTED_COORDINATE_PATTERN = /(-?\d+(?:\.\d+)?)[^-\d.]+(-?\d+(?:\.\d+)?)/g
 
 export function parsePastedPoints(text: string): { points: LatLng[]; invalidCount: number } {
   const points: LatLng[] = []
   let invalidCount = 0
+  // NFKC converts full-width digits and punctuation. Replace Chinese characters
+  // with whitespace rather than parsing them or allowing adjacent numbers to join.
+  const normalized = text.normalize('NFKC').replace(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g, ' ')
+  let match: RegExpExecArray | null
 
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (line === '') continue
-
-    const match = line.match(PASTE_LINE_PATTERN)
-    if (!match) {
-      invalidCount++
-      continue
-    }
+  while ((match = PASTED_COORDINATE_PATTERN.exec(normalized)) !== null) {
 
     const lat = Number(match[1])
     const lng = Number(match[2])
@@ -71,7 +69,7 @@ export function parsePastedPoints(text: string): { points: LatLng[]; invalidCoun
     points.push({ lat, lng })
   }
 
-  return { points, invalidCount }
+  return { points, invalidCount: points.length === 0 && invalidCount === 0 && normalized.trim() !== '' ? 1 : invalidCount }
 }
 
 export function formatEta(seconds: number): string {

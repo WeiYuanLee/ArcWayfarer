@@ -1,7 +1,9 @@
 import math
 import unittest
 
+from core.flower import _estimate_seconds
 from core.flower_geometry import flower_perimeter_path, flower_spiral_path, spiral_radii
+from models.schemas import FlowerOptions
 
 
 class FlowerGeometryTests(unittest.TestCase):
@@ -27,6 +29,16 @@ class FlowerGeometryTests(unittest.TestCase):
 
     def test_inner_radius_never_falls_below_safe_floor(self) -> None:
         self.assertTrue(all(radius >= 5 for radius in spiral_radii(6, 3)))
+
+    def test_eta_estimate_includes_each_flower_wait(self) -> None:
+        base = FlowerOptions(radius_m=10, circles=1, segments=8, pre_wait_seconds=0, post_wait_seconds=0)
+        with_waits = base.model_copy(update={"pre_wait_seconds": 7, "post_wait_seconds": 11})
+        flowers = [self.center, (25.0342, 121.5650)]
+
+        base_seconds = _estimate_seconds(flowers, base, speed=5 / 3.6, rounds=1, jump_mode=False)
+        waited_seconds = _estimate_seconds(flowers, with_waits, speed=5 / 3.6, rounds=1, jump_mode=False)
+
+        self.assertEqual(waited_seconds - base_seconds, 36)
 
 
 if __name__ == "__main__":

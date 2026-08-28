@@ -64,7 +64,7 @@ async def start_multi_stop(
     await simulation_engine.ensure_stopped(udid)
 
     if jump_mode:
-        simulation_engine.start_jump(udid, waypoints, jump_pre_delay, jump_post_delay)
+        simulation_engine.start_jump(udid, waypoints, jump_pre_delay, jump_post_delay, task_kind="multi_stop")
         return waypoints, []
 
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
@@ -81,6 +81,7 @@ async def start_multi_stop(
         station_indices=station_indices,
         station_pause_range=pause_range,
         stop_at=stop_at,
+        task_kind="multi_stop",
     )
     return playback_points, leg_playbacks
 

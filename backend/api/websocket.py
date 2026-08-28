@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from core import joystick
+from core import joystick, simulation_engine
 from services import mobile_auth
 from services.mobile_auth import valid_session
 
@@ -42,6 +42,7 @@ async def ws_mobile(websocket: WebSocket) -> None:
             return
         _connections.add(websocket)
         await websocket.send_json({"type": "authenticated"})
+        await websocket.send_json({"type": "task_snapshot", "tasks": simulation_engine.get_active_task_snapshots()})
         while True:
             raw = await websocket.receive_json()
             if not valid_session(session_token):
@@ -100,7 +101,8 @@ async def broadcast_position(
 
 
 async def broadcast_state(udid: str, state: str) -> None:
-    await _broadcast({"type": "state", "udid": udid, "state": state})
+    task = next((item for item in simulation_engine.get_active_task_snapshots() if item["udid"] == udid), None)
+    await _broadcast({"type": "state", "udid": udid, "state": state, "task": task})
 
 
 async def broadcast_restored(udid: str) -> None:

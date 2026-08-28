@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from './components/layout/TopBar'
 import { ControlsOverlay } from './components/layout/ControlsOverlay'
 import { IconRail } from './components/layout/IconRail'
@@ -13,8 +13,14 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
 import { UpdateModal } from './components/common/UpdateModal'
 import { clearLocation } from './services/api'
+import { useHiddenDevices } from './hooks/useHiddenDevices'
+import { useDeviceNames } from './hooks/useDeviceNames'
+import { DeviceManagerModal } from './components/common/DeviceManagerModal'
+import { showToast } from './components/common/Toast'
+import { useT } from './i18n'
 
 const WIFI_DISCOVERY_STORAGE_KEY = 'arcwayfarer.include-wifi-discovery'
+const MAX_USABLE_DEVICES = 3
 
 function readWifiDiscoveryPreference(): boolean {
   try {
@@ -25,6 +31,7 @@ function readWifiDiscoveryPreference(): boolean {
 }
 
 export default function App() {
+  const t = useT()
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
   const [modeByDevice, setModeByDevice] = useState<Record<string, Mode>>({})
   const [overlaysByDevice, setOverlaysByDevice] = useState<Record<string, MapOverlay>>({})
@@ -32,8 +39,12 @@ export default function App() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [includeWifi, setIncludeWifi] = useState(readWifiDiscoveryPreference)
+  const [deviceManagerOpen, setDeviceManagerOpen] = useState(false)
+  const [hidingDeviceId, setHidingDeviceId] = useState<string | null>(null)
   const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
-  const { devices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
+  const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
+  const { hiddenDevices, isHidden, hideDevice, unhideDevice } = useHiddenDevices()
+  const { deviceNames, getDeviceName, setDeviceName } = useDeviceNames()
   const {
     checkResult,
     loading: loadingUpdate,
@@ -45,6 +56,19 @@ export default function App() {
     currentVersion,
     latestVersion,
   } = useUpdateChecker()
+
+  // Discovery continues for every device, but only three unhidden devices may
+  // enter the operational UI. Additional devices wait for the user to free a
+  // slot in Device Manager, so they can never be selected accidentally.
+  const visibleDevices = useMemo(
+    () => discoveredDevices.filter((device) => !isHidden(device.udid)).slice(0, MAX_USABLE_DEVICES),
+    [discoveredDevices, isHidden]
+  )
+  const usableDeviceIds = useMemo(() => visibleDevices.map((device) => device.udid), [visibleDevices])
+  const displayDevices = useMemo(
+    () => visibleDevices.map((device) => ({ ...device, name: getDeviceName(device.udid) || device.name })),
+    [getDeviceName, visibleDevices]
+  )
 
 
   const pendingPickRef = useRef<((lat: number, lng: number) => void) | null>(null)
@@ -100,11 +124,11 @@ export default function App() {
 
   // Keep a device focused whenever possible, and drop per-device state for devices that disconnected.
   useEffect(() => {
-    const connectedIds = new Set(devices.map((d) => d.udid))
+    const connectedIds = new Set(visibleDevices.map((d) => d.udid))
 
     setFocusedDeviceId((current) => {
       if (current && connectedIds.has(current)) return current
-      return devices[0]?.udid ?? null
+      return visibleDevices[0]?.udid ?? null
     })
     setModeByDevice((prev) => {
       const next = Object.fromEntries(Object.entries(prev).filter(([udid]) => connectedIds.has(udid)))
@@ -118,7 +142,7 @@ export default function App() {
       const next = Object.fromEntries(Object.entries(prev).filter(([udid]) => connectedIds.has(udid)))
       return Object.keys(next).length === Object.keys(prev).length ? prev : next
     })
-  }, [devices])
+  }, [visibleDevices])
 
   function handleModeChange(udid: string, mode: Mode) {
     // A mode owns its temporary map input.  Clear it here rather than relying on
@@ -167,7 +191,7 @@ export default function App() {
     [requestFlyTo, focusedDeviceId]
   )
 
-  const connectedIds = new Set(devices.map((d) => d.udid))
+  const connectedIds = new Set(visibleDevices.map((d) => d.udid))
   const livePositions = Object.fromEntries(
     Object.entries(positions)
       .filter(([udid]) => connectedIds.size === 0 || connectedIds.has(udid))
@@ -191,16 +215,16 @@ export default function App() {
   }, [setOverlayForDevice])
 
   const restoreAll = useCallback(async () => {
-    const restoreTargets = devices.filter((device) => device.status === 'ready')
+    const restoreTargets = visibleDevices.filter((device) => device.status === 'ready')
     const results = await Promise.allSettled(restoreTargets.map((device) => clearLocation(device.udid)))
     return {
       restored: results.filter((result) => result.status === 'fulfilled').length,
       failed: results.filter((result) => result.status === 'rejected').length,
     }
-  }, [devices])
+  }, [visibleDevices])
 
   function panelPropsFor(udid: string): PanelProps {
-    const device = devices.find((d) => d.udid === udid) ?? null
+    const device = displayDevices.find((d) => d.udid === udid) ?? null
     const position = positions[udid]
     return {
       deviceId: udid,
@@ -220,7 +244,7 @@ export default function App() {
       setOverlay: getSetOverlayForDevice(udid),
       requestFlyTo,
       sendWs: send,
-      restoreAll: devices.length > 1 ? restoreAll : undefined,
+      restoreAll: visibleDevices.length > 1 ? restoreAll : undefined,
     }
   }
 
@@ -231,13 +255,32 @@ export default function App() {
     ['navigating', 'looping', 'random_walk', 'joystick', 'paused'].includes(state)
   )
 
+  const handleHideDevice = useCallback(async (device: typeof discoveredDevices[number]) => {
+    if ((states[device.udid] ?? 'idle') !== 'idle') {
+      showToast(t('device.manager.running'))
+      return
+    }
+    setHidingDeviceId(device.udid)
+    try {
+      await clearLocation(device.udid)
+      hideDevice(device)
+      showToast(t('device.manager.hide_success'))
+    } catch {
+      showToast(t('device.manager.hide_failed'))
+    } finally {
+      setHidingDeviceId(null)
+    }
+  }, [hideDevice, states, t])
+
+  const isUnhideDisabled = useCallback(() => visibleDevices.length >= MAX_USABLE_DEVICES, [visibleDevices.length])
+
   return (
     <div className="app">
       <TopBar
         connected={connected}
         focusedDeviceId={focusedDeviceId}
         onFocusChange={handleFocusChange}
-        devices={devices}
+        devices={displayDevices}
         deviceStates={states}
         modeByDevice={modeByDevice}
         positions={positions}
@@ -247,6 +290,7 @@ export default function App() {
         includeWifi={includeWifi}
         onIncludeWifiChange={handleIncludeWifiChange}
         discoveryDiagnostic={discoveryDiagnostic}
+        onOpenDeviceManager={() => setDeviceManagerOpen(true)}
         onOpenCmdPalette={() => setCmdPaletteOpen(true)}
         version={currentVersion}
         hasUpdate={hasUpdate}
@@ -266,7 +310,7 @@ export default function App() {
           isEngineSwitchLocked={isMapEngineSwitchLocked}
         >
           <ControlsOverlay
-            devices={devices}
+            devices={displayDevices}
             focusedDeviceId={focusedDeviceId}
             modeByDevice={modeByDevice}
             onModeChange={handleModeChange}
@@ -302,6 +346,21 @@ export default function App() {
         checkResult={checkResult}
         loading={loadingUpdate}
         onRecheck={recheckUpdates}
+      />
+      <DeviceManagerModal
+        isOpen={deviceManagerOpen}
+        onClose={() => setDeviceManagerOpen(false)}
+        devices={discoveredDevices}
+        hiddenDevices={hiddenDevices}
+        deviceNames={deviceNames}
+        usableDeviceIds={usableDeviceIds}
+        deviceStates={states}
+        hidingDeviceId={hidingDeviceId}
+        onHideDevice={handleHideDevice}
+        onUnhideDevice={unhideDevice}
+        onSetDeviceName={setDeviceName}
+        isUnhideDisabled={isUnhideDisabled}
+        unhideDisabledReason={() => t('device.manager.capacity')}
       />
       <ToastContainer />
     </div>

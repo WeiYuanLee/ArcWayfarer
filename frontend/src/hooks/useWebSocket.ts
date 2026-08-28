@@ -8,7 +8,11 @@ export type FlowerProgress = {
   circle: number
   totalCircles: number
   phase: string
+  etaSeconds: number
+  etaScope: 'total' | 'round'
+  receivedAt: number
 }
+export type ActiveTask = { kind: string; path: { lat: number; lng: number }[] }
 type DeviceState = 'idle' | 'teleporting' | 'navigating' | 'looping' | 'random_walk' | 'joystick' | 'paused'
 type PositionMessage = {
   type: 'position'
@@ -19,10 +23,11 @@ type PositionMessage = {
   eta_seconds: number
   stop_index: number | null
 }
-type StateMessage = { type: 'state'; udid: string; state: DeviceState }
+type StateMessage = { type: 'state'; udid: string; state: DeviceState; task?: { kind: string; path: { lat: number; lng: number }[] } | null }
+type TaskSnapshotMessage = { type: 'task_snapshot'; tasks: { udid: string; state: DeviceState; kind: string; path: { lat: number; lng: number }[] }[] }
 type RestoredMessage = { type: 'restored'; udid: string }
-type FlowerProgressMessage = { type: 'flower_progress'; udid: string; flower_index?: number; flower_total?: number; total_flowers?: number; circle?: number; round?: number; total_circles?: number; phase?: string; lat?: number; lng?: number }
-type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgressMessage
+type FlowerProgressMessage = { type: 'flower_progress'; udid: string; flower_index?: number; flower_total?: number; total_flowers?: number; circle?: number; round?: number; total_circles?: number; phase?: string; eta_seconds?: number; eta_scope?: 'total' | 'round'; lat?: number; lng?: number }
+type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgressMessage | TaskSnapshotMessage
 
 export function useWebSocket() {
   const [connected, setConnected] = useState(false)
@@ -30,6 +35,7 @@ export function useWebSocket() {
   const [states, setStates] = useState<Record<string, DeviceState>>({})
   const [restoredAt, setRestoredAt] = useState<Record<string, number>>({})
   const [flowerProgress, setFlowerProgress] = useState<Record<string, FlowerProgress>>({})
+  const [activeTasks, setActiveTasks] = useState<Record<string, ActiveTask>>({})
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectAttemptRef = useRef(0)
 
@@ -90,6 +96,15 @@ export function useWebSocket() {
             }
           } else if (message.type === 'state') {
             setStates((prev) => ({ ...prev, [message.udid]: message.state }))
+            if (message.task) {
+              setActiveTasks((prev) => ({ ...prev, [message.udid]: message.task! }))
+            } else if (message.state === 'idle') setActiveTasks((prev) => {
+              if (!(message.udid in prev)) return prev
+              const next = { ...prev }; delete next[message.udid]; return next
+            })
+          } else if (message.type === 'task_snapshot') {
+            setStates((prev) => ({ ...prev, ...Object.fromEntries(message.tasks.map((task) => [task.udid, task.state])) }))
+            setActiveTasks(Object.fromEntries(message.tasks.map((task) => [task.udid, { kind: task.kind, path: task.path }])))
           } else if (message.type === 'restored') {
             setRestoredAt((prev) => ({ ...prev, [message.udid]: Date.now() }))
           } else if (message.type === 'flower_progress') {
@@ -114,6 +129,9 @@ export function useWebSocket() {
                 circle: message.circle ?? message.round ?? 1,
                 totalCircles: message.total_circles ?? 1,
                 phase: message.phase ?? 'traveling',
+                etaSeconds: message.eta_seconds ?? 0,
+                etaScope: message.eta_scope ?? 'total',
+                receivedAt: Date.now(),
               },
             }))
           }
@@ -136,5 +154,5 @@ export function useWebSocket() {
     socketRef.current?.send(JSON.stringify({ type, data, udid }))
   }, [])
 
-  return { connected, positions, states, restoredAt, flowerProgress, send }
+  return { connected, positions, states, restoredAt, flowerProgress, activeTasks, send }
 }

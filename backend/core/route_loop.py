@@ -74,6 +74,7 @@ async def start_route_loop(
         station_indices=station_indices,
         station_pause_range=pause_range,
         stop_at=stop_at,
+        task_kind="route_loop",
     )
     return playback_points, leg_playbacks
 

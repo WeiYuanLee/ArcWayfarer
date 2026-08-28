@@ -1,5 +1,6 @@
 import { ActionIcon, Alert, Badge, Button, Group, Paper, Progress, Stack, Text, Tooltip } from '@mantine/core'
-import { IconAlertCircle, IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconPlayerStop } from '@tabler/icons-react'
+import { IconAlertCircle, IconClock, IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconPlayerStop } from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
 import { useT } from '../../i18n'
 import type { FlowerProgress } from '../../hooks/useWebSocket'
 
@@ -18,6 +19,12 @@ type Props = {
  * from the flower_progress websocket event, not inferred from stop_index. */
 export function FlowerFlightHUD({ progress, isRunning, isPaused, isBusy, connected = true, onPauseResume, onSkip, onStop }: Props) {
   const t = useT()
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!isRunning || isPaused) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [isRunning, isPaused])
   const flower = Math.max(1, progress?.flowerIndex ?? 1)
   const totalFlowers = Math.max(flower, progress?.totalFlowers ?? 1)
   const circle = Math.max(1, progress?.circle ?? 1)
@@ -32,6 +39,10 @@ export function FlowerFlightHUD({ progress, isRunning, isPaused, isBusy, connect
     returning: '回到起點',
   }
   const phase = phaseLabels[phaseKey] || phaseKey
+  const remainingSeconds = Math.max(0, Math.ceil((progress?.etaSeconds ?? 0) - (isPaused ? 0 : (now - (progress?.receivedAt ?? now)) / 1000)))
+  const remainingText = remainingSeconds >= 3600
+    ? `${Math.floor(remainingSeconds / 3600)}:${String(Math.floor(remainingSeconds % 3600 / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`
+    : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`
 
   return <Stack gap="md" className="active-flight-hud flower-flight-hud">
     {!connected && <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>{t('connection.reconnecting')}</Alert>}
@@ -45,6 +56,10 @@ export function FlowerFlightHUD({ progress, isRunning, isPaused, isBusy, connect
         <Group justify="space-between" gap="xs">
           <Text size="sm" fw={600}>第 {flower} 朵 · 第 {circle} / {totalCircles} 圈</Text>
           <Text size="xs" c="dimmed">{phase}</Text>
+        </Group>
+        <Group gap={5} justify="space-between">
+          <Group gap={5}><IconClock size={15} /><Text size="xs" c="dimmed">{progress?.etaScope === 'round' ? '本圈剩餘' : '本次剩餘'}</Text></Group>
+          <Text size="sm" fw={700}>{remainingText}</Text>
         </Group>
       </Stack>
     </Paper>

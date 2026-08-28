@@ -110,8 +110,17 @@ if [ -d "$APP_BUNDLE" ]; then
   echo "==> Creating .dmg"
   VERSION="$(node -p "require('$ROOT_DIR/frontend/package.json').version")"
   DMG_PATH="$ROOT_DIR/frontend/release/ArcWayfarer-$VERSION-$ARCH.dmg"
+  # Stage the app alongside an Applications symlink. Finder presents this as
+  # the familiar drag-to-install destination; it does not require a Developer
+  # ID signature or notarization.
+  DMG_STAGING_DIR="$(mktemp -d -t arcwayfarer-dmg.XXXXXX)"
+  trap 'rm -rf "$DMG_STAGING_DIR"' EXIT
+  cp -R "$APP_BUNDLE" "$DMG_STAGING_DIR/ArcWayfarer.app"
+  ln -s /Applications "$DMG_STAGING_DIR/Applications"
   rm -f "$DMG_PATH"
-  hdiutil create -volname "ArcWayfarer" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH"
+  hdiutil create -volname "ArcWayfarer" -srcfolder "$DMG_STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+  rm -rf "$DMG_STAGING_DIR"
+  trap - EXIT
 else
   echo "Packaged app was not created: $APP_BUNDLE" >&2
   exit 1

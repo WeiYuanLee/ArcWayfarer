@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ArcWayfarer 使用指南｜iPhone GPS 虛擬定位教學</title>
-  <meta name="description" content="ArcWayfarer 完整使用指南：下載安裝、連接 iPhone、開啟 Developer Mode、Teleport、Navigate、Route Loop、Multi-stop、Joystick、Mobile Remote、還原真實 GPS 與常見問題。">
+  <meta name="description" content="ArcWayfarer 完整使用指南：下載安裝、連接 iPhone、開啟 Developer Mode、Teleport、種花模式、路線導航、手機遙控、還原真實 GPS 與常見問題。">
   <meta name="keywords" content="ArcWayfarer 教學, iPhone 虛擬定位教學, iOS Developer Mode, iPhone GPS 模擬, iOS 26 虛擬定位, Pikmin Bloom 虛擬定位, Pokemon GO Error 12">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://weiyuanlee.github.io/ArcWayfarer/user-guide.html">
@@ -28,7 +28,7 @@
   <nav aria-label="使用指南導覽">
     <a href="./">官網首頁</a>
     <a href="#quick-start">快速開始</a>
-    <a href="#modes">功能指南</a>
+    <a href="#flower-mode">種花模式</a>
     <a href="#troubleshooting">疑難排解</a>
   </nav>
   <a class="nav-cta" href="./#download">免費下載 →</a>
@@ -50,6 +50,7 @@
     <a href="#quick-start">第一次定位</a>
     <div class="sidebar-label">功能指南</div>
     <a href="#modes">六種移動模式</a>
+    <a href="#flower-mode">多點巡迴・種花模式</a>
     <a href="#favorites">搜尋／收藏／歷史</a>
     <a href="#routes">GPX／JSON 路線</a>
     <a href="#remote">手機遙控</a>
@@ -65,7 +66,7 @@
     <section class="guide-hero" id="overview">
       <p class="eyebrow">ARCWAYFARER USER GUIDE</p>
       <h1>第一次使用也能<br><em>一步一步完成定位。</em></h1>
-      <p class="guide-lede">這份指南從安裝、連接 iPhone、開啟開發者模式，到 Teleport、路線導航與手機遙控，完整說明 ArcWayfarer 的實際操作流程。</p>
+      <p class="guide-lede">這份指南從安裝、連接 iPhone、開啟開發者模式，到 Teleport、種花路線、導航與手機遙控，完整說明 ArcWayfarer 的實際操作流程。</p>
       <div class="guide-badges">
         <span>iOS 16+</span><span>macOS Apple Silicon / Intel</span><span>Windows 10 / 11</span><span>免越獄</span>
       </div>
@@ -153,8 +154,26 @@
       </div>
     </section>
 
+    <section class="guide-section featured flower-guide" id="flower-mode">
+      <div class="section-kicker">08 · FLOWER MODE</div>
+      <h2>多點巡迴・種花模式</h2>
+      <p>種花模式以一個或多個花朵中心點建立巡迴路線。每個花點會自動建立 50 公尺進場點，接著依設定的半徑與圈數完成路徑；後續輪次會直接由最後一朵花前往第一朵花，不會重複走進場點。</p>
+      <ol class="quick-list flower-steps">
+        <li><span>01</span><div><strong>開啟「多點巡迴」</strong><p>在功能面板切換到「種花模式」。種花模式只要一個有效座標就能開始，多個花點則會依清單順序前往。</p></div></li>
+        <li><span>02</span><div><strong>加入花朵中心點</strong><p>輸入座標、貼上多筆座標，或直接在地圖上選點。可用上下箭頭調整花朵巡迴順序。</p></div></li>
+        <li><span>03</span><div><strong>設定種花路徑</strong><p>設定花朵半徑、繞圈數，以及抵達前與完成後的等待秒數；也可選擇移動速度。</p></div></li>
+        <li><span>04</span><div><strong>開始並掌握進度</strong><p>按下開始後，地圖會標示花朵範圍、順序與目前轉場路段；執行面板會顯示目前花朵、圈數與階段。</p></div></li>
+      </ol>
+      <div class="guide-cards two flower-options">
+        <article><span class="card-icon">◌</span><h3>選擇軌跡</h3><p><strong>穿心螺旋</strong>是預設選項：由外向內並穿越花心，可減少多圈時反覆走在同一個圓周。若偏好固定半徑，改選<strong>圓周繞行</strong>即可。</p></article>
+        <article><span class="card-icon">↺</span><h3>設定行程終點</h3><p>可選擇<strong>停在終點</strong>、完成後<strong>回到起點</strong>（可設定巡迴輪數），或<strong>持續循環</strong>。開始前請先確認花點順序與終點方式。</p></article>
+      </div>
+      <div class="guide-callout info"><strong>執行中可隨時控制。</strong>專屬進度面板會顯示「前往花朵／種花中／等待中」等狀態，可暫停、繼續、跳過目前花朵或停止行程。</div>
+      <div class="guide-callout success"><strong>建議領果座標：</strong>在種花模式中可開啟「產生建議領果座標」，依目前花朵中心隨機產生 25–50 公尺位移的座標。可檢視清單、複製分享文字或匯出 GPX waypoint；此工具不會修改正在設定的種花路線。</div>
+    </section>
+
     <section class="guide-section" id="favorites">
-      <div class="section-kicker">08 · 常用工具</div>
+      <div class="section-kicker">09 · 常用工具</div>
       <h2>搜尋、收藏與歷史紀錄</h2>
       <div class="guide-cards three">
         <article><h3>Place Search</h3><p>輸入地點名稱、地址、景點或關鍵字，搜尋結果可以直接拿來 Teleport 或建立路線。</p></article>
@@ -165,7 +184,7 @@
     </section>
 
     <section class="guide-section" id="routes">
-      <div class="section-kicker">09 · 路線資料</div>
+      <div class="section-kicker">10 · 路線資料</div>
       <h2>匯入 GPX 或 JSON Waypoints</h2>
       <p>已有既定軌跡時，可以直接匯入 ArcWayfarer，不需要重新在地圖逐點建立。</p>
       <div class="guide-cards two">
@@ -175,7 +194,7 @@
     </section>
 
     <section class="guide-section" id="remote">
-      <div class="section-kicker">10 · MOBILE REMOTE</div>
+      <div class="section-kicker">11 · MOBILE REMOTE</div>
       <h2>用手機遙控 ArcWayfarer</h2>
       <div class="guide-steps compact">
         <article><b>1</b><div><h3>桌面版開啟 Mobile Remote</h3><p>ArcWayfarer 會產生配對 QR Code。</p></div></article>
@@ -185,13 +204,13 @@
     </section>
 
     <section class="guide-section" id="multi-device">
-      <div class="section-kicker">11 · MULTI-DEVICE</div>
+      <div class="section-kicker">12 · MULTI-DEVICE</div>
       <h2>同時管理多部 iPhone</h2>
       <p>ArcWayfarer 支援多裝置管理。切換裝置後，每次執行 Teleport、Navigate、Joystick 或路線模擬前，請先確認目前控制的 iPhone 是否正確。</p>
     </section>
 
     <section class="guide-section" id="restore">
-      <div class="section-kicker">12 · 結束模擬</div>
+      <div class="section-kicker">13 · 結束模擬</div>
       <h2>恢復真實 GPS 位置</h2>
       <p>不再需要模擬位置時，使用 ArcWayfarer 的還原／Restore Location 功能停止目前的 Developer Location Simulation。</p>
       <div class="guide-callout info"><strong>不一定會瞬間跳回真實位置。</strong>停止模擬後，iPhone 需要重新取得 GPS、Wi-Fi、基地台與其他 Location Services 資訊，實際重新校準可能需要約 30 秒到 2 分鐘。</div>
@@ -199,7 +218,7 @@
     </section>
 
     <section class="guide-section" id="apps">
-      <div class="section-kicker">13 · 第三方 APP</div>
+      <div class="section-kicker">14 · 第三方 APP</div>
       <h2>遊戲與 App 相容性</h2>
       <p>ArcWayfarer 修改的是 iPhone Developer Location Simulation。不同 App 可以自行加入額外定位驗證，因此「系統位置已成功修改」不代表所有 App 都一定接受。</p>
       <div class="compat-app-grid">
@@ -209,7 +228,7 @@
     </section>
 
     <section class="guide-section" id="troubleshooting">
-      <div class="section-kicker">14 · TROUBLESHOOTING</div>
+      <div class="section-kicker">15 · TROUBLESHOOTING</div>
       <h2>常見問題與疑難排解</h2>
       <details open><summary>ArcWayfarer 找不到我的 iPhone</summary><p>確認 iPhone 已解鎖、USB 線支援資料傳輸、已選擇「信任這部電腦」。重新插拔並重啟 ArcWayfarer。Windows 另外確認 iTunes 或 Apple Mobile Device Support。</p></details>
       <details><summary>已經按過「信任」，為什麼還是找不到？</summary><p>「信任」只代表 pairing 已完成。裝置偵測仍可能受 USB 通訊、Apple Device Driver、Developer Services、RemoteXPC 或系統權限影響。請允許 ArcWayfarer 啟動時要求的權限並重新連線。</p></details>
