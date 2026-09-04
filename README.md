@@ -2,6 +2,8 @@
 
 [繁體中文](docs/README.zh-TW.md)
 
+**Website:** [ArcWayfarer official website](https://weiyuanlee.github.io/ArcWayfarer/) · [User guide](https://weiyuanlee.github.io/ArcWayfarer/user-guide.html)
+
 **Simulate your iPhone's GPS location — on macOS and Windows.**
 
 ArcWayfarer lets you teleport, navigate, or jog along any route on the map without physically moving. Useful for testing location-based apps, playing AR games, or protecting your real location.

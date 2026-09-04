@@ -36,25 +36,58 @@
   <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css?v=20260817-v6">
 
-  <!-- Structured Data (JSON-LD) for Google Rich Snippets -->
+  <!-- Structured Data (JSON-LD) for Google Search -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "ArcWayfarer",
-    "operatingSystem": "macOS, Windows 10, Windows 11",
-    "applicationCategory": "DeveloperApplication",
-    "description": "ArcWayfarer is a professional desktop-first iPhone GPS location simulator supporting teleportation, realistic route navigation, GPX loop, joystick and mobile web remote.",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "softwareVersion": "0.1.12",
-    "author": {
-      "@type": "Person",
-      "name": "Lence Lee"
-    }
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://weiyuanlee.github.io/ArcWayfarer/#website",
+        "url": "https://weiyuanlee.github.io/ArcWayfarer/",
+        "name": "ArcWayfarer",
+        "description": "iPhone 與 iPad 免越獄 GPS 虛擬定位及路線模擬工具。",
+        "inLanguage": "zh-Hant"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://weiyuanlee.github.io/ArcWayfarer/#software",
+        "name": "ArcWayfarer",
+        "url": "https://weiyuanlee.github.io/ArcWayfarer/",
+        "downloadUrl": "https://github.com/WeiYuanLee/ArcWayfarer/releases/latest",
+        "image": "https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/docs/screenshot.png",
+        "screenshot": "https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/docs/screenshot.png",
+        "operatingSystem": "macOS, Windows 10, Windows 11",
+        "applicationCategory": "DeveloperApplication",
+        "softwareVersion": "0.1.12",
+        "isAccessibleForFree": true,
+        "inLanguage": "zh-Hant",
+        "description": "ArcWayfarer 是 iPhone 與 iPad 免越獄 GPS 虛擬定位工具，支援瞬移、擬真路線導航、GPX 多點循環、搖桿控制與手機遠端遙控。",
+        "featureList": [
+          "一鍵瞬移",
+          "擬真路線導航",
+          "GPX 多點循環",
+          "動態搖桿",
+          "手機遠端遙控",
+          "多裝置管理"
+        ],
+        "softwareRequirements": "iOS 16+ device connected by USB; macOS or Windows 10/11",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Lence Lee",
+          "url": "https://github.com/WeiYuanLee"
+        },
+        "sameAs": [
+          "https://github.com/WeiYuanLee/ArcWayfarer"
+        ]
+      }
+    ]
   }
   </script>
 </head>
