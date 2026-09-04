@@ -999,8 +999,8 @@ export function MapLibreMapView({
     }).join(' ')
 
     const routes = Object.entries(overlays ?? []).flatMap(([id, overlay]) => {
-      if (!overlay.path || overlay.path.length < 2) return []
-      return [{ id, points: projectPath(overlay.path) }]
+      const paths = overlay.previewPaths?.length ? overlay.previewPaths : [overlay.path]
+      return paths.filter((path) => path?.length >= 2).map((path, index) => ({ id: `${id}-${index}`, points: projectPath(path) }))
     })
     const circles = Object.entries(overlays ?? []).flatMap(([id, overlay]) => (
       (overlay.circles ?? (overlay.circle ? [overlay.circle] : []))

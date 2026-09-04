@@ -1,6 +1,6 @@
 {
   "name": "arcwayfarer",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "iOS location simulator for macOS and Windows",
   "author": "",
   "license": "MIT",
@@ -26,14 +26,17 @@
     "@mantine/notifications": "^8.3.18",
     "@mantine/spotlight": "^8.3.18",
     "@tabler/icons-react": "^3.46.0",
+    "clipper-lib": "^6.4.2",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^6.4.0",
+    "opentype.js": "^2.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "1.48",
     "@testing-library/react": "^16.3.2",
+    "@types/clipper-lib": "^6.4.0",
     "@types/leaflet": "^1.9.12",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

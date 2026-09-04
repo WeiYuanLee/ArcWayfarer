@@ -69,6 +69,9 @@ class RouteLoopStartRequest(BaseModel):
     pause_min: float = 5.0
     pause_max: float = 20.0
     straight_line: bool = False
+    # Leg indexes whose endpoint is reached by an instantaneous jump rather
+    # than interpolation/routing.  The last index may jump back to waypoint 0.
+    jump_leg_indices: list[int] = Field(default_factory=list)
     custom_speed_kmh: Optional[float] = None
 
 

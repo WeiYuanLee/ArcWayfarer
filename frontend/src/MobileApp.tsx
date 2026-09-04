@@ -43,16 +43,22 @@ export default function MobileApp() {
   const dragStartState = useRef<SheetState>('half')
 
   const flyIdRef = useRef(0)
-  const pendingPickRef = useRef<((lat: number, lng: number) => void) | null>(null)
+  const pendingPickRef = useRef<{
+    deviceId: string
+    onPick: (lat: number, lng: number) => void
+  } | null>(null)
 
   const requestFlyTo = useCallback((lat: number, lng: number) => {
     flyIdRef.current += 1
     setFlyTo({ lat, lng, id: flyIdRef.current })
   }, [])
 
-  const requestPoint = useCallback((onPick: (lat: number, lng: number) => void) => {
-    pendingPickRef.current = onPick
+  const requestPointForDevice = useCallback((deviceId: string, onPick: (lat: number, lng: number) => void) => {
+    pendingPickRef.current = { deviceId, onPick }
     setSheetState('collapsed')
+  }, [])
+  const cancelPointRequest = useCallback(() => {
+    pendingPickRef.current = null
   }, [])
 
   useEffect(() => {
@@ -71,9 +77,11 @@ export default function MobileApp() {
     const pending = pendingPickRef.current
     if (pending) {
       pendingPickRef.current = null
-      pending(lat, lng)
-      setSheetState('half')
-      return
+      if (pending.deviceId === focusedDeviceId) {
+        pending.onPick(lat, lng)
+        setSheetState('half')
+        return
+      }
     }
     if (focusedDeviceId) {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
@@ -124,7 +132,8 @@ export default function MobileApp() {
       setPoint: (point) => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: point }))
       },
-      requestPoint,
+      requestPoint: (onPick) => focusedDeviceId && requestPointForDevice(focusedDeviceId, onPick),
+      cancelPointRequest,
       clearPoint: () => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: null }))
       },
@@ -178,7 +187,10 @@ export default function MobileApp() {
           <NativeSelect
             className="mapp-device-picker"
             value={focusedDeviceId ?? ''}
-            onChange={(e) => setFocusedDeviceId(e.target.value)}
+            onChange={(e) => {
+              cancelPointRequest()
+              setFocusedDeviceId(e.target.value)
+            }}
             data={devices.map((d) => ({ value: d.udid, label: d.name }))}
             aria-label="Choose device"
             size="xs"

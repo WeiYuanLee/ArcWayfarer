@@ -123,6 +123,7 @@ export function MultiStopPanel({
   flowerProgress,
   connected,
   requestPoint,
+  cancelPointRequest,
   requestFlyTo,
   setOverlay,
 }: PanelProps) {
@@ -479,6 +480,9 @@ export function MultiStopPanel({
 
   async function handleStart() {
     if (!deviceId || validWaypoints.length < (isFlower ? 1 : 2)) return
+    // The last coordinate field remains focused after typing.  Starting a
+    // route must disarm its pending map pick before the user changes device.
+    cancelPointRequest?.()
     setStatus({ kind: 'busy' })
     try {
       if (isFlower) {
@@ -577,6 +581,7 @@ export function MultiStopPanel({
         titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
         alwaysShowScrollbar={isFlower && !isActive}
+        constrainBody={isFlower && !isActive}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? (
           <PanelFooter>
@@ -736,7 +741,9 @@ export function MultiStopPanel({
             ) : null}
           </PanelSection>
 
-          {!jumpMode && (
+          {/* Flower circling always uses this speed, including when travel
+              between flowers is set to instant jump. */}
+          {(!jumpMode || isFlower) && (
             <PanelSection>
               <SpeedSlider
                 valueKmh={speedKmh}

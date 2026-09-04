@@ -19,6 +19,8 @@ export type ModePanelLayoutProps = {
   scrollable?: boolean
   /** Keeps a visible draggable scrollbar for long, settings-heavy panels. */
   alwaysShowScrollbar?: boolean
+  /** Constrains the body to its flex parent so the shared ScrollArea owns overflow. */
+  constrainBody?: boolean
 }
 
 /**
@@ -36,6 +38,7 @@ export function ModePanelLayout({
   status,
   scrollable = true,
   alwaysShowScrollbar = false,
+  constrainBody = false,
 }: ModePanelLayoutProps) {
   const body = <Stack gap="lg">{notices}{children}</Stack>
 
@@ -43,7 +46,7 @@ export function ModePanelLayout({
     <Box
       component="section"
       aria-label={typeof title === 'string' ? title : undefined}
-      style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column' }}
+      style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column', ...(constrainBody ? { height: '100%', overflow: 'hidden' } : {}) }}
     >
       <Group align="center" gap="xs" mb="md" wrap="nowrap">
         <Group gap="xs" wrap="nowrap">

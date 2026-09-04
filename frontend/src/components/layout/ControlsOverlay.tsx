@@ -38,7 +38,7 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
 
       <div className="overlay-panel-dock">
         {panelExpanded ? (
-          <FloatingCard className={`overlay-panel-card${focusedMode === 'multi-stop' ? ' overlay-panel-card--scrollable' : ''}`}>
+          <FloatingCard className={`overlay-panel-card${focusedMode === 'multi-stop' || focusedMode === 'route-loop' ? ' overlay-panel-card--scrollable' : ''}`}>
             <button
               className="panel-collapse-toggle"
               type="button"

@@ -1,5 +1,6 @@
 """Flower-mode runner, deliberately isolated from the legacy multi-stop playback."""
 import asyncio
+import itertools
 import logging
 from typing import Optional
 
@@ -117,7 +118,7 @@ async def start_flower(udid: str, nav_mode: NavMode, flowers: list[tuple[float, 
     async def run() -> None:
         await simulation_engine.set_state(udid, simulation_engine.SimulationState.NAVIGATING)
         try:
-            rounds = range(finite_rounds) if options.route_type != "loop_forever" else iter(int, 1)
+            rounds = range(finite_rounds) if options.route_type != "loop_forever" else itertools.count()
             round_no = 0
             first = True
             last_position: tuple[float, float] | None = None

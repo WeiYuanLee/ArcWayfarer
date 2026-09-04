@@ -9,9 +9,9 @@ pydantic>=2.0.0
 # compatible OpenSSL implementation and works alongside sslpsk-pmd3.
 cryptography>=42,<46
 # Keep development, local packages, and CI on the same verified RSD/DVT stack.
-# 10.2.1 includes the current iOS 26 tunnel support while remaining compatible
-# with the cryptography 45.x cap above.
-pymobiledevice3==10.2.1
+# 11.3.1 adds the current macOS native-tunnel and legacy Developer Disk Image
+# fixes while remaining compatible with the cryptography 45.x packaging cap.
+pymobiledevice3==11.3.1
 packaging>=23.0
 gpxpy>=1.6.0
 pyimg4>=0.1.0

@@ -104,7 +104,7 @@ describe('useDevices', () => {
       message: 'AMDevice service unavailable',
       python_version: '3.13.0',
       platform: 'Darwin 25.0.0 (arm64)',
-      pymobiledevice3_version: '10.2.1',
+      pymobiledevice3_version: '11.3.1',
     }
     mockedListDevices.mockResolvedValue([])
     mockedGetDeviceDiscoveryDiagnostic.mockResolvedValue(diagnostic)

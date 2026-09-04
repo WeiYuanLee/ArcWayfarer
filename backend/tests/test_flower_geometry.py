@@ -40,6 +40,13 @@ class FlowerGeometryTests(unittest.TestCase):
 
         self.assertEqual(waited_seconds - base_seconds, 36)
 
+    def test_infinite_loop_rounds_iterator_increments(self) -> None:
+        import itertools
+        options = FlowerOptions(route_type="loop_forever")
+        rounds = range(1) if options.route_type != "loop_forever" else itertools.count()
+        sampled = [next(rounds) for _ in range(5)]
+        self.assertEqual(sampled, [0, 1, 2, 3, 4])
+
 
 if __name__ == "__main__":
     unittest.main()

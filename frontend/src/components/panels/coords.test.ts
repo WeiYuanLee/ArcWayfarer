@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateRemainingDistanceMeters, parsePastedPoints } from './coords'
+import { calculateRemainingDistanceMeters, parsePastedPoints, pointsForPattern } from './coords'
 
 describe('parsePastedPoints', () => {
   it('imports every coordinate pair when OCR collapses them onto one line', () => {
@@ -50,5 +50,23 @@ describe('calculateRemainingDistanceMeters', () => {
 
   it('returns no estimate until a live position is available', () => {
     expect(calculateRemainingDistanceMeters([start, end], [start, end], null, 1, false)).toBeNull()
+  })
+})
+
+describe('pointsForPattern', () => {
+  const center = { lat: 25.033, lng: 121.5654 }
+
+  it.each(['circle', 'square', 'triangle', 'heart', 'infinity', 'star'] as const)('generates valid, non-duplicated %s waypoints', (template) => {
+    const points = pointsForPattern(center, 500, 32, template, 30)
+    expect(points.length).toBe(32)
+    expect(points.every((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))).toBe(true)
+    expect(points[0]).not.toEqual(points[points.length - 1])
+  })
+
+  it('rotates a square around its center', () => {
+    const unrotated = pointsForPattern(center, 500, 16, 'square', 0)
+    const rotated = pointsForPattern(center, 500, 16, 'square', 90)
+    expect(rotated[0].lat).toBeCloseTo(unrotated[0].lat, 3)
+    expect(rotated[0].lng).not.toBeCloseTo(unrotated[0].lng, 4)
   })
 })

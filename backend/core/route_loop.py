@@ -11,6 +11,7 @@ async def _build_loop_playback(
     speed_mps: float,
     tick_seconds: float,
     straight_line: bool = False,
+    jump_leg_indices: frozenset[int] = frozenset(),
 ) -> tuple[list[tuple[float, float]], frozenset[int], dict[int, int], list[list[tuple[float, float]]]]:
     """Route + interpolate each leg separately so we know which tick index lands on each waypoint."""
     playback: list[tuple[float, float]] = []
@@ -21,7 +22,11 @@ async def _build_loop_playback(
     for i in range(n):
         start = route_service.normalize_coordinate(*waypoints[i])
         end = route_service.normalize_coordinate(*waypoints[(i + 1) % n])
-        if straight_line:
+        if i in jump_leg_indices:
+            # The playback only contains the destination, so the simulator
+            # moves there on its next tick without producing a travel leg.
+            leg_route = [end]
+        elif straight_line:
             leg_route = [start, end]
         else:
             try:
@@ -29,7 +34,7 @@ async def _build_loop_playback(
             except Exception:
                 leg_route = [start, end]
         leg_playback = interpolate(leg_route, speed_mps, tick_seconds)
-        leg_geometry = leg_playback or [start, end]
+        leg_geometry = leg_playback or ([end] if i in jump_leg_indices else [start, end])
         if playback and leg_playback:
             leg_playback = leg_playback[1:]  # drop the point shared with the previous leg's end
         if not leg_playback:
@@ -53,6 +58,7 @@ async def start_route_loop(
     pause_min: float = 5.0,
     pause_max: float = 20.0,
     straight_line: bool = False,
+    jump_leg_indices: list[int] | None = None,
     custom_speed_kmh: float | None = None,
 ) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
     if len(waypoints) < 2:
@@ -62,7 +68,8 @@ async def start_route_loop(
     await simulation_engine.ensure_stopped(udid)
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
     playback_points, station_indices, stop_at, leg_playbacks = await _build_loop_playback(
-        nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS, straight_line
+        nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS, straight_line,
+        frozenset(index for index in (jump_leg_indices or []) if 0 <= index < len(waypoints)),
     )
     pause_range = (pause_min, pause_max) if pause_enabled else (0.0, 0.0)
     simulation_engine.start(

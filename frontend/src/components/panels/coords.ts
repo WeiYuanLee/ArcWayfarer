@@ -191,6 +191,54 @@ export function pointsOnCircle(center: LatLng, radiusMeters: number, count: numb
   return points
 }
 
+export type PatternTemplate = 'circle' | 'square' | 'triangle' | 'heart' | 'infinity' | 'star' | 'text'
+
+/** Generates a closed-loop pattern without duplicating the first waypoint. */
+export function pointsForPattern(
+  center: LatLng,
+  radiusMeters: number,
+  count: number,
+  template: PatternTemplate,
+  rotationDeg = 0,
+): LatLng[] {
+  const safeCount = Math.max(3, Math.floor(count))
+  if (template === 'circle') return pointsOnCircle(center, radiusMeters, safeCount).map((point, index) =>
+    rotationDeg ? movePoint(center, (360 / safeCount) * index + rotationDeg, radiusMeters) : point
+  )
+
+  const vertices: Array<[number, number]> = template === 'square'
+    ? [[-1, -1], [1, -1], [1, 1], [-1, 1]]
+    : template === 'triangle'
+      ? [[0, 1], [0.866, -0.5], [-0.866, -0.5]]
+      : template === 'star'
+        ? Array.from({ length: 10 }, (_, index) => {
+            const angle = -Math.PI / 2 + index * Math.PI / 5
+            const radius = index % 2 ? 0.42 : 1
+            return [Math.cos(angle) * radius, Math.sin(angle) * radius] as [number, number]
+          })
+        : Array.from({ length: safeCount }, (_, index) => {
+            const t = (Math.PI * 2 * index) / safeCount
+            if (template === 'heart') return [16 * Math.sin(t) ** 3 / 17, (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 17] as [number, number]
+            return [Math.sin(t), Math.sin(t * 2) / 2] as [number, number]
+          })
+  const samples = template === 'heart' || template === 'infinity' ? vertices : Array.from({ length: safeCount }, (_, index) => {
+    const progress = (index * vertices.length) / safeCount
+    const start = vertices[Math.floor(progress) % vertices.length]
+    const end = vertices[(Math.floor(progress) + 1) % vertices.length]
+    const fraction = progress % 1
+    return [start[0] + (end[0] - start[0]) * fraction, start[1] + (end[1] - start[1]) * fraction] as [number, number]
+  })
+  const rotation = rotationDeg * Math.PI / 180
+  return samples.map(([x, y]) => {
+    const east = x * radiusMeters
+    const north = y * radiusMeters
+    const rotatedEast = east * Math.cos(rotation) - north * Math.sin(rotation)
+    const rotatedNorth = east * Math.sin(rotation) + north * Math.cos(rotation)
+    const distance = Math.hypot(rotatedEast, rotatedNorth)
+    return movePoint(center, Math.atan2(rotatedEast, rotatedNorth) * 180 / Math.PI, distance)
+  })
+}
+
 
 export function estimateDurationMinutes(distanceKm: number, speedKmh: number): number {
   if (speedKmh <= 0) return 0

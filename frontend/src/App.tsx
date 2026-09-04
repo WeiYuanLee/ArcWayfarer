@@ -71,10 +71,16 @@ export default function App() {
   )
 
 
-  const pendingPickRef = useRef<((lat: number, lng: number) => void) | null>(null)
+  const pendingPickRef = useRef<{
+    deviceId: string
+    onPick: (lat: number, lng: number) => void
+  } | null>(null)
   const flyIdRef = useRef(0)
-  const requestPoint = useCallback((onPick: (lat: number, lng: number) => void) => {
-    pendingPickRef.current = onPick
+  const requestPointForDevice = useCallback((deviceId: string, onPick: (lat: number, lng: number) => void) => {
+    pendingPickRef.current = { deviceId, onPick }
+  }, [])
+  const cancelPointRequest = useCallback(() => {
+    pendingPickRef.current = null
   }, [])
   const handleIncludeWifiChange = useCallback((enabled: boolean) => {
     setIncludeWifi(enabled)
@@ -114,8 +120,12 @@ export default function App() {
     const pending = pendingPickRef.current
     if (pending) {
       pendingPickRef.current = null
-      pending(lat, lng)
-      return
+      // A pending coordinate field belongs to the device that focused it.  Do
+      // not let a stale field on another device consume this map click.
+      if (pending.deviceId === focusedDeviceId) {
+        pending.onPick(lat, lng)
+        return
+      }
     }
     if (focusedDeviceId) {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
@@ -151,7 +161,7 @@ export default function App() {
     if (currentMode === mode) return
 
     setModeByDevice((prev) => ({ ...prev, [udid]: mode }))
-    pendingPickRef.current = null
+    cancelPointRequest()
     setPointByDevice((prev) => ({ ...prev, [udid]: null }))
     setOverlaysByDevice((prev) => {
       if (!(udid in prev)) return prev
@@ -161,6 +171,9 @@ export default function App() {
   }
 
   function handleFocusChange(udid: string) {
+    // Coordinate fields arm the next map click.  Switching devices must never
+    // leave the previous device's field armed.
+    cancelPointRequest()
     setFocusedDeviceId(udid)
 
     const live = positions[udid]
@@ -239,7 +252,8 @@ export default function App() {
       restoredAt: restoredAt[udid],
       connected,
       setPoint: (point) => setPointByDevice((prev) => ({ ...prev, [udid]: point })),
-      requestPoint,
+      requestPoint: (onPick) => requestPointForDevice(udid, onPick),
+      cancelPointRequest,
       clearPoint: () => setPointByDevice((prev) => ({ ...prev, [udid]: null })),
       setOverlay: getSetOverlayForDevice(udid),
       requestFlyTo,

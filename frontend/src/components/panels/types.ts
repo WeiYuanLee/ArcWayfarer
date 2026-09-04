@@ -55,6 +55,8 @@ export type OverlayLink = {
 export type MapOverlay = {
   markers: OverlayMarker[]
   path: LatLng[]
+  /** Separate editor-only strokes, e.g. disconnected text glyph contours. */
+  previewPaths?: LatLng[][]
   /** The leg currently being travelled. It is highlighted and receives animated arrows. */
   activePath?: LatLng[] | null
   /** Legacy one-circle API. Prefer circles for a preview containing multiple ranges. */
@@ -83,6 +85,8 @@ export type PanelProps = {
   connected?: boolean
   setPoint: (point: LatLng | null) => void
   requestPoint: (onPick: (lat: number, lng: number) => void) => void
+  /** Cancels a map pick that was armed by a coordinate field. */
+  cancelPointRequest?: () => void
   clearPoint?: () => void
   setOverlay: (overlay: MapOverlay) => void
   requestFlyTo: (lat: number, lng: number) => void

@@ -172,6 +172,7 @@ export function LeafletMapView({
   const draggingOverlayIdsRef = useRef<Set<string>>(new Set())
   const overlayPathCasingsRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlayPathsRef = useRef<Map<string, L.Polyline>>(new Map())
+  const overlayPreviewPathsRef = useRef<Map<string, L.Polyline[]>>(new Map())
   const overlayArrowsRef = useRef<Map<string, L.Marker[]>>(new Map())
   const overlayActivePathsRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlayActivePathKeysRef = useRef<Map<string, string>>(new Map())
@@ -560,6 +561,17 @@ export function LeafletMapView({
     }
 
     for (const [deviceId, overlay] of Object.entries(activeOverlays)) {
+      const previewPaths = (overlay.previewPaths ?? []).filter((path) => path.length >= 2)
+      const existingPreviews = overlayPreviewPathsRef.current.get(deviceId) ?? []
+      while (existingPreviews.length > previewPaths.length) existingPreviews.pop()?.remove()
+      previewPaths.forEach((path, index) => {
+        const latLngs = path.map((point) => [point.lat, point.lng] as [number, number])
+        const current = existingPreviews[index]
+        if (current) current.setLatLngs(latLngs)
+        else existingPreviews.push(L.polyline(latLngs, { color: '#5b6bff', weight: 5, opacity: 0.82, pane: 'routeLinePane', interactive: false }).addTo(map))
+      })
+      if (existingPreviews.length) overlayPreviewPathsRef.current.set(deviceId, existingPreviews)
+      else overlayPreviewPathsRef.current.delete(deviceId)
       if (overlay.path && overlay.path.length >= 2) {
         const latLngs = overlay.path.map((p) => [p.lat, p.lng] as [number, number])
         let casing = overlayPathCasingsRef.current.get(deviceId)
@@ -732,6 +744,9 @@ export function LeafletMapView({
           overlayLinksRef.current.delete(key)
         }
       }
+    }
+    for (const [deviceId, previews] of overlayPreviewPathsRef.current.entries()) {
+      if (!activeOverlayIds.has(deviceId)) { previews.forEach((preview) => preview.remove()); overlayPreviewPathsRef.current.delete(deviceId) }
     }
   }, [overlays])
 

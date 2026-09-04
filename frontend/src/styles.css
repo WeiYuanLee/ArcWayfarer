@@ -530,6 +530,14 @@ body {
   width: 300px;
 }
 
+/* A percentage-height card needs a definite-height dock.  Only the long
+   editors occupy the available map height; compact panels retain their
+   content-sized card. */
+.overlay-panel-dock:has(.multistop-panel--flower-editor),
+.overlay-panel-dock:has(.route-loop-panel--pattern-editor) {
+  bottom: 16px;
+}
+
 .overlay-panel-card {
   max-height: calc(100vh - 54px);
   overflow: hidden;
@@ -545,7 +553,19 @@ body {
 }
 
 .overlay-panel-card--scrollable:has(.multistop-panel--flower-editor) {
-  height: calc(100dvh - 54px);
+  /* The card already lives inside the map-sized overlay.  Using 100dvh here
+     double-counted the app chrome and could push the footer below the window. */
+  height: calc(100% - 32px);
+}
+
+.overlay-panel-card--scrollable:has(.route-loop-panel--pattern-editor) {
+  height: calc(100% - 32px);
+}
+
+/* A circle omits rotation and can stay compact; all other templates need the
+   extra viewport height for their additional controls. */
+.overlay-panel-card--scrollable:has(.route-loop-panel--compact-pattern) {
+  height: calc(100% - 64px);
 }
 
 .panel {
@@ -553,6 +573,40 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+
+/* Complete the flex-height chain for Pattern Route.  Without both levels
+   having a definite, shrinkable height, Mantine's ScrollArea grows with the
+   text form instead of becoming the single scroll owner. */
+.route-loop-panel--pattern-editor,
+.route-loop-panel--pattern-editor > section {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Flower uses the same fixed-footer layout as Pattern Route.  Make every
+   flex level shrinkable so ModePanelLayout's ScrollArea becomes the single
+   scroll owner rather than extending beneath the viewport. */
+.multistop-panel--flower-editor,
+.multistop-panel--flower-editor > section {
+  height: 100%;
+  min-height: 0;
+}
+
+.route-loop-panel--pattern-editor {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aw-border) transparent;
+}
+
+.route-loop-panel--pattern-editor::-webkit-scrollbar {
+  width: 5px;
+}
+
+.route-loop-panel--pattern-editor::-webkit-scrollbar-thumb {
+  background: var(--aw-border);
+  border-radius: 999px;
 }
 
 .panel-scroll-body {
@@ -574,26 +628,54 @@ body {
   border-radius: 3px;
 }
 
-/* Keep Route Loop's circle settings compact so the fixed Start action remains reachable. */
-.route-loop-circle-scroll {
+/* Pattern picker: icon and label are deliberately laid out as a compact card,
+   not a horizontal button with a forced vertical override. */
+.pattern-template-tile {
+  min-height: 62px;
   display: flex;
   flex-direction: column;
-  gap: var(--mantine-spacing-lg);
-  max-height: min(38dvh, 340px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--aw-border) transparent;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 4px;
+  color: var(--aw-text-primary);
+  background: var(--aw-surface);
+  border: 1px solid var(--aw-border);
+  border-radius: var(--mantine-radius-sm);
+  text-align: center;
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
-.route-loop-circle-scroll::-webkit-scrollbar {
-  width: 5px;
+.pattern-template-tile:hover:not(:disabled) {
+  color: #254f99;
+  border-color: #2f61b8;
+  background: #d9e6ff;
 }
 
-.route-loop-circle-scroll::-webkit-scrollbar-thumb {
-  background: var(--aw-border);
-  border-radius: 999px;
+.pattern-template-tile:hover:not(:disabled) span {
+  color: inherit;
+}
+
+.pattern-template-tile[data-active] {
+  color: #fff;
+  background: #2f61b8;
+  border-color: #2f61b8;
+  box-shadow: 0 0 0 2px rgba(47, 97, 184, 0.2);
+}
+
+.pattern-template-tile[data-active] span {
+  color: inherit;
+}
+
+.pattern-template-tile:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Seven templates fill a 4×2 grid without leaving a visually orphaned cell. */
+.pattern-template-tile--text {
+  grid-column: span 2;
 }
 
 .waypoint-list {

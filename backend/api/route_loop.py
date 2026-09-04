@@ -17,6 +17,7 @@ async def post_start(body: RouteLoopStartRequest) -> dict:
             pause_min=body.pause_min,
             pause_max=body.pause_max,
             straight_line=body.straight_line,
+            jump_leg_indices=body.jump_leg_indices,
             custom_speed_kmh=body.custom_speed_kmh,
         )
     except ValueError as e:

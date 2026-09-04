@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, Stack, Tooltip } from '@mantine/core'
-import { IconArrowDown, IconArrowUp, IconPlus, IconTrash, IconRefresh } from '@tabler/icons-react'
+import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, SimpleGrid, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core'
+import { IconArrowDown, IconArrowUp, IconCircle, IconHeart, IconInfinity, IconPlus, IconRefresh, IconSquare, IconStar, IconTrash, IconTriangle, IconTypography } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatPoint, parsePoint, pointsOnCircle, routeLegForStop } from './coords'
+import { formatPoint, parsePoint, pointsForPattern, routeLegForStop, type PatternTemplate } from './coords'
+import { contoursToCoordinates, limitTextContours, loadTextPatternFont, orderTextContoursForTraversal, outerTextContours, simplifyCoordinatePath, TEXT_PATTERN_FONT_LOAD_ERROR, textContours, type TextRouteFont, unsupportedFontCharacters, validateTextPattern } from './textPattern'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
@@ -27,7 +28,7 @@ import {
 } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
-type SubMode = 'manual' | 'circle'
+type SubMode = 'manual' | 'pattern'
 
 const WAYPOINT_COLOR = '#4a9af0'
 
@@ -48,11 +49,18 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     setAsStart,
   } = useWaypointList(2)
   
-  // Circle sub-mode states
-  const [circleCenter, setCircleCenter] = useState<LatLng | null>(null)
-  const [circleCenterText, setCircleCenterText] = useState('')
-  const [circleRadiusKm, setCircleRadiusKm] = useState(1)
-  const [circleCount, setCircleCount] = useState(8)
+  // Pattern sub-mode states
+  const [patternCenter, setPatternCenter] = useState<LatLng | null>(null)
+  const [patternCenterText, setPatternCenterText] = useState('')
+  const [patternSizeKm, setPatternSizeKm] = useState(0.2)
+  const [patternTemplate, setPatternTemplate] = useState<PatternTemplate>('circle')
+  const [patternRotation, setPatternRotation] = useState(0)
+  const [patternDetail, setPatternDetail] = useState<'low' | 'medium' | 'high'>('medium')
+  const [patternText, setPatternText] = useState('')
+  const [textFont, setTextFont] = useState<TextRouteFont>('black')
+  const [textPatternError, setTextPatternError] = useState<string | null>(null)
+  const [textPreviewPaths, setTextPreviewPaths] = useState<LatLng[][]>([])
+  const [textJumpLegIndices, setTextJumpLegIndices] = useState<number[]>([])
 
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
@@ -88,7 +96,19 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const isPaused = deviceState === 'paused:looping'
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
-  const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy
+  const textCapacity = validateTextPattern(patternText)
+  const textCapacityError = textCapacity.error === 'empty' ? t('routeloop.pattern.error.empty')
+    : textCapacity.error === 'emoji' ? t('routeloop.pattern.error.emoji')
+      : textCapacity.error === 'chinese_limit' ? t('routeloop.pattern.error.chinese_limit')
+        : textCapacity.error === 'english_limit' ? t('routeloop.pattern.error.english_limit')
+          : undefined
+  const isPattern = subMode === 'pattern'
+  // The pattern editor needs a viewport-sized, scrollable card. Once a route
+  // is active we render the compact flight HUD instead, so retaining that
+  // editor layout would leave a large empty panel beneath the controls.
+  const isPatternEditor = isPattern && !isActive
+  const isTextPattern = subMode === 'pattern' && patternTemplate === 'text'
+  const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy && (!isTextPattern || (textCapacity.valid && !textPatternError))
 
   const effectivePath = isActive
     ? (routePath.length >= 2 ? routePath : (validWaypoints.length >= 2 ? [...validWaypoints, validWaypoints[0]] : []))
@@ -132,25 +152,80 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
 
   // Auto fill circle center with live position if empty
   useEffect(() => {
-    if (!circleCenter && livePosition && !circleCenterText) {
-      setCircleCenter(livePosition)
-      setCircleCenterText(formatPoint(livePosition))
+    if (!patternCenter && livePosition && !patternCenterText) {
+      setPatternCenter(livePosition)
+      setPatternCenterText(formatPoint(livePosition))
     }
-  }, [livePosition, circleCenter, circleCenterText])
+  }, [livePosition, patternCenter, patternCenterText])
 
-  // Recalculate circle waypoints when circle options change in circle mode
+  // Recalculate pattern waypoints when pattern options change.
   useEffect(() => {
-    if (subMode === 'circle' && circleCenter) {
-      const radiusM = Math.max(0, circleRadiusKm * 1000)
-      const count = Math.max(4, Math.min(36, circleCount || 8))
-      const generated = pointsOnCircle(circleCenter, radiusM, count)
+    if (subMode === 'pattern' && patternCenter) {
+      const radiusM = Math.max(0, patternSizeKm * 1000)
+      const requestedCount = patternDetail === 'low' ? 16 : patternDetail === 'medium' ? 32 : 72
+      const count = straightLine ? requestedCount : Math.min(36, requestedCount)
+      if (patternTemplate === 'text') {
+        if (!textCapacity.valid) {
+          setAllWaypoints([])
+          setTextPreviewPaths([])
+          setTextJumpLegIndices([])
+          return
+        }
+        let cancelled = false
+        setTextPatternError(null)
+        const contourPromise = loadTextPatternFont(textFont).then((font) => {
+          const unsupported = unsupportedFontCharacters(font, patternText)
+          if (unsupported.length) throw new Error(`${t('routeloop.pattern.error.font_unsupported')}${unsupported.join('、')}`)
+          return textContours(font, patternText)
+        })
+        void contourPromise.then((rawContours) => {
+          if (cancelled) return
+          const contours = limitTextContours(orderTextContoursForTraversal(contoursToCoordinates(outerTextContours(rawContours), patternCenter, radiusM * 2, patternRotation).map((path) => {
+            // Clipper rings are implicitly closed, while Leaflet/MapLibre
+            // polylines are not. Simplify the open ring first, then append the
+            // first coordinate so the final Z edge is both visible and walked.
+            const simplified = simplifyCoordinatePath(path, Math.max(2, radiusM / 180))
+            return simplified.length > 1 ? [...simplified, simplified[0]] : simplified
+          })))
+          const points = contours.flat()
+          if (points.length < 2) throw new Error(t('routeloop.pattern.error.no_contours'))
+          setAllWaypoints(points)
+          setTextPreviewPaths(contours)
+          // Each independent contour is walked normally.  Moving to another
+          // contour (including the final loop back to the first) is a jump.
+          let offset = 0
+          const jumps = contours.slice(0, -1).map((contour) => {
+            offset += contour.length
+            return offset - 1
+          })
+          jumps.push(points.length - 1)
+          setTextJumpLegIndices(jumps)
+        }).catch((error: unknown) => {
+          if (!cancelled) {
+            setAllWaypoints([])
+            setTextPreviewPaths([])
+            setTextJumpLegIndices([])
+            setTextPatternError(error instanceof Error && error.message === TEXT_PATTERN_FONT_LOAD_ERROR
+              ? t('routeloop.pattern.error.font_load_failed')
+              : error instanceof Error ? error.message : t('routeloop.pattern.error.generation_failed'))
+          }
+        })
+        return () => { cancelled = true }
+      }
+      const generated = pointsForPattern(patternCenter, radiusM, count, patternTemplate, patternRotation)
       setAllWaypoints(generated)
+      setTextPreviewPaths([])
+      setTextJumpLegIndices([])
     }
-  }, [subMode, circleCenter, circleRadiusKm, circleCount, setAllWaypoints])
+  }, [subMode, patternCenter, patternSizeKm, setAllWaypoints, patternTemplate, patternRotation, patternDetail, straightLine, patternText, textCapacity.valid, textFont, t])
 
   useEffect(() => {
     setOverlay({
-      markers: items
+      // Generated patterns can have dozens of sampled points. Keep their
+      // geometry readable by showing only the editable center marker.
+      markers: isPattern
+        ? (patternCenter ? [{ id: 'pattern-center', lat: patternCenter.lat, lng: patternCenter.lng, color: '#f97316', label: '⊙', title: t('routeloop.circle.center') }] : [])
+        : items
         .map((item, idx) =>
           item.point
             ? {
@@ -164,7 +239,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 pathIndex: idx,
                 onDragEnd: (lat: number, lng: number) => {
                   if (isLocked) return
-                  if (subMode === 'circle') setSubMode('manual')
                   updateWaypoint(idx, { lat, lng })
                 },
                 onContextMenu: ({ clientX, clientY }: { clientX: number; clientY: number }) => {
@@ -205,7 +279,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                         id: 'delete',
                         label: t('contextmenu.delete_waypoint'),
                         danger: true,
-                        disabled: isLocked || items.length <= 2 || subMode === 'circle',
+                        disabled: isLocked || items.length <= 2,
                         onClick: () => removeWaypoint(idx),
                       },
                     ],
@@ -215,13 +289,17 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             : null
         )
         .filter((m): m is NonNullable<typeof m> => m !== null),
-      path: effectivePath,
-      activePath,
-      circle: subMode === 'circle' && circleCenter && circleRadiusKm > 0
-        ? { lat: circleCenter.lat, lng: circleCenter.lng, radiusMeters: circleRadiusKm * 1000 }
+      path: isTextPattern ? [] : effectivePath,
+      previewPaths: isTextPattern ? textPreviewPaths : [],
+      // Inter-contour travel is not part of the glyph preview. It will be
+      // planned separately, never rendered as a line between characters.
+      links: [],
+      activePath: isTextPattern ? null : activePath,
+      circle: subMode === 'pattern' && patternTemplate === 'circle' && patternCenter && patternSizeKm > 0
+        ? { lat: patternCenter.lat, lng: patternCenter.lng, radiusMeters: patternSizeKm * 1000 }
         : null,
       onPathClick: (lat, lng) => {
-        if (isLocked || subMode === 'circle') return
+        if (isLocked || subMode === 'pattern') return
         addWaypoint({ lat, lng })
       },
       onMapContextMenu: ({ lat, lng, clientX, clientY }) => {
@@ -233,7 +311,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             {
               id: 'add-wp-here',
               label: t('contextmenu.add_wp_here'),
-              disabled: isLocked || subMode === 'circle',
+            disabled: isLocked || subMode === 'pattern',
               onClick: () => addWaypoint({ lat, lng }),
             },
             {
@@ -242,11 +320,11 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               disabled: isLocked,
               onClick: () => {
                 const pt = { lat, lng }
-                setCircleCenter(pt)
-                setCircleCenterText(formatPoint(pt))
-                if (subMode !== 'circle') {
-                  setSubMode('circle')
-                  setStraightLine(false)
+                setPatternCenter(pt)
+                setPatternCenterText(formatPoint(pt))
+                if (subMode !== 'pattern') {
+                  setSubMode('pattern')
+                  setStraightLine(true)
                 }
               },
             },
@@ -275,20 +353,20 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         })
       },
     })
-  }, [items, effectivePath, activePath, isLocked, deviceState, deviceId, setOverlay, subMode, circleCenter, circleRadiusKm, updateWaypoint, setAsStart, removeWaypoint, addWaypoint, t])
+  }, [items, effectivePath, activePath, isLocked, deviceState, deviceId, setOverlay, subMode, patternCenter, patternSizeKm, isPattern, isTextPattern, textPreviewPaths, updateWaypoint, setAsStart, removeWaypoint, addWaypoint, t])
 
-  function handlePickCircleCenter() {
+  function handlePickPatternCenter() {
     requestPoint((lat, lng) => {
       const pt = { lat, lng }
-      setCircleCenter(pt)
-      setCircleCenterText(formatPoint(pt))
+      setPatternCenter(pt)
+      setPatternCenterText(formatPoint(pt))
     })
   }
 
-  function handleCircleCenterTextChange(value: string) {
-    setCircleCenterText(value)
+  function handlePatternCenterTextChange(value: string) {
+    setPatternCenterText(value)
     const parsed = parsePoint(value)
-    if (parsed) setCircleCenter(parsed)
+    if (parsed) setPatternCenter(parsed)
   }
 
   async function handleStart() {
@@ -299,9 +377,10 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         deviceId,
         navMode,
         validWaypoints,
-        { enabled: pauseEnabled, min: pauseMin, max: pauseMax },
+        isTextPattern ? { enabled: false, min: 0, max: 0 } : { enabled: pauseEnabled, min: pauseMin, max: pauseMax },
         speedKmh,
-        straightLine
+        straightLine,
+        isTextPattern ? textJumpLegIndices : []
       )
       setRoutePath(result.route)
       setRouteLegs(result.legs)
@@ -350,13 +429,24 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     </>
   )
 
+  const patternOptions = [
+    { value: 'circle' as const, label: t('routeloop.pattern.circle'), Icon: IconCircle },
+    { value: 'square' as const, label: t('routeloop.pattern.square'), Icon: IconSquare },
+    { value: 'triangle' as const, label: t('routeloop.pattern.triangle'), Icon: IconTriangle },
+    { value: 'heart' as const, label: t('routeloop.pattern.heart'), Icon: IconHeart },
+    { value: 'infinity' as const, label: t('routeloop.pattern.infinity'), Icon: IconInfinity },
+    { value: 'star' as const, label: t('routeloop.pattern.star'), Icon: IconStar },
+    { value: 'text' as const, label: t('routeloop.pattern.text'), Icon: IconTypography },
+  ]
+
   return (
-    <div className="panel">
+    <div className={`panel route-loop-panel${isPatternEditor ? ' route-loop-panel--pattern-editor' : ''}${isPatternEditor && patternTemplate === 'circle' ? ' route-loop-panel--compact-pattern' : ''}`}>
       <ModePanelLayout
         title={t('routeloop.title')}
         titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('routeloop.description')} />}
         notices={!isActive ? notices : undefined}
+        scrollable={!isPattern}
         footer={!isActive ? (
           <PanelFooter>
             <PlaybackControls
@@ -395,15 +485,11 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         <>
           <PanelSection>
             <SegmentedControl fullWidth size="xs" disabled={isActive} value={subMode} onChange={(value) => {
-              if (value === 'circle') {
-                  setSubMode('circle')
-                  setStraightLine(false)
-                  if (circleCenter) {
-                    const generated = pointsOnCircle(circleCenter, circleRadiusKm * 1000, circleCount)
-                    setAllWaypoints(generated)
-                  }
+              if (value === 'pattern') {
+                  setSubMode('pattern')
+                  setStraightLine(true)
               } else setSubMode('manual')
-            }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'circle' }]} />
+            }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'pattern' }]} />
 
           </PanelSection>
 
@@ -451,13 +537,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 </Group>
             </PanelSection>
           ) : (
-            <div className="route-loop-circle-scroll">
-              <PanelSection>
-                <CoordinateField label={t('routeloop.circle.center')}
+            <Stack gap="lg">
+              <PanelSection title={t('routeloop.pattern.position_size')}>
+                <CoordinateField label={t('routeloop.pattern.center')}
                     placeholder="Center (lat, lng or URL)"
-                    value={circleCenterText}
-                    onFocus={handlePickCircleCenter}
-                    onChange={handleCircleCenterTextChange}
+                    value={patternCenterText}
+                    onFocus={handlePickPatternCenter}
+                    onChange={handlePatternCenterTextChange}
                     disabled={isActive}
                   />
 
@@ -465,74 +551,53 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   <Group mt={4}>
                     <Button size="xs" variant="default"
                       onClick={() => {
-                        setCircleCenter(livePosition)
-                        setCircleCenterText(formatPoint(livePosition))
+                        setPatternCenter(livePosition)
+                        setPatternCenterText(formatPoint(livePosition))
                       }}
                       disabled={isActive}
-                    >{t('routeloop.circle.use_current_location')}</Button>
+                    >{t('routeloop.pattern.use_current_location')}</Button>
                   </Group>
                 )}
 
-                <NumberInput mt="sm" label={t('routeloop.circle.radius')}
+                <NumberInput mt="sm" label={patternTemplate === 'text' ? t('routeloop.pattern.text_width') : t('routeloop.pattern.size')}
                     min={0.01}
                     step={0.1}
-                    value={circleRadiusKm}
+                    value={patternSizeKm}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(value) => setCircleRadiusKm(Math.max(0.01, Number(value) || 0.01))}
+                    onChange={(value) => setPatternSizeKm(Math.max(0.01, Number(value) || 0.01))}
                   />
+              </PanelSection>
 
-                <Group grow gap="xs" wrap="nowrap">
-                  {[0.5, 1, 2, 5].map((r) => (
-                    <Button key={r} size="xs" variant={circleRadiusKm === r ? 'filled' : 'default'}
-                      onClick={() => setCircleRadiusKm(r)}
-                      disabled={isActive}
-                    >{`${r}km`}</Button>
+              <PanelSection title={t('routeloop.pattern.content')}>
+                <SimpleGrid cols={4} spacing="xs">
+                  {patternOptions.map(({ value, label, Icon }) => (
+                    <Tooltip key={value} label={label} withArrow>
+                      <UnstyledButton
+                        className={`pattern-template-tile${value === 'text' ? ' pattern-template-tile--text' : ''}`}
+                        data-active={patternTemplate === value || undefined}
+                        onClick={() => setPatternTemplate(value)}
+                        disabled={isActive}
+                        aria-label={label}
+                        aria-pressed={patternTemplate === value}
+                      >
+                        <Icon size={18} stroke={1.8} />
+                        <Text component="span" size="xs" fw={600}>{label}</Text>
+                      </UnstyledButton>
+                    </Tooltip>
                   ))}
-                </Group>
+                </SimpleGrid>
 
-                <NumberInput mt="sm" label={t('routeloop.circle.count')}
-                    min={4}
-                    max={36}
-                    value={circleCount}
-                    disabled={isActive}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(value) => {
-                      const val = Math.max(4, Math.min(36, Number(value) || 4))
-                      setCircleCount(val)
-                    }}
-                  />
+                {patternTemplate === 'text' && <TextInput mt="sm" label={t('routeloop.pattern.custom_text')} value={patternText} onChange={(event) => setPatternText(event.currentTarget.value)} error={textPatternError ?? textCapacityError} description={`${t('routeloop.pattern.chinese')} ${textCapacity.chinese}/5 · ${t('routeloop.pattern.english_letters')} ${textCapacity.englishLetters}/12`} disabled={isActive} />}
+                {patternTemplate === 'text' && <SegmentedControl mt="xs" fullWidth size="xs" value={textFont} onChange={(value) => setTextFont(value as TextRouteFont)} data={[{ label: t('routeloop.pattern.font_regular'), value: 'regular' }, { label: t('routeloop.pattern.font_black'), value: 'black' }]} />}
+
+                {patternTemplate !== 'circle' && <NumberInput mt="sm" label={t('routeloop.pattern.rotation')} min={0} max={359} value={patternRotation} disabled={isActive} onChange={(value) => setPatternRotation(Math.max(0, Math.min(359, Number(value) || 0)))} />}
               </PanelSection>
 
-              <PanelSection>
-                <SwitchBar
-                  label={t('multistop.straight_line')}
-                  checked={straightLine}
-                  onChange={setStraightLine}
-                  disabled={isActive}
-                />
-
-                <SwitchBar
-                  label={t('panel.pause_toggle')}
-                  subLabel={pauseEnabled ? t('panel.pause_summary') : undefined}
-                  checked={pauseEnabled}
-                  onChange={setPauseEnabled}
-                  disabled={isActive}
-                >
-                  {pauseEnabled && <NumberRangeField
-                    min={pauseMin}
-                    max={pauseMax}
-                    minLabel={t('panel.pause_min')}
-                    maxLabel={t('panel.pause_max')}
-                    onMinChange={(value) => setPauseMin(Number(value) || 0)}
-                    onMaxChange={(value) => setPauseMax(Number(value) || 0)}
-                    minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
-                    maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
-                  />}
-                </SwitchBar>
+              <PanelSection title={t('routeloop.pattern.quality')}>
+                <SegmentedControl fullWidth size="xs" value={patternDetail} onChange={(value) => setPatternDetail(value as typeof patternDetail)} data={[{ label: t('routeloop.pattern.detail_low'), value: 'low' }, { label: t('routeloop.pattern.detail_standard'), value: 'medium' }, { label: t('routeloop.pattern.detail_high'), value: 'high' }]} />
               </PanelSection>
-
-              <PanelSection>
+              <PanelSection title={t('routeloop.pattern.movement')}>
                 <SpeedSlider
                   valueKmh={speedKmh}
                   navMode={navMode}
@@ -541,7 +606,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   disabled={isActive}
                 />
               </PanelSection>
-            </div>
+            </Stack>
           )}
 
           {subMode === 'manual' && <>
@@ -572,7 +637,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 />}
               </SwitchBar>
             </PanelSection>
-
             <PanelSection>
               <SpeedSlider
                 valueKmh={speedKmh}

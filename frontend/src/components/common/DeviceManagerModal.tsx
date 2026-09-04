@@ -1,5 +1,6 @@
-import { ActionIcon, Badge, Button, Divider, Group, Modal, Paper, ScrollArea, Stack, Text, ThemeIcon, Tooltip } from '@mantine/core'
+import { ActionIcon, Badge, Button, Divider, Group, Modal, Paper, ScrollArea, Stack, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core'
 import { IconDeviceMobile, IconEye, IconEyeOff, IconPencil, IconUsb, IconWifi } from '@tabler/icons-react'
+import { useState } from 'react'
 import type { HiddenDevice } from '../../hooks/useHiddenDevices'
 import type { Device } from '../../services/api'
 import type { DeviceState } from '../panels/types'
@@ -45,6 +46,8 @@ function transportLabel(connectionType: Device['connection_type']) {
 }
 
 export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [], hiddenUdids, usableDeviceIds, deviceNames, deviceStates, hidingDeviceId = null, onHideDevice, onUnhideDevice, onSetDeviceName, isUnhideDisabled, unhideDisabledReason }: Props) {
+  const [renamingDevice, setRenamingDevice] = useState<{ udid: string; fallbackName: string } | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
   const hiddenKeys = new Set<string>(hiddenDevices.map((device) => normalized(device.udid)))
   if (hiddenUdids) for (const udid of hiddenUdids) hiddenKeys.add(normalized(udid))
   const usableKeys = usableDeviceIds ? new Set([...usableDeviceIds].map(normalized)) : null
@@ -60,13 +63,21 @@ export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [
     return { udid: connected?.udid || stored?.udid || key, name: connected ? deviceName(connected, customName(connected.udid)) : customName(stored?.udid || key) || stored?.name || key.slice(-8), connected, stored }
   })
   const rename = (udid: string, fallbackName: string) => {
-    const value = window.prompt('自訂裝置名稱（留白可恢復系統名稱）', customName(udid) || fallbackName)
-    if (value !== null) onSetDeviceName(udid, value === fallbackName ? '' : value)
+    setRenamingDevice({ udid, fallbackName })
+    setNameDraft(customName(udid) || fallbackName)
+  }
+  const cancelRename = () => setRenamingDevice(null)
+  const saveName = () => {
+    if (!renamingDevice) return
+    const name = nameDraft.trim()
+    onSetDeviceName(renamingDevice.udid, name === renamingDevice.fallbackName ? '' : name)
+    cancelRename()
   }
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="裝置管理" centered size="lg">
-      <Stack gap="md">
+    <>
+      <Modal opened={isOpen} onClose={onClose} title="裝置管理" centered size="lg">
+        <Stack gap="md">
         <Text size="sm" c="dimmed">遮蔽的裝置不會出現在右上角，也不會被操作。點擊鉛筆可設定此電腦專用的自訂名稱。</Text>
         <Stack gap="xs">
           <Group justify="space-between"><Text fw={600}>可使用裝置</Text><Badge variant="light">{availableDevices.length}</Badge></Group>
@@ -90,7 +101,24 @@ export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [
           {hiddenRows.length === 0 ? <Text size="sm" c="dimmed">尚未遮蔽任何裝置。</Text> : <ScrollArea.Autosize mah={220}><Stack gap="xs">{hiddenRows.map((row) => { const disabled = isUnhideDisabled?.(row.udid) || false; return <Paper key={row.udid} withBorder p="sm" bg="var(--aw-surface-raised)"><Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><ThemeIcon variant="light" color="gray"><IconEyeOff size={17} /></ThemeIcon><div><Group gap="xs"><Text size="sm" fw={600}>{row.name}</Text>{row.connected ? transportLabel(row.connected.connection_type) : <Badge variant="light" color="gray">未連線</Badge>}</Group><Text size="xs" c="dimmed">{row.udid.slice(-8)}{row.connected?.ios_version || row.stored?.iosVersion ? ` · iOS ${row.connected?.ios_version || row.stored?.iosVersion}` : ''}</Text></div></Group><Group gap={4} wrap="nowrap"><Tooltip label="編輯自訂名稱"><ActionIcon variant="subtle" color="gray" onClick={() => rename(row.udid, row.name)} aria-label="編輯自訂名稱"><IconPencil size={16} /></ActionIcon></Tooltip><Button size="compact-sm" variant="light" leftSection={<IconEye size={14} />} disabled={disabled} title={disabled ? unhideDisabledReason?.(row.udid) : undefined} onClick={() => onUnhideDevice(row.udid)}>恢復顯示</Button></Group></Group></Paper> })}</Stack></ScrollArea.Autosize>}
         </Stack>
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>關閉</Button></Group>
-      </Stack>
-    </Modal>
+        </Stack>
+      </Modal>
+      <Modal opened={Boolean(renamingDevice)} onClose={cancelRename} title="編輯自訂名稱" centered size="sm" zIndex={2300}>
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">此名稱只會用於這台電腦；留白即可恢復系統名稱。</Text>
+          <TextInput
+            label="自訂裝置名稱"
+            value={nameDraft}
+            onChange={(event) => setNameDraft(event.currentTarget.value)}
+            autoFocus
+            onKeyDown={(event) => { if (event.key === 'Enter') saveName() }}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cancelRename}>取消</Button>
+            <Button onClick={saveName}>確定</Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   )
 }
