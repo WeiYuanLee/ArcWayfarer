@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iOS GPS 位置測試與路線模擬：Mac／Windows 操作指南｜ArcWayfarer</title>
+  <meta name="description" content="用 ArcWayfarer 在 macOS 或 Windows 為 iPhone / iPad 測試 GPS 位置與道路路線。了解瞬移、起終點導航、速度設定、預覽與操作前準備。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://weiyuanlee.github.io/ArcWayfarer/ios-location-testing.html">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://weiyuanlee.github.io/ArcWayfarer/ios-location-testing.html">
+  <meta property="og:title" content="iOS GPS 位置測試與路線模擬：Mac／Windows 操作指南">
+  <meta property="og:description" content="從設定單一測試位置到規劃道路路線，了解 ArcWayfarer 的 iPhone 位置測試流程。">
+  <meta property="og:image" content="https://weiyuanlee.github.io/ArcWayfarer/images/ios-location-navigation.png">
+  <meta property="og:locale" content="zh_TW">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/frontend/build/arcwayfarer-icon.png">
+  <link rel="stylesheet" href="style.css?v=20260817-v6">
+  <link rel="stylesheet" href="user-guide.css?v=20260823-v1">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[
+    {"@type":"Article","headline":"iOS GPS 位置測試與路線模擬：Mac／Windows 操作指南","description":"用 ArcWayfarer 測試 iPhone / iPad GPS 位置、規劃路線與設定移動速度的實作指南。","image":"https://weiyuanlee.github.io/ArcWayfarer/images/ios-location-navigation.png","author":{"@type":"Person","name":"Lence Lee"},"publisher":{"@type":"Organization","name":"ArcWayfarer"},"mainEntityOfPage":"https://weiyuanlee.github.io/ArcWayfarer/ios-location-testing.html","inLanguage":"zh-Hant"},
+    {"@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"開始 iOS 位置測試前需要什麼？","acceptedAnswer":{"@type":"Answer","text":"需要 macOS 或 Windows 電腦、iOS 16 以上的 iPhone 或 iPad、可傳輸資料的 USB 線，以及已完成信任這部電腦的裝置。"}},
+      {"@type":"Question","name":"可以先預覽道路路線嗎？","acceptedAnswer":{"@type":"Answer","text":"可以。輸入起點與終點並選擇步行、騎車或開車後，ArcWayfarer 會顯示道路路線、預估距離與時間。"}},
+      {"@type":"Question","name":"如何回到真實位置？","acceptedAnswer":{"@type":"Answer","text":"在瞬移面板按下還原定位，即可結束目前的位置設定。實際 GPS 更新可能需要幾秒鐘。"}}
+    ]}
+  ]}
+  </script>
+</head>
+<body class="guide-body">
+<header class="nav guide-topbar">
+  <a class="brand" href="./" aria-label="回到 ArcWayfarer 首頁"><img class="brand-icon" src="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/frontend/build/arcwayfarer-icon.png" alt="">ArcWayfarer</a>
+  <nav aria-label="文章導覽"><a href="./">官網首頁</a><a href="#setup">開始前準備</a><a href="#teleport">單點測試</a><a href="#navigation">路線導航</a><a href="#faq">常見問題</a></nav>
+  <a class="nav-cta" href="./#download">免費下載 →</a>
+</header>
+<main class="guide-main" style="padding-top:74px">
+  <section class="guide-hero">
+    <p class="eyebrow">IOS LOCATION TESTING GUIDE</p>
+    <h1>在 Mac 或 Windows 上<br><em>規劃 iPhone GPS 測試情境。</em></h1>
+    <p class="guide-lede">ArcWayfarer 將單一位置、道路路線與移動速度放在同一個地圖控制台。先完成連線與預覽，再執行位置測試或情境模擬，讓流程更容易重現。</p>
+    <div class="guide-badges"><span>iOS 16+</span><span>USB 連線</span><span>macOS / Windows</span><span>免越獄</span></div>
+    <div class="guide-hero-actions"><a class="button" href="./#download">下載 ArcWayfarer →</a><a class="guide-link" href="#setup">查看準備步驟</a></div>
+    <img class="guide-screenshot" src="images/ios-location-navigation.png" alt="ArcWayfarer 顯示 iPhone 導航路線、距離與預估時間" width="1200" height="800">
+  </section>
+
+  <section class="guide-section" id="setup">
+    <div class="section-kicker">01 · 開始前準備</div>
+    <h2>先建立可靠的測試環境</h2>
+    <div class="guide-cards three">
+      <article><span class="card-icon">⌘</span><h3>電腦</h3><p>使用 macOS（Apple Silicon 或 Intel）或 Windows 10 / 11 64-bit，下載對應安裝檔。</p></article>
+      <article><span class="card-icon">◉</span><h3>iPhone / iPad</h3><p>使用 iOS 16 以上裝置，以可傳輸資料的 USB 線連接，並在裝置上確認「信任這部電腦」。</p></article>
+      <article><span class="card-icon">✓</span><h3>先看連線狀態</h3><p>啟動後確認頂部顯示已連接的裝置。iOS 17 以上首次建立通道時，系統可能要求額外權限。</p></article>
+    </div>
+  </section>
+
+  <section class="guide-section" id="teleport">
+    <div class="section-kicker">02 · 單點 GPS 測試</div>
+    <h2>用座標或地圖設定測試位置</h2>
+    <p>在「瞬移」面板輸入座標、搜尋地點或直接於地圖選點。設定後，面板會顯示位置已設定；需要結束測試時，可使用「還原定位」回到真實 GPS。</p>
+    <img class="guide-screenshot" src="images/ios-location-teleport.png" alt="ArcWayfarer 瞬移面板顯示設定成功的 iPhone 測試位置" width="1200" height="800">
+    <div class="guide-tip">若你測試地理圍欄、地點內容或位置相關介面，請先記錄座標與測試目的，讓同一個情境能被重複驗證。</div>
+  </section>
+
+  <section class="guide-section" id="navigation">
+    <div class="section-kicker">03 · 道路路線模擬</div>
+    <h2>先規劃，再決定是否開始</h2>
+    <div class="guide-steps">
+      <article><b>1</b><div><h3>設定起點與終點</h3><p>輸入兩個座標或從地圖選取位置。需要時可交換起終點，快速比較反方向路線。</p></div></article>
+      <article><b>2</b><div><h3>選擇移動方式與速度</h3><p>選擇走路、騎車或開車，並依測試需求調整速度。系統會顯示預估距離與時間，供開始前檢查。</p></div></article>
+      <article><b>3</b><div><h3>檢查道路預覽</h3><p>確認藍色路線經過預期道路後再開始。執行期間可暫停、停止，或在完成後還原定位。</p></div></article>
+    </div>
+    <img class="guide-screenshot" src="images/ios-location-navigation.png" alt="ArcWayfarer 導航面板顯示起點終點、騎車模式與 3.34 公里道路路線" width="1200" height="800">
+  </section>
+
+  <section class="guide-section" id="faq">
+    <div class="section-kicker">04 · FAQ</div>
+    <h2>iOS 位置測試常見問題</h2>
+    <details><summary>開始前需要越獄或安裝 Xcode 嗎？</summary><p>不需要越獄。ArcWayfarer 將所需的桌面端連線流程整合為 App；請依首次連線時的系統提示完成必要授權。</p></details>
+    <details><summary>為什麼要先預覽路線？</summary><p>預覽可確認起終點、道路走向、距離、時間與速度設定，避免在不符合需求時就開始執行。</p></details>
+    <details><summary>第三方 App 一定會呈現相同結果嗎？</summary><p>不一定。第三方 App 的位置更新、服務條款與偵測規則各不相同；請僅在你有權測試或使用的情境中操作。</p></details>
+  </section>
+</main>
+<footer class="guide-footer"><span>© ArcWayfarer</span><div><a href="./">首頁</a><a href="user-guide.html">完整使用指南</a><a href="route-art.html">圖案路線教學</a></div></footer>
+</body>
+</html>

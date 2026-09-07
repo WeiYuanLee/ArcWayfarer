@@ -38,7 +38,11 @@ const fontPromises = new Map<TextRouteFont, Promise<Font>>()
 export async function loadTextPatternFont(weight: TextRouteFont = 'regular'): Promise<Font> {
   if (!fontPromises.has(weight)) {
     const file = weight === 'black' ? 'NotoSansCJKtc-Black.otf' : 'NotoSansCJKtc-Regular.otf'
-    fontPromises.set(weight, fetch(`/fonts/${file}`)
+    // Production uses `file://…/dist/index.html`, where `/fonts/...` points
+    // at the filesystem root instead of the packaged `dist/fonts` folder.
+    // Resolving from the document keeps the request beside index.html in the
+    // packaged app and works from the Vite development-server root as well.
+    fontPromises.set(weight, fetch(new URL(`./fonts/${file}`, window.location.href))
       .then(async (response) => {
         if (!response.ok) throw new Error(TEXT_PATTERN_FONT_LOAD_ERROR)
         return parse(await response.arrayBuffer())
