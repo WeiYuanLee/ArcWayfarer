@@ -114,7 +114,14 @@ async def start_flower(udid: str, nav_mode: NavMode, flowers: list[tuple[float, 
     for flower_no, flower in enumerate(flowers):
         preview.extend(_flower_geometry(flower, options, f"{udid}:{expected}:{flower_no}:0"))
     session.active_path = preview
-    session.task_kind = "flower"
+    simulation_engine.set_task_descriptor(session, "flower", {
+        "waypoints": [{"lat": lat, "lng": lng} for lat, lng in flowers],
+        "nav_mode": nav_mode,
+        "straight_line": straight_line,
+        "jump_mode": jump_mode,
+        "custom_speed_kmh": custom_speed_kmh,
+        "flower": options.model_dump(mode="json"),
+    })
     async def run() -> None:
         await simulation_engine.set_state(udid, simulation_engine.SimulationState.NAVIGATING)
         try:

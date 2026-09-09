@@ -324,6 +324,7 @@ export function MapLibreMapView({
   const [mapLoaded, setMapLoaded] = useState(false)
   const [isTileLoading, setIsTileLoading] = useState(false)
   const [cameraRevision, setCameraRevision] = useState(0)
+  const contextLostRef = useRef(false)
 
   const selectedMarkerRef = useRef<MapLibreMarker | null>(null)
   const isDraggingSelectedPointRef = useRef(false)
@@ -357,7 +358,7 @@ export function MapLibreMapView({
   // Helper to safely add or update a GeoJSON source
   const setGeoJSONSource = useCallback((sourceId: string, data: GeoJSON.GeoJSON) => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || contextLostRef.current) return
     const source = map.getSource(sourceId) as GeoJSONSource | undefined
     if (source) {
       source.setData(data)
@@ -373,7 +374,7 @@ export function MapLibreMapView({
   // Helper to safely remove layer
   const removeLayerSafe = useCallback((layerId: string) => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || contextLostRef.current) return
     if (map.getLayer(layerId)) {
       map.removeLayer(layerId)
     }
@@ -383,7 +384,7 @@ export function MapLibreMapView({
   // Helper to safely remove source
   const removeSourceSafe = useCallback((sourceId: string) => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || contextLostRef.current) return
     if (map.getSource(sourceId)) {
       map.removeSource(sourceId)
     }
@@ -491,7 +492,28 @@ export function MapLibreMapView({
     // A raster style can paint before its `load` event is observed after an
     // engine switch. `styledata` is the earlier safe point for restoring the
     // already-existing React overlays (start/end markers included).
-    map.on('styledata', () => setMapLoaded(true))
+    map.on('styledata', () => {
+      setMapLoaded(true)
+      if (!contextLostRef.current) setIsTileLoading(false)
+    })
+
+    map.on('webglcontextlost', () => {
+      contextLostRef.current = true
+      setMapLoaded(false)
+      setIsTileLoading(true)
+    })
+    map.on('webglcontextrestored', () => {
+      contextLostRef.current = false
+      // The browser has provided a usable drawing context again. A second
+      // `load` event is not guaranteed, so it cannot be the only path that
+      // clears the recovery badge.
+      setIsTileLoading(false)
+      // MapLibre restores the style asynchronously. styledata/load will mark it
+      // writable, then the overlay effect below republishes current React data.
+      setMapLoaded(false)
+      map.resize()
+      map.triggerRepaint()
+    })
 
     // `dataloading` also fires for every GeoJSON setData() call. Using it for
     // the tile badge leaves the badge permanently visible during navigation.
@@ -546,9 +568,41 @@ export function MapLibreMapView({
       overlayArrowsRef.current.clear()
       map.remove()
       mapRef.current = null
+      contextLostRef.current = false
       setMapLoaded(false)
     }
   }, [tileProvider])
+
+  useEffect(() => {
+    let recoveryFrame: number | null = null
+    const restoreMap = () => {
+      if (document.visibilityState === 'hidden' || contextLostRef.current) return
+      if (recoveryFrame !== null) cancelAnimationFrame(recoveryFrame)
+      // Two frames let Electron finish restoring the BrowserWindow and CSS
+      // layout before MapLibre reads the canvas dimensions.
+      recoveryFrame = requestAnimationFrame(() => {
+        recoveryFrame = requestAnimationFrame(() => {
+          recoveryFrame = null
+          const map = mapRef.current
+          if (!map || contextLostRef.current) return
+          map.resize()
+          map.triggerRepaint()
+          setCameraRevision((revision) => revision + 1)
+          // If the style survived backgrounding, force one overlay resync. If
+          // it did not, styledata/load will perform the same transition later.
+          if (map.isStyleLoaded()) setMapLoaded(true)
+        })
+      })
+    }
+
+    document.addEventListener('visibilitychange', restoreMap)
+    const unsubscribeRestore = window.electronAPI?.onWindowRestored(restoreMap)
+    return () => {
+      document.removeEventListener('visibilitychange', restoreMap)
+      unsubscribeRestore?.()
+      if (recoveryFrame !== null) cancelAnimationFrame(recoveryFrame)
+    }
+  }, [])
 
   // Selected Point Marker
   useEffect(() => {
@@ -634,7 +688,7 @@ export function MapLibreMapView({
     // update (for example the destination entered after the start point).
     // The `load` event is the actual boundary after which custom sources and
     // layers can be safely added to this fixed style.
-    if (!map || !mapLoaded) return
+    if (!map || !mapLoaded || contextLostRef.current) return
 
     const activeOverlays = overlays ?? {}
     const activeOverlayIds = new Set(Object.keys(activeOverlays))
@@ -988,7 +1042,7 @@ export function MapLibreMapView({
   // separate passes matches Leaflet and preserves their visual stacking.
   const projectedRouteOverlay = (() => {
     const map = mapRef.current
-    if (!map || !mapLoaded) return null
+    if (!map || !mapLoaded || contextLostRef.current) return null
     void cameraRevision
     const { clientWidth, clientHeight } = map.getContainer()
     if (!clientWidth || !clientHeight) return null

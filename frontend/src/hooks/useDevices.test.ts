@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEVICE_SCAN_INTERVAL_MS, useDevices } from './useDevices'
 import { getDeviceDiscoveryDiagnostic, listDevices } from '../services/api'
@@ -30,6 +30,8 @@ describe('useDevices', () => {
   })
 
   afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -83,6 +85,27 @@ describe('useDevices', () => {
     expect(result.current.isStale).toBe(true)
   })
 
+  it('requires two background misses before removing a known device', async () => {
+    mockedListDevices
+      .mockResolvedValueOnce([device])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    const { result } = renderHook(() => useDevices(true))
+    await flushRequests()
+    expect(result.current.devices).toEqual([device])
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
+    })
+    expect(result.current.devices).toEqual([device])
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
+    })
+    expect(result.current.devices).toEqual([])
+  })
+
   it('only polls when Wi-Fi discovery is enabled', async () => {
     mockedListDevices.mockResolvedValue([device])
 
@@ -94,6 +117,25 @@ describe('useDevices', () => {
 
     expect(mockedListDevices).toHaveBeenCalledTimes(1)
     expect(mockedListDevices).toHaveBeenCalledWith({ includeWifi: false })
+  })
+
+  it('rescans a USB-only device list once when the window becomes visible again', async () => {
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    mockedListDevices.mockResolvedValue([device])
+
+    renderHook(() => useDevices(false))
+    await flushRequests()
+    expect(mockedListDevices).toHaveBeenCalledTimes(1)
+
+    visibility = 'hidden'
+    document.dispatchEvent(new Event('visibilitychange'))
+    visibility = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushRequests()
+
+    expect(mockedListDevices).toHaveBeenCalledTimes(2)
+    expect(mockedListDevices).toHaveBeenLastCalledWith({ includeWifi: false })
   })
 
   it('loads a non-blocking support diagnostic only when discovery finds no devices', async () => {

@@ -1,5 +1,5 @@
 import type { Device } from '../../services/api'
-import type { FlowerProgress } from '../../hooks/useWebSocket'
+import type { ActiveTask, FlowerProgress } from '../../hooks/useWebSocket'
 
 export type LatLng = { lat: number; lng: number }
 
@@ -81,6 +81,7 @@ export type PanelProps = {
   liveEtaSeconds: number | null
   liveStopIndex: number | null
   flowerProgress?: FlowerProgress | null
+  activeTask?: ActiveTask | null
   restoredAt?: number
   connected?: boolean
   setPoint: (point: LatLng | null) => void

@@ -63,8 +63,24 @@ async def start_multi_stop(
     await device_manager.get_device(udid)  # raises ValueError before we schedule anything
     await simulation_engine.ensure_stopped(udid)
 
+    task_config = {
+        "waypoints": [{"lat": lat, "lng": lng} for lat, lng in waypoints],
+        "nav_mode": nav_mode,
+        "pause_enabled": pause_enabled,
+        "pause_min": pause_min,
+        "pause_max": pause_max,
+        "straight_line": straight_line,
+        "jump_mode": jump_mode,
+        "jump_pre_delay": jump_pre_delay,
+        "jump_post_delay": jump_post_delay,
+        "custom_speed_kmh": custom_speed_kmh,
+    }
+
     if jump_mode:
-        simulation_engine.start_jump(udid, waypoints, jump_pre_delay, jump_post_delay, task_kind="multi_stop")
+        simulation_engine.start_jump(
+            udid, waypoints, jump_pre_delay, jump_post_delay,
+            task_kind="multi_stop", task_config=task_config,
+        )
         return waypoints, []
 
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
@@ -82,6 +98,7 @@ async def start_multi_stop(
         station_pause_range=pause_range,
         stop_at=stop_at,
         task_kind="multi_stop",
+        task_config=task_config,
     )
     return playback_points, leg_playbacks
 

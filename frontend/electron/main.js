@@ -227,6 +227,19 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  // Chromium intentionally throttles background renderers. Tell the page when
+  // a minimized window becomes drawable again so map engines can re-measure
+  // their canvas without keeping the GPU busy for the entire background stay.
+  mainWindow.on('restore', () => {
+    mainWindow?.webContents.send('window-restored')
+  })
+  mainWindow.on('unresponsive', () => {
+    console.error('[electron] main window became unresponsive')
+  })
+  mainWindow.webContents.on('render-process-gone', (_, details) => {
+    console.error('[electron] renderer process exited:', details.reason, details.exitCode)
+  })
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
   } else {

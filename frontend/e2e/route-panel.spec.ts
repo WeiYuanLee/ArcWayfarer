@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test'
 test.describe('MultiStop Panel', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('arcwayfarer.lang', 'zh'))
+    await page.route('http://127.0.0.1:8787/api/devices', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify([{ udid: 'route-panel-test-device', name: 'Test iPhone', ios_version: 'test', transport: 'lockdown', status: 'ready', detail: null }]),
+    }))
     await page.goto('/')
     await page.locator('.leaflet-container').waitFor({ timeout: 10_000 })
 

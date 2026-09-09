@@ -18,6 +18,7 @@ import { useDeviceNames } from './hooks/useDeviceNames'
 import { DeviceManagerModal } from './components/common/DeviceManagerModal'
 import { showToast } from './components/common/Toast'
 import { useT } from './i18n'
+import { normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
 
 const WIFI_DISCOVERY_STORAGE_KEY = 'arcwayfarer.include-wifi-discovery'
 const MAX_USABLE_DEVICES = 3
@@ -41,9 +42,11 @@ export default function App() {
   const [includeWifi, setIncludeWifi] = useState(readWifiDiscoveryPreference)
   const [deviceManagerOpen, setDeviceManagerOpen] = useState(false)
   const [hidingDeviceId, setHidingDeviceId] = useState<string | null>(null)
-  const { connected, positions, states, restoredAt, flowerProgress, send } = useWebSocket()
+  const [restoringDeviceId, setRestoringDeviceId] = useState<string | null>(null)
+  const [pendingHiddenIds, setPendingHiddenIds] = useState<Set<string>>(() => new Set())
+  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, send } = useWebSocket()
   const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
-  const { hiddenDevices, isHidden, hideDevice, unhideDevice } = useHiddenDevices()
+  const { hiddenDevices, hideDevice, unhideDevice } = useHiddenDevices()
   const { deviceNames, getDeviceName, setDeviceName } = useDeviceNames()
   const {
     checkResult,
@@ -57,12 +60,26 @@ export default function App() {
     latestVersion,
   } = useUpdateChecker()
 
-  // Discovery continues for every device, but only three unhidden devices may
-  // enter the operational UI. Additional devices wait for the user to free a
-  // slot in Device Manager, so they can never be selected accidentally.
-  const visibleDevices = useMemo(
-    () => discoveredDevices.filter((device) => !isHidden(device.udid)).slice(0, MAX_USABLE_DEVICES),
-    [discoveredDevices, isHidden]
+  const suppressedDeviceIds = useMemo(
+    () => new Set([
+      ...hiddenDevices.map((device) => normalizeDeviceId(device.udid)),
+      ...pendingHiddenIds,
+    ]),
+    [hiddenDevices, pendingHiddenIds],
+  )
+  const activeDeviceIds = useMemo(() => new Set([
+    ...Object.entries(states)
+      .filter(([, state]) => state !== 'idle')
+      .map(([udid]) => normalizeDeviceId(udid)),
+    ...Object.keys(activeTasks).map(normalizeDeviceId),
+  ]), [activeTasks, states])
+  // Admission is sticky: a periodic discovery reorder cannot evict an existing
+  // workspace, and an authoritative backend task always wins an available slot.
+  const visibleDevices = useStableDeviceSlots(
+    discoveredDevices,
+    suppressedDeviceIds,
+    activeDeviceIds,
+    MAX_USABLE_DEVICES,
   )
   const usableDeviceIds = useMemo(() => visibleDevices.map((device) => device.udid), [visibleDevices])
   const displayDevices = useMemo(
@@ -132,7 +149,8 @@ export default function App() {
     }
   }
 
-  // Keep a device focused whenever possible, and drop per-device state for devices that disconnected.
+  // Capacity/queue transitions are not disconnects. Keep per-device drafts and
+  // overlays so a returning device can resume its workspace intact.
   useEffect(() => {
     const connectedIds = new Set(visibleDevices.map((d) => d.udid))
 
@@ -140,19 +158,21 @@ export default function App() {
       if (current && connectedIds.has(current)) return current
       return visibleDevices[0]?.udid ?? null
     })
-    setModeByDevice((prev) => {
-      const next = Object.fromEntries(Object.entries(prev).filter(([udid]) => connectedIds.has(udid)))
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next
-    })
-    setOverlaysByDevice((prev) => {
-      const next = Object.fromEntries(Object.entries(prev).filter(([udid]) => connectedIds.has(udid)))
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next
-    })
-    setPointByDevice((prev) => {
-      const next = Object.fromEntries(Object.entries(prev).filter(([udid]) => connectedIds.has(udid)))
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next
-    })
   }, [visibleDevices])
+
+  useEffect(() => {
+    setModeByDevice((current) => {
+      let changed = false
+      const next = { ...current }
+      for (const [udid, task] of Object.entries(activeTasks)) {
+        if ((task.kind === 'flower' || task.kind === 'multi_stop') && next[udid] !== 'multi-stop') {
+          next[udid] = 'multi-stop'
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [activeTasks])
 
   function handleModeChange(udid: string, mode: Mode) {
     // A mode owns its temporary map input.  Clear it here rather than relying on
@@ -249,6 +269,7 @@ export default function App() {
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
       flowerProgress: flowerProgress[udid] ?? null,
+      activeTask: activeTasks[udid] ?? null,
       restoredAt: restoredAt[udid],
       connected,
       setPoint: (point) => setPointByDevice((prev) => ({ ...prev, [udid]: point })),
@@ -266,7 +287,7 @@ export default function App() {
   const focusedDeviceState = (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle'
   const focusedPoint = focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null
   const isMapEngineSwitchLocked = Object.values(states).some((state) =>
-    ['navigating', 'looping', 'random_walk', 'joystick', 'paused'].includes(state)
+    ['navigating', 'looping', 'random_walk', 'joystick', 'paused'].includes(state) || state.startsWith('paused:')
   )
 
   const handleHideDevice = useCallback(async (device: typeof discoveredDevices[number]) => {
@@ -275,6 +296,8 @@ export default function App() {
       return
     }
     setHidingDeviceId(device.udid)
+    const deviceKey = normalizeDeviceId(device.udid)
+    setPendingHiddenIds((current) => new Set(current).add(deviceKey))
     try {
       await clearLocation(device.udid)
       hideDevice(device)
@@ -282,11 +305,28 @@ export default function App() {
     } catch {
       showToast(t('device.manager.hide_failed'))
     } finally {
+      setPendingHiddenIds((current) => {
+        const next = new Set(current)
+        next.delete(deviceKey)
+        return next
+      })
       setHidingDeviceId(null)
     }
   }, [hideDevice, states, t])
 
-  const isUnhideDisabled = useCallback(() => visibleDevices.length >= MAX_USABLE_DEVICES, [visibleDevices.length])
+  const isUnhideDisabled = useCallback(() => false, [])
+
+  const handleRestoreBackgroundDevice = useCallback(async (udid: string) => {
+    setRestoringDeviceId(udid)
+    try {
+      await clearLocation(udid)
+      showToast('已停止背景任務並還原真實定位。')
+    } catch {
+      showToast('停止背景任務或還原定位失敗。')
+    } finally {
+      setRestoringDeviceId(null)
+    }
+  }, [])
 
   return (
     <div className="app">
@@ -370,11 +410,13 @@ export default function App() {
         usableDeviceIds={usableDeviceIds}
         deviceStates={states}
         hidingDeviceId={hidingDeviceId}
+        restoringDeviceId={restoringDeviceId}
         onHideDevice={handleHideDevice}
         onUnhideDevice={unhideDevice}
+        onRestoreDevice={handleRestoreBackgroundDevice}
         onSetDeviceName={setDeviceName}
         isUnhideDisabled={isUnhideDisabled}
-        unhideDisabledReason={() => t('device.manager.capacity')}
+        unhideDisabledReason={() => undefined}
       />
       <ToastContainer />
     </div>

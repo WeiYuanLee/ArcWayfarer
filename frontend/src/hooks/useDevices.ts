@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getDeviceDiscoveryDiagnostic, listDevices, type Device, type DeviceDiscoveryDiagnostic } from '../services/api'
 
 export const DEVICE_SCAN_INTERVAL_MS = 20_000
+export const DEVICE_RESUME_SCAN_DEBOUNCE_MS = 5_000
 
 export function useDevices(includeWifi = false) {
   const [devices, setDevices] = useState<Device[]>([])
@@ -12,6 +13,9 @@ export function useDevices(includeWifi = false) {
   const mountedRef = useRef(false)
   const scanInFlightRef = useRef<Promise<void> | null>(null)
   const scanGenerationRef = useRef(0)
+  const hiddenAtRef = useRef<number | null>(null)
+  const lastResumeScanAtRef = useRef(Number.NEGATIVE_INFINITY)
+  const backgroundMissCountsRef = useRef<Map<string, number>>(new Map())
 
   const refresh = useCallback((background = false): Promise<void> => {
     const inFlight = scanInFlightRef.current
@@ -37,7 +41,31 @@ export function useDevices(includeWifi = false) {
         const unique = visible.filter(
           (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
         )
-        setDevices(unique)
+        if (background) {
+          // A renderer often resumes before usbmux/tunneld has repopulated its
+          // device list. Require two consecutive background misses before
+          // removing a known device so one recovery race cannot erase panel
+          // state. A user-requested foreground scan remains authoritative.
+          setDevices((current) => {
+            const foundIds = new Set(unique.map((device) => device.udid.toLowerCase()))
+            const retained = current.filter((device) => {
+              const key = device.udid.toLowerCase()
+              if (foundIds.has(key)) {
+                backgroundMissCountsRef.current.delete(key)
+                return false
+              }
+              const misses = (backgroundMissCountsRef.current.get(key) ?? 0) + 1
+              backgroundMissCountsRef.current.set(key, misses)
+              if (misses < 2) return true
+              backgroundMissCountsRef.current.delete(key)
+              return false
+            })
+            return [...unique, ...retained]
+          })
+        } else {
+          backgroundMissCountsRef.current.clear()
+          setDevices(unique)
+        }
         setScanError(null)
         setLastSuccessfulScanAt(Date.now())
         // This endpoint reads an in-memory snapshot only; it never starts a
@@ -105,6 +133,36 @@ export function useDevices(includeWifi = false) {
       window.clearInterval(intervalId)
     }
   }, [includeWifi, refresh])
+
+  useEffect(() => {
+    const refreshAfterResume = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+
+      const now = Date.now()
+      if (now - lastResumeScanAtRef.current < DEVICE_RESUME_SCAN_DEBOUNCE_MS) return
+      lastResumeScanAtRef.current = now
+      hiddenAtRef.current = null
+      void refresh(true)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now()
+      } else if (hiddenAtRef.current !== null) {
+        refreshAfterResume()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    const unsubscribeRestore = window.electronAPI?.onWindowRestored(refreshAfterResume)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      unsubscribeRestore?.()
+    }
+  }, [refresh])
 
   return {
     devices,

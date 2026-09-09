@@ -43,6 +43,44 @@ import {
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type ImportMessage = { kind: 'ok' | 'error'; text: string }
 
+const MULTI_STOP_DRAFT_PREFIX = 'arcwayfarer.multistop-draft.v1:'
+
+type MultiStopDraft = {
+  savedAt: number
+  waypoints: LatLng[]
+  navMode: NavMode
+  pauseEnabled: boolean
+  pauseMin: number
+  pauseMax: number
+  straightLine: boolean
+  speedKmh: number
+  jumpMode: boolean
+  jumpPreDelay: number
+  jumpPostDelay: number
+  subtab: 'multi' | 'flower'
+  flowerRadius: number
+  flowerCircles: number
+  flowerSegments: number
+  flowerPathStrategy: 'center_spiral' | 'perimeter'
+  flowerPreWait: number
+  flowerPostWait: number
+  flowerRouteType: 'stop_at_end' | 'return_to_start' | 'loop_forever'
+  flowerRounds: number
+}
+
+function readMultiStopDraft(deviceId: string | null): MultiStopDraft | null {
+  if (!deviceId) return null
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(`${MULTI_STOP_DRAFT_PREFIX}${deviceId.toLowerCase()}`) || 'null')
+    if (!value || typeof value !== 'object') return null
+    const draft = value as MultiStopDraft
+    if (typeof draft.savedAt === 'number' && Date.now() - draft.savedAt > 30 * 24 * 60 * 60 * 1000) return null
+    return draft
+  } catch {
+    return null
+  }
+}
+
 const WAYPOINT_COLOR = '#4a9af0'
 
 function flowerPreviewRadii(
@@ -71,7 +109,7 @@ type FlowerOverlayInput = {
   strategy: 'center_spiral' | 'perimeter'
   routeType: 'stop_at_end' | 'return_to_start' | 'loop_forever'
   isActive: boolean
-  progress: PanelProps['flowerProgress']
+  progress: Pick<NonNullable<PanelProps['flowerProgress']>, 'flowerIndex' | 'phase'> | null
 }
 
 /** Flower-only map contract: zones and transfers, never the legacy route path. */
@@ -121,6 +159,7 @@ export function MultiStopPanel({
   liveEtaSeconds,
   liveStopIndex,
   flowerProgress,
+  activeTask,
   connected,
   requestPoint,
   cancelPointRequest,
@@ -179,6 +218,7 @@ export function MultiStopPanel({
   })
   const lastWaypointRef = useRef<HTMLDivElement | null>(null)
   const focusNewWaypointRef = useRef(false)
+  const hydratedSourceRef = useRef<string | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'navigating'
@@ -186,14 +226,96 @@ export function MultiStopPanel({
   const isActive = isRunning || isPaused
   const isBusy = status.kind === 'busy'
   const isFlower = subtab === 'flower'
+  // ETA and live coordinates change every tick, but Flower's map geometry only
+  // changes when the active flower or phase changes. Keep telemetry updates out
+  // of the expensive map-overlay synchronization path.
+  const flowerVisualProgress = flowerProgress
+    ? { flowerIndex: flowerProgress.flowerIndex, phase: flowerProgress.phase }
+    : null
   const canStart = deviceReady && !isActive && validWaypoints.length >= (isFlower ? 1 : 2) && !isBusy
+
+  useEffect(() => {
+    if (!deviceId) return
+    const source = activeTask
+      ? `task:${activeTask.taskId ?? `legacy-${activeTask.kind}`}:${activeTask.revision ?? 0}`
+      : `draft:${deviceId}`
+    if (hydratedSourceRef.current === source) return
+    const config = activeTask?.config
+    const draft = activeTask ? null : readMultiStopDraft(deviceId)
+    const waypoints = config?.waypoints ?? draft?.waypoints
+    if (waypoints?.length) setAllWaypoints(waypoints)
+    if (activeTask?.kind === 'flower') setSubtab('flower')
+    else if (activeTask?.kind === 'multi_stop') setSubtab('multi')
+    if (config) {
+      if (config.nav_mode) setNavMode(config.nav_mode)
+      if (typeof config.pause_enabled === 'boolean') setPauseEnabled(config.pause_enabled)
+      if (typeof config.pause_min === 'number') setPauseMin(config.pause_min)
+      if (typeof config.pause_max === 'number') setPauseMax(config.pause_max)
+      if (typeof config.straight_line === 'boolean') setStraightLine(config.straight_line)
+      if (typeof config.jump_mode === 'boolean') setJumpMode(config.jump_mode)
+      if (typeof config.jump_pre_delay === 'number') setJumpPreDelay(config.jump_pre_delay)
+      if (typeof config.jump_post_delay === 'number') setJumpPostDelay(config.jump_post_delay)
+      if (typeof config.custom_speed_kmh === 'number') setSpeedKmh(config.custom_speed_kmh)
+      if (activeTask?.kind === 'flower') {
+        const flower = config.flower
+        if (flower) {
+          setFlowerRadius(flower.radius_m)
+          setFlowerCircles(flower.circles)
+          setFlowerSegments(flower.segments)
+          setFlowerPathStrategy(flower.path_strategy)
+          setFlowerPreWait(flower.pre_wait_seconds)
+          setFlowerPostWait(flower.post_wait_seconds)
+          setFlowerRouteType(flower.route_type)
+          if (typeof flower.rounds === 'number') setFlowerRounds(flower.rounds)
+        }
+      } else if (activeTask?.kind === 'multi_stop') {
+        setRoutePath(activeTask.path)
+      }
+    } else if (draft) {
+      setNavMode(draft.navMode)
+      setPauseEnabled(draft.pauseEnabled)
+      setPauseMin(draft.pauseMin)
+      setPauseMax(draft.pauseMax)
+      setStraightLine(draft.straightLine)
+      setSpeedKmh(draft.speedKmh)
+      setJumpMode(draft.jumpMode)
+      setJumpPreDelay(draft.jumpPreDelay)
+      setJumpPostDelay(draft.jumpPostDelay)
+      setSubtab(draft.subtab)
+      setFlowerRadius(draft.flowerRadius)
+      setFlowerCircles(draft.flowerCircles)
+      setFlowerSegments(draft.flowerSegments)
+      setFlowerPathStrategy(draft.flowerPathStrategy)
+      setFlowerPreWait(draft.flowerPreWait)
+      setFlowerPostWait(draft.flowerPostWait)
+      setFlowerRouteType(draft.flowerRouteType)
+      setFlowerRounds(draft.flowerRounds)
+    }
+    hydratedSourceRef.current = source
+  }, [activeTask, deviceId, setAllWaypoints])
+
+  useEffect(() => {
+    if (!deviceId || hydratedSourceRef.current === null) return
+    const draft: MultiStopDraft = {
+      savedAt: Date.now(),
+      waypoints: validWaypoints, navMode, pauseEnabled, pauseMin, pauseMax,
+      straightLine, speedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab,
+      flowerRadius, flowerCircles, flowerSegments, flowerPathStrategy,
+      flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds,
+    }
+    try {
+      window.localStorage.setItem(`${MULTI_STOP_DRAFT_PREFIX}${deviceId.toLowerCase()}`, JSON.stringify(draft))
+    } catch {
+      // Draft persistence is best-effort; the backend task remains authoritative.
+    }
+  }, [deviceId, validWaypoints, navMode, pauseEnabled, pauseMin, pauseMax, straightLine, speedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab, flowerRadius, flowerCircles, flowerSegments, flowerPathStrategy, flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds])
 
   // Auto fill waypoint 1 with live position if empty
   useEffect(() => {
-    if (!items[0]?.point && livePosition && !items[0]?.rawText) {
+    if (!activeTask && !items[0]?.point && livePosition && !items[0]?.rawText) {
       updateWaypoint(0, livePosition)
     }
-  }, [livePosition, items, updateWaypoint])
+  }, [activeTask, livePosition, items, updateWaypoint])
 
   // Automatically update route path preview when not active
   useEffect(() => {
@@ -310,7 +432,7 @@ export function MultiStopPanel({
             strategy: flowerPathStrategy,
             routeType: flowerRouteType,
             isActive,
-            progress: flowerProgress,
+            progress: flowerVisualProgress,
           })
         : buildBasicMultiStopOverlay(routePath, activePath)),
       onPathClick: (lat, lng) => {
@@ -354,7 +476,7 @@ export function MultiStopPanel({
         })
       },
     })
-  }, [items, routePath, activePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint, t, isFlower, isActive, validWaypoints, flowerRadius, flowerCircles, flowerPathStrategy, flowerRouteType, flowerProgress])
+  }, [items, routePath, activePath, isLocked, deviceState, deviceId, setOverlay, updateWaypoint, removeWaypoint, addWaypoint, t, isFlower, isActive, validWaypoints, flowerRadius, flowerCircles, flowerPathStrategy, flowerRouteType, flowerVisualProgress?.flowerIndex, flowerVisualProgress?.phase])
 
   function handleClearAllWaypoints() {
     setConfirmModal({

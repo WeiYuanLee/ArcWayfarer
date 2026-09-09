@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Component, useState, type ErrorInfo, type ReactNode } from 'react'
 import { IconStack2 } from '@tabler/icons-react'
 import { LeafletMapView } from './LeafletMapView'
 import { MapLibreMapView } from './MapLibreMapView'
@@ -26,6 +26,38 @@ export type MapViewProps = {
   children?: ReactNode
 }
 
+type MapErrorBoundaryProps = {
+  children: ReactNode
+  onRetry: () => void
+  onUseStandard: () => void
+}
+
+class MapErrorBoundary extends Component<MapErrorBoundaryProps, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[map] renderer failed', error, info.componentStack)
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div role="alert" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'var(--aw-canvas)', zIndex: 2 }}>
+        <div style={{ display: 'grid', gap: 10, maxWidth: 360, padding: 20, textAlign: 'center' }}>
+          <strong>地圖繪製暫時失敗</strong>
+          <span>定位仍在背景執行，可以重建地圖或切換到標準模式。</span>
+          <button type="button" onClick={this.props.onRetry}>重新載入地圖</button>
+          <button type="button" onClick={this.props.onUseStandard}>切換標準模式</button>
+        </div>
+      </div>
+    )
+  }
+}
+
 export function MapView({ children, isEngineSwitchLocked = false, ...props }: MapViewProps) {
   const [engine, setEngine] = useState<MapEngine>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_MAP_ENGINE)
@@ -34,6 +66,7 @@ export function MapView({ children, isEngineSwitchLocked = false, ...props }: Ma
 
   const [isEngineMenuOpen, setIsEngineMenuOpen] = useState(false)
   const [viewport, setViewport] = useState<MapViewport | null>(null)
+  const [mapRevision, setMapRevision] = useState(0)
 
   const handleViewportChange = (nextViewport: MapViewport) => {
     setViewport((currentViewport) => {
@@ -56,13 +89,25 @@ export function MapView({ children, isEngineSwitchLocked = false, ...props }: Ma
     setIsEngineMenuOpen(false)
   }
 
+  const useStandardAfterFailure = () => {
+    setEngine('leaflet')
+    localStorage.setItem(STORAGE_KEY_MAP_ENGINE, 'leaflet')
+    setMapRevision((revision) => revision + 1)
+  }
+
   return (
     <div className="map-view-wrapper" style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-      {engine === 'leaflet' ? (
-        <LeafletMapView key="leaflet-engine" {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
-      ) : (
-        <MapLibreMapView key="maplibre-engine" {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
-      )}
+      <MapErrorBoundary
+        key={`${engine}-${mapRevision}`}
+        onRetry={() => setMapRevision((revision) => revision + 1)}
+        onUseStandard={useStandardAfterFailure}
+      >
+        {engine === 'leaflet' ? (
+          <LeafletMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+        ) : (
+          <MapLibreMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+        )}
+      </MapErrorBoundary>
 
       {/* Children overlays (ControlsOverlay, IconRail, StatusBar) rendered directly in stacking context */}
       {children}

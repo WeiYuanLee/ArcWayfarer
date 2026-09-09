@@ -274,6 +274,27 @@ export function LeafletMapView({
     }
   }, [])
 
+  useEffect(() => {
+    let resizeFrame: number | null = null
+    const restoreMap = () => {
+      if (document.visibilityState === 'hidden') return
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = null
+          mapRef.current?.invalidateSize({ pan: false })
+        })
+      })
+    }
+    document.addEventListener('visibilitychange', restoreMap)
+    const unsubscribeRestore = window.electronAPI?.onWindowRestored(restoreMap)
+    return () => {
+      document.removeEventListener('visibilitychange', restoreMap)
+      unsubscribeRestore?.()
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame)
+    }
+  }, [])
+
   // Dynamically attach and hot-swap tileLayer when tileProvider changes
   useEffect(() => {
     const map = mapRef.current

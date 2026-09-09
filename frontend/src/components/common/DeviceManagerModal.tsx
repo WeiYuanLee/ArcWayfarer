@@ -19,8 +19,10 @@ type Props = {
   deviceStates: Record<string, DeviceState>
   /** UDID currently being restored to its real location and then hidden. */
   hidingDeviceId?: string | null
+  restoringDeviceId?: string | null
   onHideDevice: (device: Device) => void | Promise<void>
   onUnhideDevice: (udid: string) => void
+  onRestoreDevice?: (udid: string) => void | Promise<void>
   onSetDeviceName: (udid: string, name: string) => void
   /** For example, disable restore while all three usable slots are occupied. */
   isUnhideDisabled?: (udid: string) => boolean
@@ -45,7 +47,7 @@ function transportLabel(connectionType: Device['connection_type']) {
   return null
 }
 
-export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [], hiddenUdids, usableDeviceIds, deviceNames, deviceStates, hidingDeviceId = null, onHideDevice, onUnhideDevice, onSetDeviceName, isUnhideDisabled, unhideDisabledReason }: Props) {
+export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [], hiddenUdids, usableDeviceIds, deviceNames, deviceStates, hidingDeviceId = null, restoringDeviceId = null, onHideDevice, onUnhideDevice, onRestoreDevice, onSetDeviceName, isUnhideDisabled, unhideDisabledReason }: Props) {
   const [renamingDevice, setRenamingDevice] = useState<{ udid: string; fallbackName: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const hiddenKeys = new Set<string>(hiddenDevices.map((device) => normalized(device.udid)))
@@ -91,14 +93,15 @@ export function DeviceManagerModal({ isOpen, onClose, devices, hiddenDevices = [
           <Divider />
           <Stack gap="xs">
             <Group justify="space-between"><Text fw={600}>等待可用裝置</Text><Badge variant="light" color="orange">{overflowDevices.length}</Badge></Group>
-            <Text size="xs" c="dimmed">已達三台可使用裝置上限。請先遮蔽一台可使用裝置，才能使用以下裝置。</Text>
-            <ScrollArea.Autosize mah={180}><Stack gap="xs">{overflowDevices.map((device) => <Paper key={device.udid} withBorder p="sm"><Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><ThemeIcon variant="light" color="orange"><IconDeviceMobile size={17} /></ThemeIcon><div><Group gap="xs"><Text size="sm" fw={600}>{deviceName(device, customName(device.udid))}</Text>{transportLabel(device.connection_type)}</Group><Text size="xs" c="dimmed">{device.udid.slice(-8)}{device.ios_version ? ` · iOS ${device.ios_version}` : ''}</Text></div></Group><Tooltip label="編輯自訂名稱"><ActionIcon variant="subtle" color="gray" onClick={() => rename(device.udid, deviceName(device))} aria-label="編輯自訂名稱"><IconPencil size={16} /></ActionIcon></Tooltip></Group></Paper>)}</Stack></ScrollArea.Autosize>
+            <Text size="xs" c="dimmed">已達三台操作席位上限。重新掃描不會改變既有席位；釋放席位後會依序補入等待裝置。</Text>
+            <ScrollArea.Autosize mah={180}><Stack gap="xs">{overflowDevices.map((device) => { const state = deviceStates[device.udid] || 'idle'; const isHiding = normalized(hidingDeviceId || '') === normalized(device.udid); const isRestoring = normalized(restoringDeviceId || '') === normalized(device.udid); return <Paper key={device.udid} withBorder p="sm"><Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><ThemeIcon variant="light" color={state === 'idle' ? 'orange' : 'green'}><IconDeviceMobile size={17} /></ThemeIcon><div><Group gap="xs"><Text size="sm" fw={600}>{deviceName(device, customName(device.udid))}</Text>{transportLabel(device.connection_type)}{state !== 'idle' && <Badge variant="light" color="green">背景執行中</Badge>}</Group><Text size="xs" c="dimmed">{device.udid.slice(-8)}{device.ios_version ? ` · iOS ${device.ios_version}` : ''} · {stateLabels[state]}</Text></div></Group><Group gap={4} wrap="nowrap"><Tooltip label="編輯自訂名稱"><ActionIcon variant="subtle" color="gray" onClick={() => rename(device.udid, deviceName(device))} aria-label="編輯自訂名稱"><IconPencil size={16} /></ActionIcon></Tooltip>{state !== 'idle' && onRestoreDevice ? <Button size="compact-sm" color="red" variant="light" loading={isRestoring} disabled={Boolean(restoringDeviceId) && !isRestoring} onClick={() => void onRestoreDevice(device.udid)}>停止並還原</Button> : <Button size="compact-sm" color="gray" variant="light" leftSection={<IconEyeOff size={14} />} loading={isHiding} disabled={Boolean(hidingDeviceId) && !isHiding} onClick={() => void onHideDevice(device)}>遮蔽</Button>}</Group></Group></Paper> })}</Stack></ScrollArea.Autosize>
           </Stack>
         </>}
         <Divider />
         <Stack gap="xs">
           <Group justify="space-between"><Text fw={600}>已遮蔽裝置</Text><Badge variant="light" color="gray">{hiddenRows.length}</Badge></Group>
           {hiddenRows.length === 0 ? <Text size="sm" c="dimmed">尚未遮蔽任何裝置。</Text> : <ScrollArea.Autosize mah={220}><Stack gap="xs">{hiddenRows.map((row) => { const disabled = isUnhideDisabled?.(row.udid) || false; return <Paper key={row.udid} withBorder p="sm" bg="var(--aw-surface-raised)"><Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><ThemeIcon variant="light" color="gray"><IconEyeOff size={17} /></ThemeIcon><div><Group gap="xs"><Text size="sm" fw={600}>{row.name}</Text>{row.connected ? transportLabel(row.connected.connection_type) : <Badge variant="light" color="gray">未連線</Badge>}</Group><Text size="xs" c="dimmed">{row.udid.slice(-8)}{row.connected?.ios_version || row.stored?.iosVersion ? ` · iOS ${row.connected?.ios_version || row.stored?.iosVersion}` : ''}</Text></div></Group><Group gap={4} wrap="nowrap"><Tooltip label="編輯自訂名稱"><ActionIcon variant="subtle" color="gray" onClick={() => rename(row.udid, row.name)} aria-label="編輯自訂名稱"><IconPencil size={16} /></ActionIcon></Tooltip><Button size="compact-sm" variant="light" leftSection={<IconEye size={14} />} disabled={disabled} title={disabled ? unhideDisabledReason?.(row.udid) : undefined} onClick={() => onUnhideDevice(row.udid)}>恢復顯示</Button></Group></Group></Paper> })}</Stack></ScrollArea.Autosize>}
+          <Text size="xs" c="dimmed">若三個操作席位已滿，恢復顯示的裝置會先進入等待區，不會取代正在使用的裝置。</Text>
         </Stack>
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>關閉</Button></Group>
         </Stack>

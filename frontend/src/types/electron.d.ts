@@ -7,6 +7,7 @@ export interface PlatformInfo {
 export interface ElectronAPI {
   getPlatformInfo: () => Promise<PlatformInfo>
   openExternal: (url: string) => Promise<void>
+  onWindowRestored: (callback: () => void) => () => void
 }
 
 declare global {

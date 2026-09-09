@@ -148,6 +148,7 @@ test.describe('Map Interaction', () => {
   })
 
   test('保留 Leaflet 起終點並切至 WebGL 後，兩個點位仍會重建', async ({ page }) => {
+    await mockReadyDeviceAndNavigationPreview(page)
     await page.locator('.mode-switcher input[value="navigate"]').evaluate((input: HTMLInputElement) => input.click())
     await page.getByLabel(/Start|起點/).fill('25.0415,121.5438')
     await page.getByLabel(/Destination|End|終點/).fill('25.0408,121.5713')
@@ -184,6 +185,27 @@ test.describe('Map Interaction', () => {
     await page.getByRole('button', { name: '地圖模式' }).click()
     await page.getByRole('menuitemradio', { name: /高效能模式/ }).click()
     await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.map-tile-loading-badge')).toBeHidden({ timeout: 10_000 })
+  })
+
+  test('WebGL context 遺失並恢復後地圖不會變成白畫面', async ({ page }) => {
+    await page.getByRole('button', { name: '地圖模式' }).click()
+    await page.getByRole('menuitemradio', { name: /高效能模式/ }).click()
+    const canvas = page.locator('.maplibregl-canvas')
+    await expect(canvas).toBeVisible({ timeout: 10_000 })
+
+    const canForceContextLoss = await canvas.evaluate((element: HTMLCanvasElement) => {
+      const gl = element.getContext('webgl2') || element.getContext('webgl')
+      const extension = gl?.getExtension('WEBGL_lose_context')
+      if (!extension) return false
+      extension.loseContext()
+      window.setTimeout(() => extension.restoreContext(), 50)
+      return true
+    })
+    test.skip(!canForceContextLoss, 'Browser does not expose WEBGL_lose_context')
+
+    await expect(canvas).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
     await expect(page.locator('.map-tile-loading-badge')).toBeHidden({ timeout: 10_000 })
   })
 
@@ -231,6 +253,7 @@ test.describe('Map Interaction', () => {
   })
 
   test('WebGL 多點巡迴在執行前應畫出完整三點路線', async ({ page }) => {
+    await mockReadyDeviceAndNavigationPreview(page)
     await page.getByRole('button', { name: '地圖模式' }).click()
     await page.getByRole('menuitemradio', { name: /高效能模式/ }).click()
     await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 10_000 })
@@ -250,6 +273,7 @@ test.describe('Map Interaction', () => {
   })
 
   test('WebGL 隨機漫遊應顯示圓形範圍', async ({ page }) => {
+    await mockReadyDeviceAndNavigationPreview(page)
     await page.getByRole('button', { name: '地圖模式' }).click()
     await page.getByRole('menuitemradio', { name: /高效能模式/ }).click()
     await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 10_000 })
