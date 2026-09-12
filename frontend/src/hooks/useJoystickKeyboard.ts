@@ -36,6 +36,8 @@ export function useJoystickKeyboard(
     const pressed: Record<Direction, boolean> = { up: false, down: false, left: false, right: false }
     let startTimeRef: number | null = null
     let rafId: number | null = null
+    let lastEmitAt = Number.NEGATIVE_INFINITY
+    let lastDirection: number | null = null
 
     function getActiveCount(): number {
       return (pressed.up ? 1 : 0) + (pressed.down ? 1 : 0) + (pressed.left ? 1 : 0) + (pressed.right ? 1 : 0)
@@ -67,7 +69,14 @@ export function useJoystickKeyboard(
         ? calcKeyboardIntensity(elapsedMs, true)
         : 1.0
 
-      onMoveRef.current(deg, intensity)
+      // Keyboard acceleration needs animation-frame timing, but the backend only
+      // consumes joystick input at 5 Hz. Bound IPC/JSON work while still sending
+      // direction changes immediately.
+      if (deg !== lastDirection || now - lastEmitAt >= 50) {
+        onMoveRef.current(deg, intensity)
+        lastDirection = deg
+        lastEmitAt = now
+      }
       rafId = requestAnimationFrame(tick)
     }
 

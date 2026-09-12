@@ -5,7 +5,8 @@ import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLo
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePoint, pointsForPattern, routeLegForStop, type PatternTemplate } from './coords'
-import { contoursToCoordinates, limitTextContours, loadTextPatternFont, orderTextContoursForTraversal, outerTextContours, simplifyCoordinatePath, TEXT_PATTERN_FONT_LOAD_ERROR, textContours, type TextRouteFont, unsupportedFontCharacters, validateTextPattern } from './textPattern'
+import { contoursToCoordinates, limitTextContours, loadTextPatternFont, orderTextContoursForTraversal, outerTextContours, simplifyCoordinatePath, TEXT_PATTERN_FONT_LOAD_ERROR, textContours, textPatternFontUrl, type TextRouteFont, unsupportedFontCharacters, validateTextPattern } from './textPattern'
+import { generateTextPatternOffThread } from './textPatternWorkerClient'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
@@ -15,6 +16,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
 import {
@@ -173,20 +175,28 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         }
         let cancelled = false
         setTextPatternError(null)
-        const contourPromise = loadTextPatternFont(textFont).then((font) => {
+        const generateOnMainThread = async () => {
+          const font = await loadTextPatternFont(textFont)
           const unsupported = unsupportedFontCharacters(font, patternText)
-          if (unsupported.length) throw new Error(`${t('routeloop.pattern.error.font_unsupported')}${unsupported.join('、')}`)
-          return textContours(font, patternText)
-        })
-        void contourPromise.then((rawContours) => {
-          if (cancelled) return
+          if (unsupported.length) return { unsupported }
+          const rawContours = textContours(font, patternText)
           const contours = limitTextContours(orderTextContoursForTraversal(contoursToCoordinates(outerTextContours(rawContours), patternCenter, radiusM * 2, patternRotation).map((path) => {
-            // Clipper rings are implicitly closed, while Leaflet/MapLibre
-            // polylines are not. Simplify the open ring first, then append the
-            // first coordinate so the final Z edge is both visible and walked.
             const simplified = simplifyCoordinatePath(path, Math.max(2, radiusM / 180))
             return simplified.length > 1 ? [...simplified, simplified[0]] : simplified
           })))
+          return { contours }
+        }
+        const timer = window.setTimeout(() => void generateTextPatternOffThread({
+          fontUrl: textPatternFontUrl(textFont).href,
+          text: patternText,
+          center: patternCenter,
+          widthMeters: radiusM * 2,
+          rotation: patternRotation,
+          toleranceMeters: Math.max(2, radiusM / 180),
+        }).then(async (result) => result.error ? generateOnMainThread() : result, generateOnMainThread).then((result) => {
+          if (cancelled) return
+          if (result.unsupported?.length) throw new Error(`${t('routeloop.pattern.error.font_unsupported')}${result.unsupported.join('、')}`)
+          const contours = result.contours ?? []
           const points = contours.flat()
           if (points.length < 2) throw new Error(t('routeloop.pattern.error.no_contours'))
           setAllWaypoints(points)
@@ -209,8 +219,11 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
               ? t('routeloop.pattern.error.font_load_failed')
               : error instanceof Error ? error.message : t('routeloop.pattern.error.generation_failed'))
           }
-        })
-        return () => { cancelled = true }
+        }), 180)
+        return () => {
+          cancelled = true
+          window.clearTimeout(timer)
+        }
       }
       const generated = pointsForPattern(patternCenter, radiusM, count, patternTemplate, patternRotation)
       setAllWaypoints(generated)
@@ -382,8 +395,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
         straightLine,
         isTextPattern ? textJumpLegIndices : []
       )
-      setRoutePath(result.route)
-      setRouteLegs(result.legs)
+      setRoutePath(limitDisplayPath(result.route))
+      setRouteLegs(limitDisplayLegs(result.legs))
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'route_loop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {

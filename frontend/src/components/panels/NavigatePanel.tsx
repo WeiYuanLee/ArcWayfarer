@@ -13,6 +13,7 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
+import { limitDisplayPath } from '../../utils/pathGeometry'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 type PreviewStatus = { kind: 'idle' | 'loading' | 'ready' | 'error' }
@@ -71,7 +72,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       try {
         const result = await previewNavigate(navMode, start, end, controller.signal)
         if (requestId !== previewRequestIdRef.current || result.route.length < 2) return
-        setRoutePath(result.route)
+        setRoutePath(limitDisplayPath(result.route))
         setRouteDistanceMeters(result.distance_m)
         setPreviewStatus({ kind: 'ready' })
       } catch (error) {
@@ -131,7 +132,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
     setStatus({ kind: 'busy' })
     try {
       const result = await startNavigate(deviceId, navMode, start, end, speedKmh)
-      setRoutePath(result.route)
+      setRoutePath(limitDisplayPath(result.route))
       setPreviewStatus({ kind: 'ready' })
       pushHistory({ lat: start.lat, lng: start.lng, kind: 'navigate' }).catch(() => {})
       setStatus({ kind: 'idle' })

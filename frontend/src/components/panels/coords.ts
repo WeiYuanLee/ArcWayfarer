@@ -245,6 +245,31 @@ export function estimateDurationMinutes(distanceKm: number, speedKmh: number): n
   return Math.round((distanceKm / speedKmh) * 60)
 }
 
+type MeasuredPath = { path: LatLng[]; cumulativeDistance: number[]; totalDistance: number }
+const measuredPathCache = new WeakMap<LatLng[], { open?: MeasuredPath; closed?: MeasuredPath }>()
+
+function measurePath(source: LatLng[], closeLoop: boolean): MeasuredPath {
+  const existing = measuredPathCache.get(source) ?? {}
+  const cached = closeLoop ? existing.closed : existing.open
+  if (cached) return cached
+
+  let path = source.filter((point) => point && Number.isFinite(point.lat) && Number.isFinite(point.lng))
+  if (closeLoop && path.length >= 2) {
+    const first = path[0]
+    const last = path[path.length - 1]
+    if (Math.abs(first.lat - last.lat) > 1e-6 || Math.abs(first.lng - last.lng) > 1e-6) path = [...path, first]
+  }
+  const cumulativeDistance = [0]
+  for (let index = 1; index < path.length; index++) {
+    cumulativeDistance.push(cumulativeDistance[index - 1] + haversineDistanceKm(path[index - 1], path[index]))
+  }
+  const measured = { path, cumulativeDistance, totalDistance: cumulativeDistance.at(-1) ?? 0 }
+  if (closeLoop) existing.closed = measured
+  else existing.open = measured
+  measuredPathCache.set(source, existing)
+  return measured
+}
+
 export function calculateRouteProgressPct(
   routePath: LatLng[] | undefined,
   waypoints: (LatLng | null)[] | undefined,
@@ -258,32 +283,17 @@ export function calculateRouteProgressPct(
     return Math.min(100, Math.round((current / Math.max(1, totalPoints)) * 100))
   }
 
-  let path = (routePath || []).filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
-
-  if (path.length < 2) {
-    path = (waypoints || []).filter(
-      (w): w is LatLng => w !== null && Number.isFinite(w.lat) && Number.isFinite(w.lng)
-    )
-  }
+  const route = routePath || []
+  const fallback = (waypoints || []).filter((waypoint): waypoint is LatLng => waypoint !== null)
+  let measured = measurePath(route, isLoop)
+  if (measured.path.length < 2) measured = measurePath(fallback, isLoop)
+  const { path, cumulativeDistance: cumDist, totalDistance: totalDist } = measured
 
   if (path.length < 2) {
     const current = Math.max(1, Math.min(currentIndex || 1, totalPoints))
     return Math.min(100, Math.round((current / Math.max(1, totalPoints)) * 100))
   }
 
-  if (isLoop) {
-    const first = path[0]
-    const last = path[path.length - 1]
-    if (Math.abs(first.lat - last.lat) > 1e-6 || Math.abs(first.lng - last.lng) > 1e-6) {
-      path = [...path, first]
-    }
-  }
-
-  const cumDist: number[] = [0]
-  for (let i = 1; i < path.length; i++) {
-    cumDist.push(cumDist[i - 1] + haversineDistanceKm(path[i - 1], path[i]))
-  }
-  const totalDist = cumDist[cumDist.length - 1]
   if (totalDist <= 0) {
     const current = Math.max(1, Math.min(currentIndex || 1, totalPoints))
     return Math.min(100, Math.round((current / Math.max(1, totalPoints)) * 100))

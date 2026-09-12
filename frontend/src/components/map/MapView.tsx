@@ -1,9 +1,10 @@
-import { Component, useState, type ErrorInfo, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useState, type ErrorInfo, type ReactNode } from 'react'
 import { IconStack2 } from '@tabler/icons-react'
-import { LeafletMapView } from './LeafletMapView'
-import { MapLibreMapView } from './MapLibreMapView'
 import type { MapOverlay } from '../panels/types'
 import type { TileProviderConfig } from '../../types/tileProvider'
+
+const LeafletMapView = lazy(() => import('./LeafletMapView').then((module) => ({ default: module.LeafletMapView })))
+const MapLibreMapView = lazy(() => import('./MapLibreMapView').then((module) => ({ default: module.MapLibreMapView })))
 
 export type MapEngine = 'leaflet' | 'maplibre'
 
@@ -102,11 +103,13 @@ export function MapView({ children, isEngineSwitchLocked = false, ...props }: Ma
         onRetry={() => setMapRevision((revision) => revision + 1)}
         onUseStandard={useStandardAfterFailure}
       >
-        {engine === 'leaflet' ? (
-          <LeafletMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
-        ) : (
-          <MapLibreMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
-        )}
+        <Suspense fallback={<div className="map-engine-loading" role="status">載入地圖引擎中...</div>}>
+          {engine === 'leaflet' ? (
+            <LeafletMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+          ) : (
+            <MapLibreMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+          )}
+        </Suspense>
       </MapErrorBoundary>
 
       {/* Children overlays (ControlsOverlay, IconRail, StatusBar) rendered directly in stacking context */}

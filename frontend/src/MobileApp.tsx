@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, NativeSelect, Tabs, Text } from '@mantine/core'
 import { IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
 import { MapView } from './components/map/MapView'
@@ -107,12 +107,12 @@ export default function MobileApp() {
     }
   }, [focusedDeviceId, requestFlyTo])
 
-  const connectedIds = new Set(devices.map((d) => d.udid))
-  const livePositions = Object.fromEntries(
-    Object.entries(positions)
-      .filter(([id]) => connectedIds.size === 0 || connectedIds.has(id))
-      .map(([id, p]) => [id, { lat: p.lat, lng: p.lng }])
-  )
+  const livePositions = useMemo(() => {
+    const connectedIds = new Set(devices.map((device) => device.udid))
+    return Object.fromEntries(
+      Object.entries(positions).filter(([id]) => connectedIds.size === 0 || connectedIds.has(id))
+    )
+  }, [devices, positions])
 
   function panelProps(): PanelProps {
     const device = focusedDeviceId ? devices.find((d) => d.udid === focusedDeviceId) ?? null : null
@@ -122,7 +122,7 @@ export default function MobileApp() {
       device,
       deviceState: (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle',
       point: focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null,
-      livePosition: position ? { lat: position.lat, lng: position.lng } : null,
+      livePosition: position ?? null,
       liveSpeedMps: position?.speedMps ?? null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
@@ -260,7 +260,7 @@ export default function MobileApp() {
         {/* Panel content */}
         <div className="mapp-panel-body">
           {focusedDeviceId
-            ? <Panel {...panelProps()} />
+            ? <Suspense fallback={<Text c="dimmed" size="sm">{t('generic.working')}</Text>}><Panel {...panelProps()} /></Suspense>
             : <Text className="mapp-hint" c="dimmed" size="sm">{t('panel.hint.select_device')}</Text>
           }
         </div>

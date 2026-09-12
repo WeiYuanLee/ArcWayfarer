@@ -137,6 +137,7 @@ export const STRINGS = {
   'mode.multi_stop': { zh: '多點巡迴', en: 'Multi-stop' },
   'mode.random_walk': { zh: '隨機漫遊', en: 'Random Walk' },
   'mode.joystick': { zh: '搖桿', en: 'Joystick' },
+  'mode.locked_running': { zh: '裝置執行中，請先停止任務後再切換模組。', en: 'Stop the current task before switching modules.' },
 
   // Nav mode select
   'navmode.walk': { zh: '走路', en: 'Walk' },

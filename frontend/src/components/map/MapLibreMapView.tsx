@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from 'react'
 import {
   Map as MapLibreMap,
   Marker as MapLibreMarker,
@@ -10,11 +10,11 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapOverlay } from '../panels/types'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
 import { API_BASE_URL, authHeaders } from '../../services/api'
+import { routeArrowCount, ROUTE_ARROW_FRAME_INTERVAL_MS } from './mapPerformance'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
 const EARTH_RADIUS_M = 6371000
-const ARROW_SPACING_METERS = 180
 const EMPTY_LINE_FEATURE_COLLECTION: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
   type: 'FeatureCollection',
   features: [],
@@ -324,14 +324,17 @@ export function MapLibreMapView({
   const [mapLoaded, setMapLoaded] = useState(false)
   const [isTileLoading, setIsTileLoading] = useState(false)
   const [cameraRevision, setCameraRevision] = useState(0)
+  const [isCameraMoving, setIsCameraMoving] = useState(false)
   const contextLostRef = useRef(false)
 
   const selectedMarkerRef = useRef<MapLibreMarker | null>(null)
   const isDraggingSelectedPointRef = useRef(false)
   const liveMarkersRef = useRef<Map<string, MapLibreMarker>>(new Map())
+  const liveMarkerFocusRef = useRef<Map<string, boolean>>(new Map())
   const overlayMarkersRef = useRef<Map<string, MapLibreMarker>>(new Map())
   const overlayArrowsRef = useRef<Map<string, MapLibreMarker[]>>(new Map())
   const arrowAnimationFramesRef = useRef<Map<string, number>>(new Map())
+  const arrowAnimationGenerationsRef = useRef<Map<string, number>>(new Map())
   const draggingOverlayIdsRef = useRef<Set<string>>(new Set())
 
   const trackedSourcesRef = useRef<Set<string>>(new Set())
@@ -476,6 +479,9 @@ export function MapLibreMapView({
       visualizePitch: false,
     })
     map.addControl(navControl, 'top-right')
+    containerRef.current?.querySelectorAll('.maplibregl-ctrl-zoom-in, .maplibregl-ctrl-zoom-out').forEach((control) => {
+      control.classList.add('map-control-button')
+    })
 
     map.addControl(
       new AttributionControl({
@@ -519,23 +525,16 @@ export function MapLibreMapView({
     // the tile badge leaves the badge permanently visible during navigation.
     // The initial map load is the only loading state we surface here.
 
+    map.on('movestart', () => setIsCameraMoving(true))
     map.on('moveend', () => {
       const center = map.getCenter()
       const viewport = { lat: center.lat, lng: center.lng, zoom: map.getZoom() }
       viewportRef.current = viewport
       onViewportChangeRef.current?.(viewport)
+      setCameraRevision((revision) => revision + 1)
+      setIsCameraMoving(false)
     })
-
-    let animationFrame: number | null = null
-    const refreshProjectedRoute = () => {
-      if (animationFrame !== null) return
-      animationFrame = requestAnimationFrame(() => {
-        animationFrame = null
-        setCameraRevision((revision) => revision + 1)
-      })
-    }
-    map.on('move', refreshProjectedRoute)
-    map.on('resize', refreshProjectedRoute)
+    map.on('resize', () => setCameraRevision((revision) => revision + 1))
 
 
     map.on('click', (e) => {
@@ -557,11 +556,11 @@ export function MapLibreMapView({
     })
 
     return () => {
-      if (animationFrame !== null) cancelAnimationFrame(animationFrame)
       for (const frameId of arrowAnimationFramesRef.current.values()) {
         cancelAnimationFrame(frameId)
       }
       arrowAnimationFramesRef.current.clear()
+      arrowAnimationGenerationsRef.current.clear()
       for (const arrows of overlayArrowsRef.current.values()) {
         arrows.forEach((arrow) => arrow.remove())
       }
@@ -659,6 +658,7 @@ export function MapLibreMapView({
       if (!activeIds.has(id)) {
         marker.remove()
         liveMarkersRef.current.delete(id)
+        liveMarkerFocusRef.current.delete(id)
       }
     }
 
@@ -673,9 +673,13 @@ export function MapLibreMapView({
           .setLngLat([pos.lng, pos.lat])
           .addTo(map)
         liveMarkersRef.current.set(id, marker)
+        liveMarkerFocusRef.current.set(id, isFocused)
       } else {
         marker.setLngLat([pos.lng, pos.lat])
-        updateLiveMarkerElement(marker.getElement(), isFocused)
+        if (liveMarkerFocusRef.current.get(id) !== isFocused) {
+          updateLiveMarkerElement(marker.getElement(), isFocused)
+          liveMarkerFocusRef.current.set(id, isFocused)
+        }
       }
     }
   }, [livePositions, focusedDeviceId])
@@ -948,7 +952,10 @@ export function MapLibreMapView({
         removeSourceSafe(activeSourceId)
       }
 
-      const arrowPath = activePathSource && activePathSource.length >= 2 ? activePathSource : drawnPath
+      // Moving arrows represent an actively running route only.  A preview
+      // path should remain static and must not start an animation loop.
+      const hasActiveArrowPath = Boolean(activePathSource && activePathSource.length >= 2)
+      const arrowPath = hasActiveArrowPath ? activePathSource! : drawnPath
       const segmentEnds: number[] = []
       let totalLength = 0
       for (let index = 0; index < arrowPath.length - 1; index++) {
@@ -956,8 +963,8 @@ export function MapLibreMapView({
         segmentEnds.push(totalLength)
       }
 
-      if (totalLength >= 40 && !isRouteDragging) {
-        const arrowCount = Math.max(1, Math.floor(totalLength / ARROW_SPACING_METERS))
+      const arrowCount = routeArrowCount(totalLength)
+      if (arrowCount > 0 && hasActiveArrowPath && !isRouteDragging) {
         const arrows = overlayArrowsRef.current.get(deviceId) ?? []
         while (arrows.length < arrowCount) {
           arrows.push(
@@ -973,15 +980,22 @@ export function MapLibreMapView({
 
         const currentFrame = arrowAnimationFramesRef.current.get(deviceId)
         if (currentFrame) cancelAnimationFrame(currentFrame)
+        const generation = (arrowAnimationGenerationsRef.current.get(deviceId) ?? 0) + 1
+        arrowAnimationGenerationsRef.current.set(deviceId, generation)
+        let lastAnimationAt = -Infinity
         const animate = (timestamp: number) => {
-          const cycleMs = 10_000
-          const baseProgress = (timestamp % cycleMs) / cycleMs
-          arrows.forEach((arrow, index) => {
-            const sample = samplePathAtProgress(arrowPath, segmentEnds, totalLength, (baseProgress + index / arrowCount) % 1)
-            arrow.setLngLat([sample.point.lng, sample.point.lat])
-            const triangle = arrow.getElement().firstElementChild as HTMLElement | null
-            if (triangle) triangle.style.transform = `rotate(${sample.bearing}deg)`
-          })
+          if (arrowAnimationGenerationsRef.current.get(deviceId) !== generation) return
+          if (timestamp - lastAnimationAt >= ROUTE_ARROW_FRAME_INTERVAL_MS) {
+            lastAnimationAt = timestamp
+            const cycleMs = 10_000
+            const baseProgress = (timestamp % cycleMs) / cycleMs
+            arrows.forEach((arrow, index) => {
+              const sample = samplePathAtProgress(arrowPath, segmentEnds, totalLength, (baseProgress + index / arrowCount) % 1)
+              arrow.setLngLat([sample.point.lng, sample.point.lat])
+              const triangle = arrow.getElement().firstElementChild as HTMLElement | null
+              if (triangle) triangle.style.transform = `rotate(${sample.bearing}deg)`
+            })
+          }
           arrowAnimationFramesRef.current.set(deviceId, requestAnimationFrame(animate))
         }
         arrowAnimationFramesRef.current.set(deviceId, requestAnimationFrame(animate))
@@ -991,6 +1005,7 @@ export function MapLibreMapView({
         const frameId = arrowAnimationFramesRef.current.get(deviceId)
         if (frameId) cancelAnimationFrame(frameId)
         arrowAnimationFramesRef.current.delete(deviceId)
+        arrowAnimationGenerationsRef.current.set(deviceId, (arrowAnimationGenerationsRef.current.get(deviceId) ?? 0) + 1)
       }
 
       // Circle Overlay is rendered by the projected pass below.  It supports
@@ -1040,10 +1055,9 @@ export function MapLibreMapView({
   // affected renderer. Project circles, complete routes, and active legs
   // through the same MapLibre camera as a DOM fallback. Keeping these as
   // separate passes matches Leaflet and preserves their visual stacking.
-  const projectedRouteOverlay = (() => {
+  const projectedRouteOverlay = useMemo(() => {
     const map = mapRef.current
     if (!map || !mapLoaded || contextLostRef.current) return null
-    void cameraRevision
     const { clientWidth, clientHeight } = map.getContainer()
     if (!clientWidth || !clientHeight) return null
 
@@ -1090,7 +1104,7 @@ export function MapLibreMapView({
         className="maplibre-projected-route-overlay maplibre-projected-map-overlay"
         viewBox={`0 0 ${clientWidth} ${clientHeight}`}
         preserveAspectRatio="none"
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1, visibility: isCameraMoving ? 'hidden' : 'visible' }}
       >
         {circles.map((circle) => (
           <polygon
@@ -1133,7 +1147,7 @@ export function MapLibreMapView({
         ))}
       </svg>
     )
-  })()
+  }, [cameraRevision, isCameraMoving, mapLoaded, overlays])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>

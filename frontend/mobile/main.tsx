@@ -1,8 +1,7 @@
-import { FormEvent, useState } from 'react'
+import { lazy, Suspense, type FormEvent, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Alert, Button, Paper, Stack, Text, TextInput, Title } from '@mantine/core'
 import { IconAlertCircle, IconLink } from '@tabler/icons-react'
-import App from '../src/MobileApp'
 import { I18nProvider } from '../src/i18n'
 import { AppProviders } from '../src/theme/AppProviders'
 import '@mantine/core/styles.css'
@@ -13,6 +12,7 @@ import '../src/styles.css'
 import '../src/mobile.css'
 
 const SESSION_KEY = 'arcwayfarer.mobile.session'
+const MobileApp = lazy(() => import('../src/MobileApp'))
 
 function PairingScreen({ token, onPaired }: { token: string | null; onPaired: () => void }) {
   const [pin, setPin] = useState('')
@@ -78,7 +78,9 @@ function MobileRoot() {
   const token = new URLSearchParams(location.hash.slice(1)).get('pair')
   return (
     <AppProviders>
-      {paired ? <I18nProvider><App /></I18nProvider> : <PairingScreen token={token} onPaired={() => setPaired(true)} />}
+      {paired
+        ? <I18nProvider><Suspense fallback={<main className="mobile-pairing">載入控制器中...</main>}><MobileApp /></Suspense></I18nProvider>
+        : <PairingScreen token={token} onPaired={() => setPaired(true)} />}
     </AppProviders>
   )
 }

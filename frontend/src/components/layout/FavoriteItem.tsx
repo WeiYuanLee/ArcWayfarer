@@ -16,7 +16,13 @@ export function FavoriteItem({ favorite, sortMode, groups, onSelect, onUpdate, o
   const [notes, setNotes] = useState(favorite.notes)
   const [saving, setSaving] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: favorite.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    contentVisibility: 'auto' as const,
+    containIntrinsicSize: '72px',
+  }
   const resetAndEdit = () => { setName(favorite.name); setGroup(favorite.group); setNotes(favorite.notes); setEditing(true) }
   async function handleSave() {
     if (!name.trim()) return

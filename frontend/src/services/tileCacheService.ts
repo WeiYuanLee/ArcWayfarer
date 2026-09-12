@@ -160,6 +160,9 @@ class InMemoryTileCache {
 const memoryFallback = new InMemoryTileCache()
 let isIndexedDbAvailable: boolean | null = null
 let dbPromise: Promise<IDBDatabase> | null = null
+const pendingAccessTouches = new Map<string, number>()
+let accessTouchTimer: ReturnType<typeof setTimeout> | null = null
+let prunePromise: Promise<number> | null = null
 
 function hasIndexedDB(): boolean {
   return typeof indexedDB !== 'undefined' && indexedDB !== null
@@ -265,7 +268,7 @@ export async function getCachedTile(
     }
 
     // Touch lastAccessed for LRU ordering
-    touchTileAccess(db, key, now).catch(() => {})
+    scheduleTileAccessTouch(db, key, now)
 
     // Promote to L1 RAM cache
     l1MemoryCache.set(key, record.blob, record.timestamp)
@@ -283,18 +286,37 @@ export async function getCachedTile(
 /**
  * Updates the lastAccessed timestamp of a tile for LRU tracking.
  */
-async function touchTileAccess(db: IDBDatabase, key: string, timestamp: number): Promise<void> {
+function scheduleTileAccessTouch(db: IDBDatabase, key: string, timestamp: number): void {
+  pendingAccessTouches.set(key, timestamp)
+  if (accessTouchTimer !== null) return
+  accessTouchTimer = setTimeout(() => {
+    accessTouchTimer = null
+    void flushTileAccessTouches(db)
+  }, 5_000)
+}
+
+async function flushTileAccessTouches(db: IDBDatabase): Promise<void> {
+  if (!pendingAccessTouches.size) return
+  const touches = [...pendingAccessTouches.entries()]
+  pendingAccessTouches.clear()
   try {
-    const tx = db.transaction(STORE_TILES, 'readwrite')
-    const store = tx.objectStore(STORE_TILES)
-    const getReq = store.get(key)
-    getReq.onsuccess = () => {
-      const item = getReq.result as CachedTileRecord | undefined
-      if (item) {
-        item.lastAccessed = timestamp
-        store.put(item)
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_TILES, 'readwrite')
+      const store = tx.objectStore(STORE_TILES)
+      for (const [key, timestamp] of touches) {
+        const getReq = store.get(key)
+        getReq.onsuccess = () => {
+          const item = getReq.result as CachedTileRecord | undefined
+          if (item) {
+            item.lastAccessed = timestamp
+            store.put(item)
+          }
+        }
       }
-    }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => resolve()
+      tx.onabort = () => resolve()
+    })
   } catch {
     // Ignore touch failures
   }
@@ -404,7 +426,15 @@ export async function deleteCachedTile(key: string): Promise<void> {
 /**
  * Prunes oldest accessed tiles until total size drops below targetBytes.
  */
-export async function pruneLruTiles(targetBytes: number): Promise<number> {
+export function pruneLruTiles(targetBytes: number): Promise<number> {
+  if (prunePromise) return prunePromise
+  prunePromise = performPruneLruTiles(targetBytes).finally(() => {
+    prunePromise = null
+  })
+  return prunePromise
+}
+
+async function performPruneLruTiles(targetBytes: number): Promise<number> {
   try {
     const db = await openDatabase()
     let currentTotal = await getTotalCacheSize()
@@ -447,6 +477,9 @@ export async function pruneLruTiles(targetBytes: number): Promise<number> {
  */
 export async function clearTileCache(): Promise<void> {
   l1MemoryCache.clear()
+  pendingAccessTouches.clear()
+  if (accessTouchTimer !== null) clearTimeout(accessTouchTimer)
+  accessTouchTimer = null
   try {
     const db = await openDatabase()
     await new Promise<void>((resolve, reject) => {

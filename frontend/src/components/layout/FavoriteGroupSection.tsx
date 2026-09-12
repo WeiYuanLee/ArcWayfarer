@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ActionIcon, Collapse, Group, Stack, Text, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Collapse, Group, Stack, Text, Tooltip } from '@mantine/core'
 import { IconChevronRight } from '@tabler/icons-react'
 import { useT } from '../../i18n'
 import type { Favorite } from '../../services/api'
@@ -12,7 +12,9 @@ type Props = { groupName: string; items: Favorite[]; sortMode: SortMode; allGrou
 export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, onSelect, onUpdate, onDelete }: Props) {
   const t = useT()
   const [collapsed, setCollapsed] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(100)
   const label = groupName || t('favorites.ungrouped')
+  const visibleItems = items.slice(0, visibleCount)
   return (
     <Stack gap="xs">
       <Group gap="xs" wrap="nowrap">
@@ -25,9 +27,14 @@ export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, on
         <Text size="xs" c="dimmed">{items.length}</Text>
       </Group>
       <Collapse in={!collapsed}>
-        <SortableContext items={items.map((favorite) => favorite.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={visibleItems.map((favorite) => favorite.id)} strategy={verticalListSortingStrategy}>
           <Stack gap="xs">
-            {items.map((favorite) => <FavoriteItem key={favorite.id} favorite={favorite} sortMode={sortMode} groups={allGroups} onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} />)}
+            {visibleItems.map((favorite) => <FavoriteItem key={favorite.id} favorite={favorite} sortMode={sortMode} groups={allGroups} onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} />)}
+            {visibleItems.length < items.length && (
+              <Button variant="subtle" size="xs" onClick={() => setVisibleCount((count) => count + 100)}>
+                顯示更多（尚有 {items.length - visibleItems.length} 筆）
+              </Button>
+            )}
           </Stack>
         </SortableContext>
       </Collapse>

@@ -23,7 +23,7 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite }: Props) {
 
   useEffect(() => {
     if (isOpen) {
-      refresh()
+      void refresh()
       setTimeout(() => searchRef.current?.focus(), 80)
     }
   }, [isOpen, refresh])

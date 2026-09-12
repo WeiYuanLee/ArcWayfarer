@@ -6,6 +6,7 @@ import type { MapOverlay } from '../panels/types'
 import { createCachedTileLayer } from './CachedTileLayer'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
 import { API_BASE_URL, authHeaders } from '../../services/api'
+import { routeArrowCount, ROUTE_ARROW_FRAME_INTERVAL_MS } from './mapPerformance'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -55,8 +56,6 @@ function bearingDegrees(a: LatLng, b: LatLng): number {
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
-
-const ARROW_SPACING_METERS = 180
 
 type PathSample = { point: LatLng; bearing: number }
 
@@ -166,6 +165,7 @@ export function LeafletMapView({
   const [isTileLoading, setIsTileLoading] = useState(false)
   const selectedPointMarkerRef = useRef<L.Marker | null>(null)
   const liveMarkersRef = useRef<Map<string, L.Marker>>(new Map())
+  const liveMarkerFocusRef = useRef<Map<string, boolean>>(new Map())
   const overlayMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayMarkerIconKeysRef = useRef<Map<string, string>>(new Map())
   const draggingMarkerIdsRef = useRef<Set<string>>(new Set())
@@ -177,6 +177,7 @@ export function LeafletMapView({
   const overlayActivePathsRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlayActivePathKeysRef = useRef<Map<string, string>>(new Map())
   const arrowAnimationFramesRef = useRef<Map<string, number>>(new Map())
+  const arrowAnimationGenerationsRef = useRef<Map<string, number>>(new Map())
   const overlayCirclesRef = useRef<Map<string, L.Circle>>(new Map())
   const overlayLinksRef = useRef<Map<string, L.Polyline>>(new Map())
   const overlaysRef = useRef(overlays)
@@ -205,6 +206,9 @@ export function LeafletMapView({
       viewport?.zoom ?? DEFAULT_ZOOM
     )
     mapRef.current = map
+    containerRef.current.querySelectorAll('.leaflet-control-zoom a').forEach((control) => {
+      control.classList.add('map-control-button')
+    })
 
     map.createPane('routeLinePane').style.zIndex = '410'
     map.createPane('routeArrowPane').style.zIndex = '420'
@@ -248,6 +252,7 @@ export function LeafletMapView({
         cancelAnimationFrame(frameId)
       }
       arrowAnimationFramesRef.current.clear()
+      arrowAnimationGenerationsRef.current.clear()
       map.remove()
       mapRef.current = null
 
@@ -257,6 +262,7 @@ export function LeafletMapView({
       // ones and skip adding the markers/routes to the replacement map.
       selectedPointMarkerRef.current = null
       liveMarkersRef.current.clear()
+      liveMarkerFocusRef.current.clear()
       overlayMarkersRef.current.clear()
       overlayMarkerIconKeysRef.current.clear()
       draggingMarkerIdsRef.current.clear()
@@ -389,6 +395,7 @@ export function LeafletMapView({
       if (!activeIds.has(id)) {
         marker.remove()
         liveMarkersRef.current.delete(id)
+        liveMarkerFocusRef.current.delete(id)
       }
     }
 
@@ -403,9 +410,13 @@ export function LeafletMapView({
           pane: 'livePositionPane',
         }).addTo(map)
         liveMarkersRef.current.set(id, marker)
+        liveMarkerFocusRef.current.set(id, isFocused)
       } else {
         marker.setLatLng([pos.lat, pos.lng])
-        marker.setIcon(makeLiveMarkerIcon(isFocused))
+        if (liveMarkerFocusRef.current.get(id) !== isFocused) {
+          marker.setIcon(makeLiveMarkerIcon(isFocused))
+          liveMarkerFocusRef.current.set(id, isFocused)
+        }
         marker.setZIndexOffset(isFocused ? 1100 : 900)
       }
     }
@@ -654,7 +665,10 @@ export function LeafletMapView({
           }
         }
 
-        const arrowPath = activePathSource && activePathSource.length >= 2 ? activePathSource : overlay.path
+        // Moving arrows represent an actively running route only.  A preview
+        // path should remain static and must not start an animation loop.
+        const hasActiveArrowPath = Boolean(activePathSource && activePathSource.length >= 2)
+        const arrowPath = hasActiveArrowPath ? activePathSource! : overlay.path
         const segmentEnds: number[] = []
         let totalLength = 0
         for (let i = 0; i < arrowPath.length - 1; i++) {
@@ -662,8 +676,8 @@ export function LeafletMapView({
           segmentEnds.push(totalLength)
         }
 
-        if (totalLength >= 40) {
-          const arrowCount = Math.max(1, Math.floor(totalLength / ARROW_SPACING_METERS))
+        const arrowCount = routeArrowCount(totalLength)
+        if (arrowCount > 0 && hasActiveArrowPath) {
           const existingArrows = overlayArrowsRef.current.get(deviceId) ?? []
           while (existingArrows.length < arrowCount) {
             const arrow = L.marker([0, 0], {
@@ -679,14 +693,22 @@ export function LeafletMapView({
           overlayArrowsRef.current.set(deviceId, existingArrows)
 
           const speedMultiplier = 1 / 4
+          const generation = (arrowAnimationGenerationsRef.current.get(deviceId) ?? 0) + 1
+          arrowAnimationGenerationsRef.current.set(deviceId, generation)
+          let lastAnimationAt = -Infinity
           const animate = (timestamp: number) => {
-            const cycleMs = 2500 / speedMultiplier
-            const baseProgress = (timestamp % cycleMs) / cycleMs
-            for (let i = 0; i < existingArrows.length; i++) {
-              const fraction = (baseProgress + i / arrowCount) % 1
-              const sample = samplePathAtProgress(arrowPath, segmentEnds, totalLength, fraction)
-              existingArrows[i].setLatLng([sample.point.lat, sample.point.lng])
-              existingArrows[i].setIcon(makeArrowIcon(sample.bearing))
+            if (arrowAnimationGenerationsRef.current.get(deviceId) !== generation) return
+            if (timestamp - lastAnimationAt >= ROUTE_ARROW_FRAME_INTERVAL_MS) {
+              lastAnimationAt = timestamp
+              const cycleMs = 2500 / speedMultiplier
+              const baseProgress = (timestamp % cycleMs) / cycleMs
+              for (let i = 0; i < existingArrows.length; i++) {
+                const fraction = (baseProgress + i / arrowCount) % 1
+                const sample = samplePathAtProgress(arrowPath, segmentEnds, totalLength, fraction)
+                existingArrows[i].setLatLng([sample.point.lat, sample.point.lng])
+                const triangle = existingArrows[i].getElement()?.firstElementChild as HTMLElement | null
+                if (triangle) triangle.style.transform = `rotate(${sample.bearing}deg)`
+              }
             }
             arrowAnimationFramesRef.current.set(deviceId, requestAnimationFrame(animate))
           }
@@ -694,6 +716,13 @@ export function LeafletMapView({
           const currentFrame = arrowAnimationFramesRef.current.get(deviceId)
           if (currentFrame) cancelAnimationFrame(currentFrame)
           arrowAnimationFramesRef.current.set(deviceId, requestAnimationFrame(animate))
+        } else {
+          overlayArrowsRef.current.get(deviceId)?.forEach((arrow) => arrow.remove())
+          overlayArrowsRef.current.delete(deviceId)
+          const frameId = arrowAnimationFramesRef.current.get(deviceId)
+          if (frameId) cancelAnimationFrame(frameId)
+          arrowAnimationFramesRef.current.delete(deviceId)
+          arrowAnimationGenerationsRef.current.set(deviceId, (arrowAnimationGenerationsRef.current.get(deviceId) ?? 0) + 1)
         }
       } else {
         overlayPathCasingsRef.current.get(deviceId)?.remove()
@@ -711,6 +740,7 @@ export function LeafletMapView({
         const frameId = arrowAnimationFramesRef.current.get(deviceId)
         if (frameId) cancelAnimationFrame(frameId)
         arrowAnimationFramesRef.current.delete(deviceId)
+        arrowAnimationGenerationsRef.current.set(deviceId, (arrowAnimationGenerationsRef.current.get(deviceId) ?? 0) + 1)
       }
 
       // `circle` is retained for older panels. A Flower preview publishes a

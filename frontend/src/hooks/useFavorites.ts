@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { addFavoriteGroup, deleteFavorite, listFavoriteGroups, listFavorites, reorderFavorites, updateFavorite, type Favorite } from '../services/api'
 
 export type SortMode = 'manual' | 'name' | 'date'
@@ -25,17 +25,15 @@ export function useFavorites() {
   pendingDeletesRef.current = pendingDeletes
 
   const refresh = useCallback(() => {
+    setLoading(true)
     return Promise.all([listFavorites(), listFavoriteGroups()])
       .then(([nextFavorites, nextGroups]) => {
         setFavorites(nextFavorites)
         setSavedGroups(nextGroups)
       })
       .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
-
-  useEffect(() => {
-    refresh().finally(() => setLoading(false))
-  }, [refresh])
 
   const displayed = sortFavorites(favorites, sortMode).filter((f) => {
     if (!search.trim()) return true

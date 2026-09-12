@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from './components/layout/TopBar'
 import { ControlsOverlay } from './components/layout/ControlsOverlay'
 import { IconRail } from './components/layout/IconRail'
 import { StatusBar } from './components/layout/StatusBar'
-import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/common/Toast'
 import { MapView } from './components/map/MapView'
 import type { Mode } from './components/ModeSelector'
@@ -11,14 +10,17 @@ import { type MapOverlay, type PanelProps } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
-import { UpdateModal } from './components/common/UpdateModal'
 import { clearLocation } from './services/api'
 import { useHiddenDevices } from './hooks/useHiddenDevices'
 import { useDeviceNames } from './hooks/useDeviceNames'
-import { DeviceManagerModal } from './components/common/DeviceManagerModal'
 import { showToast } from './components/common/Toast'
 import { useT } from './i18n'
 import { normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
+import { useDevicePanelCallbacks } from './hooks/useDevicePanelCallbacks'
+
+const CommandPalette = lazy(() => import('./components/layout/CommandPalette').then((module) => ({ default: module.CommandPalette })))
+const UpdateModal = lazy(() => import('./components/common/UpdateModal').then((module) => ({ default: module.UpdateModal })))
+const DeviceManagerModal = lazy(() => import('./components/common/DeviceManagerModal').then((module) => ({ default: module.DeviceManagerModal })))
 
 const WIFI_DISCOVERY_STORAGE_KEY = 'arcwayfarer.include-wifi-discovery'
 const MAX_USABLE_DEVICES = 3
@@ -39,6 +41,7 @@ export default function App() {
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
+  const [loadedDialogs, setLoadedDialogs] = useState({ command: false, update: false, devices: false })
   const [includeWifi, setIncludeWifi] = useState(readWifiDiscoveryPreference)
   const [deviceManagerOpen, setDeviceManagerOpen] = useState(false)
   const [hidingDeviceId, setHidingDeviceId] = useState<string | null>(null)
@@ -48,6 +51,9 @@ export default function App() {
   const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
   const { hiddenDevices, hideDevice, unhideDevice } = useHiddenDevices()
   const { deviceNames, getDeviceName, setDeviceName } = useDeviceNames()
+  const isDeviceBusy = useCallback((udid: string) => (
+    (states[udid] ?? 'idle') !== 'idle' || Boolean(activeTasks[udid])
+  ), [activeTasks, states])
   const {
     checkResult,
     loading: loadingUpdate,
@@ -59,6 +65,26 @@ export default function App() {
     currentVersion,
     latestVersion,
   } = useUpdateChecker()
+
+  const markDialogLoaded = useCallback((dialog: keyof typeof loadedDialogs) => {
+    setLoadedDialogs((current) => current[dialog] ? current : { ...current, [dialog]: true })
+  }, [])
+  const handleOpenCommandPalette = useCallback(() => {
+    markDialogLoaded('command')
+    setCmdPaletteOpen(true)
+  }, [markDialogLoaded])
+  const handleOpenDeviceManager = useCallback(() => {
+    markDialogLoaded('devices')
+    setDeviceManagerOpen(true)
+  }, [markDialogLoaded])
+  const handleOpenUpdateModal = useCallback(() => {
+    markDialogLoaded('update')
+    openUpdateModal()
+  }, [markDialogLoaded, openUpdateModal])
+
+  useEffect(() => {
+    if (updateModalOpen) markDialogLoaded('update')
+  }, [markDialogLoaded, updateModalOpen])
 
   const suppressedDeviceIds = useMemo(
     () => new Set([
@@ -99,6 +125,7 @@ export default function App() {
   const cancelPointRequest = useCallback(() => {
     pendingPickRef.current = null
   }, [])
+  const getDevicePanelCallbacks = useDevicePanelCallbacks(setPointByDevice, requestPointForDevice)
   const handleIncludeWifiChange = useCallback((enabled: boolean) => {
     setIncludeWifi(enabled)
     try {
@@ -113,25 +140,26 @@ export default function App() {
   }, [])
   const handleFavoriteSelect = useCallback((lat: number, lng: number) => {
     requestFlyTo(lat, lng)
-    if (focusedDeviceId) {
+    if (focusedDeviceId && !isDeviceBusy(focusedDeviceId)) {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
-  }, [focusedDeviceId, requestFlyTo])
+  }, [focusedDeviceId, isDeviceBusy, requestFlyTo])
   const handleSelectedPointDragEnd = useCallback((lat: number, lng: number) => {
-    if (!focusedDeviceId) return
+    if (!focusedDeviceId || isDeviceBusy(focusedDeviceId)) return
     setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
-  }, [focusedDeviceId])
+  }, [focusedDeviceId, isDeviceBusy])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        markDialogLoaded('command')
         setCmdPaletteOpen((prev) => !prev)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [markDialogLoaded])
 
   function handleMapClick(lat: number, lng: number) {
     const pending = pendingPickRef.current
@@ -139,12 +167,12 @@ export default function App() {
       pendingPickRef.current = null
       // A pending coordinate field belongs to the device that focused it.  Do
       // not let a stale field on another device consume this map click.
-      if (pending.deviceId === focusedDeviceId) {
+      if (pending.deviceId === focusedDeviceId && !isDeviceBusy(pending.deviceId)) {
         pending.onPick(lat, lng)
         return
       }
     }
-    if (focusedDeviceId) {
+    if (focusedDeviceId && !isDeviceBusy(focusedDeviceId)) {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
   }
@@ -175,6 +203,13 @@ export default function App() {
   }, [activeTasks])
 
   function handleModeChange(udid: string, mode: Mode) {
+    // A running task owns the selected module and its map inputs.  Guard here
+    // as well as in the selector so command-palette and programmatic callers
+    // cannot switch a busy device into another workflow.
+    if (isDeviceBusy(udid)) {
+      showToast(t('mode.locked_running'))
+      return
+    }
     // A mode owns its temporary map input.  Clear it here rather than relying on
     // panel unmount cleanup, so both map engines receive the same empty state.
     const currentMode = modeByDevice[udid] ?? 'teleport'
@@ -217,19 +252,21 @@ export default function App() {
         handleMapClick(lat, lng)
         return
       }
-      if (focusedDeviceId) {
+      if (focusedDeviceId && !isDeviceBusy(focusedDeviceId)) {
         setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
       }
     },
-    [requestFlyTo, focusedDeviceId]
+    [requestFlyTo, focusedDeviceId, isDeviceBusy]
   )
 
-  const connectedIds = new Set(visibleDevices.map((d) => d.udid))
-  const livePositions = Object.fromEntries(
-    Object.entries(positions)
-      .filter(([udid]) => connectedIds.size === 0 || connectedIds.has(udid))
-      .map(([udid, p]) => [udid, { lat: p.lat, lng: p.lng }])
-  )
+  const livePositions = useMemo(() => {
+    const connectedIds = new Set(visibleDevices.map((device) => device.udid))
+    return Object.fromEntries(
+      Object.entries(positions)
+        .filter(([udid]) => connectedIds.size === 0 || connectedIds.has(udid))
+        .map(([udid, position]) => [udid, position])
+    )
+  }, [positions, visibleDevices])
 
   const setOverlayForDevice = useCallback((udid: string, overlay: MapOverlay) => {
     setOverlaysByDevice((prev) => {
@@ -259,12 +296,13 @@ export default function App() {
   function panelPropsFor(udid: string): PanelProps {
     const device = displayDevices.find((d) => d.udid === udid) ?? null
     const position = positions[udid]
+    const pointCallbacks = getDevicePanelCallbacks(udid)
     return {
       deviceId: udid,
       device,
       deviceState: states[udid] ?? 'idle',
       point: pointByDevice[udid] ?? null,
-      livePosition: position ? { lat: position.lat, lng: position.lng } : null,
+      livePosition: position ?? null,
       liveSpeedMps: position?.speedMps ?? null,
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
@@ -272,10 +310,10 @@ export default function App() {
       activeTask: activeTasks[udid] ?? null,
       restoredAt: restoredAt[udid],
       connected,
-      setPoint: (point) => setPointByDevice((prev) => ({ ...prev, [udid]: point })),
-      requestPoint: (onPick) => requestPointForDevice(udid, onPick),
+      setPoint: pointCallbacks.setPoint,
+      requestPoint: pointCallbacks.requestPoint,
       cancelPointRequest,
-      clearPoint: () => setPointByDevice((prev) => ({ ...prev, [udid]: null })),
+      clearPoint: pointCallbacks.clearPoint,
       setOverlay: getSetOverlayForDevice(udid),
       requestFlyTo,
       sendWs: send,
@@ -285,6 +323,7 @@ export default function App() {
 
   const focusedPosition = focusedDeviceId ? positions[focusedDeviceId] ?? null : null
   const focusedDeviceState = (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle'
+  const isFocusedModeChangeLocked = Boolean(focusedDeviceId && isDeviceBusy(focusedDeviceId))
   const focusedPoint = focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null
   const isMapEngineSwitchLocked = Object.values(states).some((state) =>
     ['navigating', 'looping', 'random_walk', 'joystick', 'paused'].includes(state) || state.startsWith('paused:')
@@ -344,13 +383,13 @@ export default function App() {
         includeWifi={includeWifi}
         onIncludeWifiChange={handleIncludeWifiChange}
         discoveryDiagnostic={discoveryDiagnostic}
-        onOpenDeviceManager={() => setDeviceManagerOpen(true)}
-        onOpenCmdPalette={() => setCmdPaletteOpen(true)}
+        onOpenDeviceManager={handleOpenDeviceManager}
+        onOpenCmdPalette={handleOpenCommandPalette}
         version={currentVersion}
         hasUpdate={hasUpdate}
         latestVersion={latestVersion}
         loadingUpdate={loadingUpdate}
-        onOpenUpdateModal={openUpdateModal}
+        onOpenUpdateModal={handleOpenUpdateModal}
       />
       <div className="app-body">
         <MapView
@@ -369,6 +408,7 @@ export default function App() {
             modeByDevice={modeByDevice}
             onModeChange={handleModeChange}
             panelPropsFor={panelPropsFor}
+            modeChangeLocked={isFocusedModeChangeLocked}
           />
           <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} />
           <div className="overlay-status-dock">
@@ -383,41 +423,43 @@ export default function App() {
         </MapView>
       </div>
 
-      <CommandPalette
-        isOpen={cmdPaletteOpen}
-        onClose={() => setCmdPaletteOpen(false)}
-        onSelectMode={(mode) => {
-          if (focusedDeviceId) handleModeChange(focusedDeviceId, mode)
-        }}
-        onFlyTo={requestFlyTo}
-        onSelectPlace={handlePlaceSelect}
-        onRefreshDevices={refreshDevices}
-        onOpenUpdateModal={openUpdateModal}
-      />
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={closeUpdateModal}
-        checkResult={checkResult}
-        loading={loadingUpdate}
-        onRecheck={recheckUpdates}
-      />
-      <DeviceManagerModal
-        isOpen={deviceManagerOpen}
-        onClose={() => setDeviceManagerOpen(false)}
-        devices={discoveredDevices}
-        hiddenDevices={hiddenDevices}
-        deviceNames={deviceNames}
-        usableDeviceIds={usableDeviceIds}
-        deviceStates={states}
-        hidingDeviceId={hidingDeviceId}
-        restoringDeviceId={restoringDeviceId}
-        onHideDevice={handleHideDevice}
-        onUnhideDevice={unhideDevice}
-        onRestoreDevice={handleRestoreBackgroundDevice}
-        onSetDeviceName={setDeviceName}
-        isUnhideDisabled={isUnhideDisabled}
-        unhideDisabledReason={() => undefined}
-      />
+      <Suspense fallback={null}>
+        {loadedDialogs.command && <CommandPalette
+          isOpen={cmdPaletteOpen}
+          onClose={() => setCmdPaletteOpen(false)}
+          onSelectMode={(mode) => {
+            if (focusedDeviceId) handleModeChange(focusedDeviceId, mode)
+          }}
+          onFlyTo={requestFlyTo}
+          onSelectPlace={handlePlaceSelect}
+          onRefreshDevices={refreshDevices}
+          onOpenUpdateModal={handleOpenUpdateModal}
+        />}
+        {loadedDialogs.update && <UpdateModal
+          isOpen={updateModalOpen}
+          onClose={closeUpdateModal}
+          checkResult={checkResult}
+          loading={loadingUpdate}
+          onRecheck={recheckUpdates}
+        />}
+        {loadedDialogs.devices && <DeviceManagerModal
+          isOpen={deviceManagerOpen}
+          onClose={() => setDeviceManagerOpen(false)}
+          devices={discoveredDevices}
+          hiddenDevices={hiddenDevices}
+          deviceNames={deviceNames}
+          usableDeviceIds={usableDeviceIds}
+          deviceStates={states}
+          hidingDeviceId={hidingDeviceId}
+          restoringDeviceId={restoringDeviceId}
+          onHideDevice={handleHideDevice}
+          onUnhideDevice={unhideDevice}
+          onRestoreDevice={handleRestoreBackgroundDevice}
+          onSetDeviceName={setDeviceName}
+          isUnhideDisabled={isUnhideDisabled}
+          unhideDisabledReason={() => undefined}
+        />}
+      </Suspense>
       <ToastContainer />
     </div>
   )

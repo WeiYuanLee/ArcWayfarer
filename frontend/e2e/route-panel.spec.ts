@@ -24,6 +24,7 @@ test.describe('MultiStop Panel', () => {
 
   test('點擊新增路徑點後應新增一列', async ({ page }) => {
     const addBtn = page.getByRole('button', { name: '新增路徑' })
+    await expect(addBtn).toBeVisible()
 
     // 初始狀態
     const initialRows = await page.locator('.route-loop-waypoint-row').count()

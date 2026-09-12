@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WS_URL } from '../services/api'
+import { limitDisplayPath } from '../utils/pathGeometry'
 
 export type LivePosition = { lat: number; lng: number; speedMps: number; etaSeconds: number; stopIndex: number | null }
 export type FlowerProgress = {
@@ -80,7 +81,7 @@ type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgress
 function activeTaskFromWire(task: WireTask): ActiveTask {
   return {
     kind: task.kind,
-    path: task.path,
+    path: limitDisplayPath(task.path),
     taskId: task.task_id,
     revision: task.revision,
     protocolVersion: task.protocol_version,

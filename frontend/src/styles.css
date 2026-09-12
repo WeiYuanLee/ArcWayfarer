@@ -755,6 +755,7 @@ body {
   pointer-events: auto;
 }
 
+.map-control-button,
 .icon-rail button {
   position: relative;
   display: grid;
@@ -771,19 +772,23 @@ body {
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
+.map-control-button:hover,
 .icon-rail button:hover,
-.map-view-wrapper .leaflet-control-zoom a:hover {
+.map-view-wrapper .leaflet-control-zoom a:hover,
+.map-view-wrapper .leaflet-touch .leaflet-control-zoom a:hover {
   background: var(--aw-surface-raised);
   border-color: var(--mantine-color-arcBlue-5);
   box-shadow: var(--mantine-shadow-sm);
 }
 
+.map-control-button:focus-visible,
 .icon-rail button:focus-visible,
 .map-view-wrapper .leaflet-control-zoom a:focus-visible {
   outline: 2px solid #8bd5ff;
   outline-offset: 2px;
 }
 
+.map-control-button svg,
 .icon-rail button svg {
   width: 22px;
   height: 22px;
@@ -811,7 +816,7 @@ body {
   right: 16px;
 }
 
-.map-view-wrapper .leaflet-control-zoom {
+.map-view-wrapper .leaflet-control.leaflet-control-zoom {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -821,7 +826,8 @@ body {
   box-shadow: none;
 }
 
-.map-view-wrapper .leaflet-control-zoom a {
+.map-view-wrapper .leaflet-control-zoom a,
+.map-view-wrapper .leaflet-touch .leaflet-control-zoom a {
   position: relative;
   display: grid;
   width: 46px;
@@ -845,7 +851,9 @@ body {
 }
 
 .map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-in,
-.map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-out {
+.map-view-wrapper .leaflet-control-zoom a.leaflet-control-zoom-out,
+.map-view-wrapper .leaflet-touch .leaflet-control-zoom a.leaflet-control-zoom-in,
+.map-view-wrapper .leaflet-touch .leaflet-control-zoom a.leaflet-control-zoom-out {
   border-radius: 8px;
 }
 
@@ -862,7 +870,7 @@ body {
   right: 16px;
 }
 
-.map-view-wrapper .maplibregl-ctrl-group {
+.map-view-wrapper .maplibregl-ctrl.maplibregl-ctrl-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -892,13 +900,13 @@ body {
   cursor: pointer;
 }
 
-.map-view-wrapper .maplibregl-ctrl-group button:hover {
+.map-view-wrapper .maplibregl-ctrl.maplibregl-ctrl-group button:hover {
   background: var(--aw-surface-raised);
   border-color: var(--mantine-color-arcBlue-5);
   box-shadow: var(--mantine-shadow-sm);
 }
 
-.map-view-wrapper .maplibregl-ctrl-group button:focus-visible {
+.map-view-wrapper .maplibregl-ctrl.maplibregl-ctrl-group button:focus-visible {
   outline: 2px solid #8bd5ff;
   outline-offset: 2px;
 }

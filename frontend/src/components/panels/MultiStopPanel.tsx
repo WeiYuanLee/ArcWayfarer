@@ -28,6 +28,7 @@ import { ConfirmModal } from '../common/ConfirmModal'
 import { PasteCoordinatesModal } from '../common/PasteCoordinatesModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
+import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
 import {
@@ -44,6 +45,7 @@ type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: st
 type ImportMessage = { kind: 'ok' | 'error'; text: string }
 
 const MULTI_STOP_DRAFT_PREFIX = 'arcwayfarer.multistop-draft.v1:'
+export const MULTI_STOP_DRAFT_TTL_MS = 30 * 60 * 1000
 
 type MultiStopDraft = {
   savedAt: number
@@ -68,13 +70,17 @@ type MultiStopDraft = {
   flowerRounds: number
 }
 
-function readMultiStopDraft(deviceId: string | null): MultiStopDraft | null {
+export function readMultiStopDraft(deviceId: string | null): MultiStopDraft | null {
   if (!deviceId) return null
+  const storageKey = `${MULTI_STOP_DRAFT_PREFIX}${deviceId.toLowerCase()}`
   try {
-    const value: unknown = JSON.parse(window.localStorage.getItem(`${MULTI_STOP_DRAFT_PREFIX}${deviceId.toLowerCase()}`) || 'null')
+    const value: unknown = JSON.parse(window.localStorage.getItem(storageKey) || 'null')
     if (!value || typeof value !== 'object') return null
     const draft = value as MultiStopDraft
-    if (typeof draft.savedAt === 'number' && Date.now() - draft.savedAt > 30 * 24 * 60 * 60 * 1000) return null
+    if (typeof draft.savedAt !== 'number' || Date.now() - draft.savedAt >= MULTI_STOP_DRAFT_TTL_MS) {
+      window.localStorage.removeItem(storageKey)
+      return null
+    }
     return draft
   } catch {
     return null
@@ -269,7 +275,7 @@ export function MultiStopPanel({
           if (typeof flower.rounds === 'number') setFlowerRounds(flower.rounds)
         }
       } else if (activeTask?.kind === 'multi_stop') {
-        setRoutePath(activeTask.path)
+        setRoutePath(limitDisplayPath(activeTask.path))
       }
     } else if (draft) {
       setNavMode(draft.navMode)
@@ -622,7 +628,7 @@ export function MultiStopPanel({
         }
         const result = await startFlower(deviceId, navMode, validWaypoints, flower, { straightLine, jumpMode, customSpeedKmh: speedKmh })
         setRoutePath([])
-        setRouteLegs(result.legs)
+        setRouteLegs(limitDisplayLegs(result.legs))
         pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'multi_stop' }).catch(() => {})
         setStatus({ kind: 'idle' })
         return
@@ -634,8 +640,8 @@ export function MultiStopPanel({
         { enabled: pauseEnabled, min: pauseMin, max: pauseMax },
         { straightLine, jumpMode, jumpPreDelay, jumpPostDelay, customSpeedKmh: speedKmh }
       )
-      setRoutePath(result.route)
-      setRouteLegs(result.legs)
+      setRoutePath(limitDisplayPath(result.route))
+      setRouteLegs(limitDisplayLegs(result.legs))
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'multi_stop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {

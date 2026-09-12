@@ -71,4 +71,16 @@ describe('useJoystickKeyboard', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }))
     expect(onMoveMock).toHaveBeenLastCalledWith(0, 0)
   })
+
+  it('bounds repeated websocket input to 20 Hz', () => {
+    renderHook(() => useJoystickKeyboard(onMoveMock, true, false))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
+    stepFrame(0)
+    stepFrame(16)
+    stepFrame(16)
+    stepFrame(16)
+    expect(onMoveMock).toHaveBeenCalledTimes(1)
+    stepFrame(16)
+    expect(onMoveMock).toHaveBeenCalledTimes(2)
+  })
 })

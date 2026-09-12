@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, FileButton, Group, Modal, Stack, Text } from '@mantine/core'
 import { IconAlertCircle, IconDownload, IconFileUpload } from '@tabler/icons-react'
 import { useT, type StringKey } from '../../i18n'
@@ -38,6 +38,10 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   const [working, setWorking] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const groupList = useMemo(() => [...groups].sort((a, b) => (a || '\uffff').localeCompare(b || '\uffff')), [groups])
+
+  useEffect(() => {
+    if (mode === 'export') setSelectedGroups(new Set(groups))
+  }, [groups, mode])
 
   const close = () => {
     setPreview(null)

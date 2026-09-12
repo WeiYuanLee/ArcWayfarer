@@ -18,9 +18,10 @@ const MODES: { id: Mode; labelKey: StringKey }[] = [
 type Props = {
   value: Mode
   onChange: (mode: Mode) => void
+  disabled?: boolean
 }
 
-export function ModeSelector({ value, onChange }: Props) {
+export function ModeSelector({ value, onChange, disabled = false }: Props) {
   const t = useT()
   const icons: Record<Mode, ReactNode> = {
     teleport: <IconLocation size={16} stroke={1.8} />,
@@ -35,6 +36,7 @@ export function ModeSelector({ value, onChange }: Props) {
       <SegmentedControl
         aria-label="Location control mode"
         value={value}
+        disabled={disabled}
         onChange={(next) => onChange(next as Mode)}
         data={MODES.map((mode) => ({ value: mode.id, label: <span className="mode-switcher-item">{icons[mode.id]}<span>{t(mode.labelKey)}</span></span> }))}
       />

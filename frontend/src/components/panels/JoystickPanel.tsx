@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Badge, Button, SegmentedControl, Text } from '@mantine/core'
 import { pushHistory, startJoystick, stopJoystick, type NavMode } from '../../services/api'
@@ -24,6 +24,9 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; title?: string; items: ContextMenuItem[] } | null>(null)
+  const lastInputSentAtRef = useRef(Number.NEGATIVE_INFINITY)
+  const pendingInputRef = useRef<{ direction: number; intensity: number } | null>(null)
+  const inputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isActive = deviceState === 'joystick'
@@ -69,12 +72,39 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
   const handleMove = useCallback(
     (direction: number, intensity: number) => {
       if (!deviceId) return
-      sendWs('joystick_input', { direction, intensity }, deviceId)
+      const send = (nextDirection: number, nextIntensity: number) => {
+        lastInputSentAtRef.current = performance.now()
+        sendWs('joystick_input', { direction: nextDirection, intensity: nextIntensity }, deviceId)
+      }
+      if (intensity === 0) {
+        if (inputTimerRef.current !== null) clearTimeout(inputTimerRef.current)
+        inputTimerRef.current = null
+        pendingInputRef.current = null
+        send(direction, intensity)
+        return
+      }
+      const elapsed = performance.now() - lastInputSentAtRef.current
+      if (elapsed >= 50) {
+        send(direction, intensity)
+        return
+      }
+      pendingInputRef.current = { direction, intensity }
+      if (inputTimerRef.current !== null) return
+      inputTimerRef.current = setTimeout(() => {
+        inputTimerRef.current = null
+        const pending = pendingInputRef.current
+        pendingInputRef.current = null
+        if (pending) send(pending.direction, pending.intensity)
+      }, Math.max(0, 50 - elapsed))
     },
     [deviceId, sendWs]
   )
 
   useJoystickKeyboard(handleMove, isActive, isDynamic)
+
+  useEffect(() => () => {
+    if (inputTimerRef.current !== null) clearTimeout(inputTimerRef.current)
+  }, [])
 
   async function handleStart() {
     if (!deviceId || !startPoint) return

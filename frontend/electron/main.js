@@ -36,6 +36,9 @@ const isDev = !app.isPackaged
 let backendProc = null
 let tunneldProc = null
 let mainWindow = null
+let lastRendererHeartbeatAt = 0
+let rendererRecoveryTimer = null
+let rendererRecoveryPromptOpen = false
 
 const TUNNELD_HOST = '127.0.0.1'
 const TUNNELD_PORT = 49151
@@ -213,6 +216,36 @@ function stopBackend() {
   backendProc = null
 }
 
+async function offerRendererRecovery(reason) {
+  const window = mainWindow
+  if (!window || window.isDestroyed() || rendererRecoveryPromptOpen) return
+
+  rendererRecoveryPromptOpen = true
+  try {
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'warning',
+      title: 'ArcWayfarer 介面沒有回應',
+      message: 'ArcWayfarer 介面沒有回應',
+      detail: `${reason}\n\n重新載入只會重建操作介面；背景中的裝置任務會繼續執行並在載入後重新同步。`,
+      buttons: ['重新載入介面', '稍後'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    })
+    if (response === 0 && !window.isDestroyed()) {
+      window.webContents.reloadIgnoringCache()
+    }
+  } finally {
+    rendererRecoveryPromptOpen = false
+  }
+}
+
+ipcMain.on('renderer-heartbeat', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) {
+    lastRendererHeartbeatAt = Date.now()
+  }
+})
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -231,13 +264,30 @@ function createWindow() {
   // a minimized window becomes drawable again so map engines can re-measure
   // their canvas without keeping the GPU busy for the entire background stay.
   mainWindow.on('restore', () => {
+    const restoredAt = Date.now()
     mainWindow?.webContents.send('window-restored')
+    if (rendererRecoveryTimer) clearTimeout(rendererRecoveryTimer)
+    rendererRecoveryTimer = setTimeout(() => {
+      rendererRecoveryTimer = null
+      if (lastRendererHeartbeatAt < restoredAt) {
+        void offerRendererRecovery('視窗恢復後仍無法更新，可能是地圖繪製或介面更新程序卡住。')
+      }
+    }, 5000)
   })
   mainWindow.on('unresponsive', () => {
     console.error('[electron] main window became unresponsive')
+    void offerRendererRecovery('介面程序已停止回應。')
   })
   mainWindow.webContents.on('render-process-gone', (_, details) => {
     console.error('[electron] renderer process exited:', details.reason, details.exitCode)
+    if (details.reason !== 'clean-exit') {
+      void offerRendererRecovery(`介面程序已結束（${details.reason}）。`)
+    }
+  })
+  mainWindow.on('closed', () => {
+    if (rendererRecoveryTimer) clearTimeout(rendererRecoveryTimer)
+    rendererRecoveryTimer = null
+    mainWindow = null
   })
 
   if (isDev) {
