@@ -4,9 +4,22 @@ import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
   const mobile = mode === 'mobile'
+  const devApiOrigin = process.env.VITE_API_BASE_URL
+  const localDevApi = mode === 'development' && devApiOrigin && /^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(devApiOrigin)
   return {
     root: mobile ? resolve(__dirname, 'mobile') : undefined,
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'local-dev-api-csp',
+        transformIndexHtml(html: string) {
+          if (!localDevApi) return html
+          return html
+            .replaceAll('http://127.0.0.1:8787', devApiOrigin)
+            .replaceAll('ws://127.0.0.1:8787', devApiOrigin.replace(/^http/, 'ws'))
+        },
+      },
+    ],
     base: mobile ? '/mobile/' : './',
     optimizeDeps: {
       // MapLibre resolves its module worker relative to the package entry.

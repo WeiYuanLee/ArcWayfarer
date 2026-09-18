@@ -56,6 +56,28 @@ test.describe('Map Interaction', () => {
     await expect(page.locator('.icon-rail')).toBeVisible()
   })
 
+  test('側邊圖示列首次點擊即開啟抽屜，切換時只保留一個抽屜', async ({ page }) => {
+    await page.route('http://127.0.0.1:8787/api/history', (route) => route.fulfill({ json: [] }))
+    await page.route('http://127.0.0.1:8787/api/favorites', (route) => route.fulfill({ json: [] }))
+    await page.route('http://127.0.0.1:8787/api/favorites/groups', (route) => route.fulfill({ json: [] }))
+
+    const historyButton = page.locator('.history-action')
+    const favoritesButton = page.locator('.favorites-action')
+    const visibleDrawer = page.locator('[role="dialog"]:visible')
+    await historyButton.click()
+    await expect(visibleDrawer).toHaveCount(1)
+    await expect(visibleDrawer).toContainText(/History|操作記錄/)
+    await expect(historyButton).toHaveAttribute('aria-expanded', 'true')
+
+    // Drawer overlays intentionally block pointer input to the map rail. Invoke
+    // the control directly to cover the rapid/stale-state switch regression.
+    await favoritesButton.evaluate((button: HTMLButtonElement) => button.click())
+    await expect(visibleDrawer).toHaveCount(1)
+    await expect(visibleDrawer).toContainText(/Favorites|我的最愛/)
+    await expect(historyButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(favoritesButton).toHaveAttribute('aria-expanded', 'true')
+  })
+
   test('應顯示狀態列', async ({ page }) => {
     await expect(page.locator('.status-bar')).toBeVisible()
   })
@@ -73,6 +95,9 @@ test.describe('Map Interaction', () => {
     const railButton = page.locator('.icon-rail button').first()
     await expect(railButton).toHaveClass(/map-control-button/)
     await railButton.hover()
+    // Sample the settled hover values rather than an interpolated transition
+    // frame, which differs slightly depending on browser scheduling.
+    await page.waitForTimeout(200)
     const railHoverStyle = await railButton.evaluate((el) => {
       const style = getComputedStyle(el)
       return { background: style.backgroundColor, border: style.borderColor, shadow: style.boxShadow, transition: style.transition }

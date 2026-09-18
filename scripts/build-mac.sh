@@ -107,20 +107,23 @@ if [ -d "$APP_BUNDLE" ]; then
   # the embedded PyInstaller backend after a user allows the unsigned app.
   codesign --force --deep --sign - "$APP_BUNDLE"
 
-  echo "==> Creating .dmg"
-  VERSION="$(node -p "require('$ROOT_DIR/frontend/package.json').version")"
-  DMG_PATH="$ROOT_DIR/frontend/release/ArcWayfarer-$VERSION-$ARCH.dmg"
-  # Stage the app alongside an Applications symlink. Finder presents this as
-  # the familiar drag-to-install destination; it does not require a Developer
-  # ID signature or notarization.
-  DMG_STAGING_DIR="$(mktemp -d -t arcwayfarer-dmg.XXXXXX)"
-  trap 'rm -rf "$DMG_STAGING_DIR"' EXIT
-  cp -R "$APP_BUNDLE" "$DMG_STAGING_DIR/ArcWayfarer.app"
-  ln -s /Applications "$DMG_STAGING_DIR/Applications"
-  rm -f "$DMG_PATH"
-  hdiutil create -volname "ArcWayfarer" -srcfolder "$DMG_STAGING_DIR" -ov -format UDZO "$DMG_PATH"
-  rm -rf "$DMG_STAGING_DIR"
-  trap - EXIT
+  echo "==> Verifying packaged Electron startup"
+  # This reaches ElectronMain without opening the application UI. It catches
+  # invalid fuse/resource combinations (for example, enabling the browser V8
+  # snapshot fuse without shipping browser_v8_context_snapshot.bin), which a
+  # static code-signature check cannot detect.
+  ARCWAYFARER_STARTUP_SMOKE_TEST=1 "$APP_BUNDLE/Contents/MacOS/ArcWayfarer"
+
+  echo "==> Creating guided .dmg"
+  # Package the already ad-hoc-signed app so the DMG keeps its signature while
+  # electron-builder applies the branded background and Finder icon layout.
+  (
+    cd "$ROOT_DIR/frontend"
+    CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
+      --mac dmg \
+      --"$ARCH" \
+      --prepackaged "$APP_BUNDLE"
+  )
 else
   echo "Packaged app was not created: $APP_BUNDLE" >&2
   exit 1

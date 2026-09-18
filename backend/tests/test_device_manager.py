@@ -29,6 +29,9 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         # scan; reset it here so each test starts a new discovery operation.
         device_manager._device_scan_task = None
         device_manager._last_usb_discovery_diagnostic = None
+        stored_records = patch.object(device_manager.pairing_store, "list_udids", return_value=[])
+        stored_records.start()
+        self.addCleanup(stored_records.stop)
 
     def test_connection_type_is_distinct_from_service_transport(self) -> None:
         self.assertEqual(device_manager._connection_type_from_mux(_MuxDevice("a", "USB")), "usb")

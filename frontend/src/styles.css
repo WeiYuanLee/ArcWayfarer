@@ -5,6 +5,106 @@ body {
   color: var(--aw-text-primary);
 }
 
+/* Device manager uses the same quiet surfaces and borders as the main controls. */
+.device-manager-modal {
+  background: var(--aw-surface);
+  border: 1px solid var(--aw-border);
+  box-shadow: var(--mantine-shadow-lg);
+}
+
+.device-manager-toolbar {
+  padding: 1px 0 3px;
+}
+
+.device-manager-capacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-surface-raised);
+  color: var(--aw-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.device-manager-capacity svg {
+  color: var(--aw-map-control-icon);
+}
+
+.device-manager-capacity strong {
+  color: var(--aw-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.device-manager-direct-link {
+  color: var(--aw-map-control-icon);
+  border-color: var(--aw-border);
+  font-weight: 600;
+}
+
+.device-manager-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--aw-surface);
+  border-color: var(--aw-border);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.device-manager-card:hover {
+  border-color: var(--mantine-color-arcBlue-4);
+}
+
+.device-manager-card.is-active::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--mantine-color-arcBlue-5);
+}
+
+.device-manager-card-main,
+.device-manager-card-details {
+  min-width: 0;
+}
+
+.device-manager-phone-icon {
+  display: grid;
+  flex: 0 0 38px;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--aw-border);
+  border-radius: 8px;
+  background: var(--aw-surface-raised);
+  color: var(--aw-text-secondary);
+}
+
+.device-manager-card.is-active .device-manager-phone-icon {
+  background: var(--mantine-color-arcBlue-light);
+  color: var(--aw-map-control-icon);
+}
+
+.device-manager-device-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-manager-connection-badge {
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+.device-manager-secondary-card {
+  background: var(--aw-surface-raised);
+  border-color: var(--aw-border);
+}
+
 @keyframes livePulse {
   0% { transform: scale(0.6); opacity: 1; }
   100% { transform: scale(1.7); opacity: 0; }
@@ -19,6 +119,8 @@ body {
 /* Top bar */
 
 .top-bar {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -322,6 +424,20 @@ body {
   color: var(--aw-text-secondary);
 }
 
+.hover-card-device-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--aw-border);
+  color: var(--aw-text-secondary);
+  font-family: monospace;
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .device-refresh {
   flex-shrink: 0;
 }
@@ -359,6 +475,8 @@ body {
 /* Body: full-bleed map with floating overlays */
 
 .app-body {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -533,8 +651,8 @@ body {
 /* A percentage-height card needs a definite-height dock.  Only the long
    editors occupy the available map height; compact panels retain their
    content-sized card. */
-.overlay-panel-dock:has(.multistop-panel--flower-editor),
-.overlay-panel-dock:has(.route-loop-panel--pattern-editor) {
+.overlay-panel-dock:has(.device-panel-workspace--focused .multistop-panel--editor),
+.overlay-panel-dock:has(.device-panel-workspace--focused .route-loop-panel--pattern-editor) {
   bottom: 16px;
 }
 
@@ -545,26 +663,26 @@ body {
   flex-direction: column;
 }
 
-/* Multi-stop stays content-sized in its base mode.  Switching to Flower
-   explicitly enables a bounded, scrollable editor for its extra settings. */
+/* Long route editors use a definite height so their fixed footer remains
+   visible while the shared ScrollArea owns any overflowing settings. */
 .overlay-panel-card--scrollable {
   box-sizing: border-box;
   height: auto;
 }
 
-.overlay-panel-card--scrollable:has(.multistop-panel--flower-editor) {
+.overlay-panel-card--scrollable:has(.device-panel-workspace--focused .multistop-panel--editor) {
   /* The card already lives inside the map-sized overlay.  Using 100dvh here
      double-counted the app chrome and could push the footer below the window. */
   height: calc(100% - 32px);
 }
 
-.overlay-panel-card--scrollable:has(.route-loop-panel--pattern-editor) {
+.overlay-panel-card--scrollable:has(.device-panel-workspace--focused .route-loop-panel--pattern-editor) {
   height: calc(100% - 32px);
 }
 
 /* A circle omits rotation and can stay compact; all other templates need the
    extra viewport height for their additional controls. */
-.overlay-panel-card--scrollable:has(.route-loop-panel--compact-pattern) {
+.overlay-panel-card--scrollable:has(.device-panel-workspace--focused .route-loop-panel--compact-pattern) {
   height: calc(100% - 64px);
 }
 
@@ -584,11 +702,11 @@ body {
   min-height: 0;
 }
 
-/* Flower uses the same fixed-footer layout as Pattern Route.  Make every
-   flex level shrinkable so ModePanelLayout's ScrollArea becomes the single
-   scroll owner rather than extending beneath the viewport. */
-.multistop-panel--flower-editor,
-.multistop-panel--flower-editor > section {
+/* Multi-stop uses the same fixed-footer layout in both editor modes.  Make
+   every flex level shrinkable so the ScrollArea becomes the single scroll
+   owner rather than extending beneath the viewport. */
+.multistop-panel--editor,
+.multistop-panel--editor > section {
   height: 100%;
   min-height: 0;
 }
@@ -807,6 +925,30 @@ body {
   background: var(--mantine-color-arcBlue-light);
   color: var(--mantine-color-arcBlue-7);
   box-shadow: none;
+}
+
+.validated-number-controls {
+  align-self: stretch;
+  display: grid;
+  width: 48px;
+  margin-block: 1px;
+  border-left: 1px solid var(--aw-border);
+}
+
+.validated-number-controls button {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  color: var(--aw-text-primary);
+}
+
+.validated-number-controls button + button {
+  border-top: 1px solid var(--aw-border);
+}
+
+.validated-number-controls button:disabled {
+  color: var(--aw-text-secondary);
+  opacity: 0.35;
 }
 
 /* Keep Leaflet's native zoom behaviour while visually joining it to the action rail. */
@@ -1240,7 +1382,7 @@ body {
   }
 
   .overlay-panel-card--scrollable { height: auto; }
-  .overlay-panel-card--scrollable:has(.multistop-panel--flower-editor) { height: 60dvh; }
+  .overlay-panel-card--scrollable:has(.device-panel-workspace--focused .multistop-panel--editor) { height: 60dvh; }
 
   .overlay-top-center {
     top: 12px;

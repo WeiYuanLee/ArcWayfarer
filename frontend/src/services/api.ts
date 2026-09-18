@@ -1,8 +1,9 @@
 const isMobileRemote = typeof window !== 'undefined' && window.location.pathname.startsWith('/mobile')
-export const API_BASE_URL = isMobileRemote ? window.location.origin : 'http://127.0.0.1:8787'
+const desktopApiOrigin = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8787'
+export const API_BASE_URL = isMobileRemote ? window.location.origin : desktopApiOrigin
 export const WS_URL = isMobileRemote
   ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/mobile`
-  : 'ws://127.0.0.1:8787/ws/status'
+  : `${desktopApiOrigin.replace(/^http/, 'ws')}/ws/status`
 
 export function authHeaders(headers: Record<string, string> = {}): Record<string, string> {
   const session = isMobileRemote ? sessionStorage.getItem('arcwayfarer.mobile.session') : null
@@ -19,7 +20,90 @@ export type Device = {
   status: DeviceStatus
   detail: string | null
   /** Physical discovery path, when supplied by newer backends. */
-  connection_type?: 'usb' | 'wifi' | 'unknown'
+  connection_type?: 'usb' | 'wifi' | 'wireless_direct' | 'unknown'
+  ip_address?: string | null
+  direct_paired?: boolean
+}
+
+export function pairWirelessDirect(udid: string): Promise<{ status: string }> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/pair`, {}, undefined, 150000)
+}
+
+export function connectWirelessDirect(udid: string, ip?: string, fallbackBonjour = true, port = 49152): Promise<Device> {
+  if (ip) {
+    const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip) && ip.split('.').every((part) => Number(part) <= 255)
+    const isIpv6 = ip.includes(':')
+    if (!isIpv4 && !isIpv6) {
+      return Promise.reject(new Error('請輸入有效的手機 IP 位址，例如 192.168.1.105。'))
+    }
+  }
+  const target = udid.trim() || 'auto'
+  return postJsonWithResponse(
+    `/api/devices/${encodeURIComponent(target)}/wireless-direct/connect`,
+    { ip: ip || null, port, fallback_bonjour: fallbackBonjour },
+    undefined,
+    90000
+  )
+}
+
+export function disconnectWirelessDirect(udid: string): Promise<{ status: string }> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/disconnect`, {})
+}
+
+export function removeWirelessDirectPairing(udid: string): Promise<{ status: string }> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/remove-pairing`, {})
+}
+
+export function clearWirelessDirectAddress(udid: string): Promise<{ status: string }> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/clear-address`, {})
+}
+
+export type WirelessDirectEndpoint = {
+  udid?: string | null
+  ip: string
+  port: number
+  endpoint: string
+  source: 'paired' | 'bonjour'
+  status?: 'online' | 'history'
+  last_connected?: string | null
+  device_name?: string | null
+  ios_version?: string
+}
+
+export function getWirelessDirectEndpoints(): Promise<WirelessDirectEndpoint[]> {
+  return getJson<WirelessDirectEndpoint[]>('/api/devices/wireless-direct/endpoints')
+}
+
+export type QuickReconnectRecord = {
+  udid?: string
+  name: string
+  endpoint: string
+  ip: string
+  port?: number
+  timestamp: string
+}
+
+const QUICK_RECONNECT_KEY = 'arcwayfarer.quick_reconnect'
+
+export function getQuickReconnectRecord(): QuickReconnectRecord | null {
+  try {
+    const raw = localStorage.getItem(QUICK_RECONNECT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export function saveQuickReconnectRecord(record: QuickReconnectRecord): void {
+  try {
+    localStorage.setItem(QUICK_RECONNECT_KEY, JSON.stringify(record))
+  } catch {}
+}
+
+export function clearQuickReconnectRecord(): void {
+  try {
+    localStorage.removeItem(QUICK_RECONNECT_KEY)
+  } catch {}
 }
 
 export type MobilePairing = { url: string; pin: string; expires_in: number; qr_data_url: string }
@@ -106,9 +190,9 @@ export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string 
   return postJsonWithResponse(`/api/devices/${udid}/amfi/reveal-developer-mode`, {})
 }
 
-async function postJsonWithResponse<T>(path: string, body: unknown, externalSignal?: AbortSignal): Promise<T> {
+async function postJsonWithResponse<T>(path: string, body: unknown, externalSignal?: AbortSignal, timeoutMs = 15000): Promise<T> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 15000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   const abortFromExternalSignal = () => controller.abort(externalSignal?.reason)
   if (externalSignal?.aborted) abortFromExternalSignal()
   else externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true })
@@ -127,7 +211,7 @@ async function postJsonWithResponse<T>(path: string, body: unknown, externalSign
   } catch (err: any) {
     if (err.name === 'AbortError') {
       if (externalSignal?.aborted) throw err
-      throw new Error('Request timed out (15s). Please check device connection.')
+      throw new Error(`Request timed out (${Math.round(timeoutMs / 1000)}s). Please check device connection.`)
     }
     throw err
   } finally {

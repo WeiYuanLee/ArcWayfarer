@@ -8,6 +8,11 @@ $ErrorActionPreference = "Stop"
 # pinned requirements from the configured package index.
 Remove-Item Env:PIP_NO_INDEX -ErrorAction SilentlyContinue
 
+& python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 13) else 1)"
+if ($LASTEXITCODE -ne 0) {
+    throw "Python 3.13 or newer is required for iOS 18.2+ TCP tunneling. Install Python 3.13 and ensure 'python' resolves to it before building."
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Resolve-Path "$ScriptDir\.."
 

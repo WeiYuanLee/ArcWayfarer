@@ -19,7 +19,7 @@ ArcWayfarer lets you teleport, navigate, or jog along any route on the map witho
 
 Download the latest version from [GitHub Releases](https://github.com/WeiYuanLee/ArcWayfarer/releases/latest).
 
-Supports **macOS** (Apple Silicon + Intel) and **Windows 10/11**.
+Supports **macOS 13 or later** (Apple Silicon + Intel) and **Windows 10/11**.
 
 ---
 
@@ -56,7 +56,7 @@ Supports **macOS** (Apple Silicon + Intel) and **Windows 10/11**.
 
 ### Requirements
 
-- **macOS** (Intel or Apple Silicon) or **Windows 10/11** (64-bit)
+- **macOS 13 or later** (Intel or Apple Silicon) or **Windows 10/11** (64-bit)
 - iOS device connected via USB
 
 ### iOS Compatibility

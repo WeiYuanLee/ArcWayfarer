@@ -4,6 +4,10 @@ export const STRINGS = {
   // Generic
   'generic.working': { zh: '處理中…', en: 'Working…' },
   'generic.close': { zh: '關閉', en: 'Close' },
+  'generic.number_invalid': { zh: '請輸入有效的半形數字。', en: 'Enter a valid number using half-width digits.' },
+  'generic.number_out_of_range': { zh: '數值超出允許範圍。', en: 'The value is outside the allowed range.' },
+  'generic.number_increase': { zh: '增加數值', en: 'Increase value' },
+  'generic.number_decrease': { zh: '減少數值', en: 'Decrease value' },
 
   // Map overlay
   'overlay.collapse_panel': { zh: '收合面板', en: 'Collapse panel' },
@@ -324,6 +328,15 @@ export const STRINGS = {
   'multistop.gpx_import_failed': { zh: 'GPX 匯入失敗，請確認檔案格式。', en: 'Failed to import GPX file.' },
   'multistop.gpx_no_points': { zh: 'GPX 檔案裡沒有可用的座標點。', en: 'The GPX file has no usable points.' },
   'multistop.import_partial': { zh: '已匯入，部分行數無法解析。', en: 'Imported, but some lines could not be parsed.' },
+  'multistop.optimize_order': { zh: '優化路線順序', en: 'Optimize Route' },
+  'multistop.optimize_hint': { zh: '固定第 1 點，依預估直線距離重新排列其餘座標。', en: 'Keep waypoint 1 fixed and reorder the remaining coordinates by estimated straight-line distance.' },
+  'multistop.optimize_success': { zh: '預估直線距離已縮短 {saved}（{percent}%）', en: 'Estimated straight-line distance reduced by {saved} ({percent}%)' },
+  'multistop.optimize_jump_success': { zh: '座標順序已整理，直線跨度減少 {saved}；跳躍等待時間不受影響。', en: 'Waypoint order organized; straight-line span reduced by {saved}. Jump wait time is unchanged.' },
+  'multistop.optimize_jump_reordered': { zh: '座標順序已整理；跳躍等待時間不受影響。', en: 'Waypoint order organized; jump wait time is unchanged.' },
+  'multistop.optimize_reordered': { zh: '已整理座標順序。', en: 'Waypoint order has been organized.' },
+  'multistop.optimize_no_change': { zh: '目前順序已是最佳候選路線。', en: 'The current order is already the best candidate route.' },
+  'multistop.optimize_too_many': { zh: '最多可優化 500 個點位，請先精簡路線。', en: 'Up to 500 waypoints can be optimized. Simplify the route first.' },
+  'multistop.undo_optimize': { zh: '復原', en: 'Undo' },
 
   // Context menu
   'contextmenu.teleport': { zh: '⚡ 瞬移至此點 (Teleport)', en: '⚡ Teleport to point' },

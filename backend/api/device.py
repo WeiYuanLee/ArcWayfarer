@@ -1,10 +1,88 @@
-from fastapi import APIRouter, HTTPException, Query
+from ipaddress import IPv4Address
+import platform
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from pymobiledevice3.exceptions import DeviceNotFoundError
 
-from core import device_manager
+from core import device_manager, device_session, pairing_store
 from models.schemas import DeviceInfo
 
 router = APIRouter(prefix="/api")
+
+
+class DirectConnectRequest(BaseModel):
+    ip: str | None = None
+    port: int = Field(default=49152, ge=1, le=65535)
+    fallback_bonjour: bool = True
+
+
+def _require_desktop(request: Request) -> None:
+    # Wireless pairing changes credentials on this computer. Keep the loopback
+    # boundary on both desktop platforms, including the Windows test build.
+    if platform.system() not in {"Darwin", "Windows"}:
+        raise HTTPException(status_code=501, detail="無線直連測試版目前只在 macOS 與 Windows 開放。")
+    if request.client is None or request.client.host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(status_code=403, detail="無線授權與連線設定只能在電腦端操作。")
+
+
+@router.post("/devices/{udid}/wireless-direct/pair")
+async def pair_wireless_direct(udid: str, request: Request) -> dict:
+    _require_desktop(request)
+    try:
+        await device_manager.enable_direct_pairing(udid)
+    except (ValueError, OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "paired"}
+
+
+@router.post("/devices/{udid}/wireless-direct/connect")
+async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request: Request) -> DeviceInfo:
+    _require_desktop(request)
+    target_udid = "" if udid.lower() in {"auto", "unknown"} else udid
+    if target_udid and device_session.has_session(target_udid):
+        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
+    try:
+        return await device_manager.connect_direct(
+            target_udid,
+            str(body.ip) if body.ip else None,
+            fallback_bonjour=body.fallback_bonjour,
+            port=body.port,
+        )
+    except (ValueError, OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/devices/{udid}/wireless-direct/disconnect")
+async def disconnect_wireless_direct(udid: str, request: Request) -> dict:
+    _require_desktop(request)
+    if device_session.has_session(udid):
+        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
+    await device_manager.disconnect_direct(udid)
+    return {"status": "disconnected"}
+
+
+@router.post("/devices/{udid}/wireless-direct/remove-pairing")
+async def remove_wireless_direct_pairing(udid: str, request: Request) -> dict:
+    _require_desktop(request)
+    if device_session.has_session(udid):
+        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
+    await device_manager.disconnect_direct(udid)
+    pairing_store.remove(udid)
+    return {"status": "removed"}
+
+
+@router.post("/devices/{udid}/wireless-direct/clear-address")
+async def clear_wireless_direct_address(udid: str, request: Request) -> dict:
+    _require_desktop(request)
+    pairing_store.remove_address(udid)
+    return {"status": "cleared"}
+
+
+@router.get("/devices/wireless-direct/endpoints")
+async def get_wireless_direct_endpoints(request: Request) -> list[dict]:
+    _require_desktop(request)
+    return await device_manager.list_direct_endpoints()
 
 
 @router.get("/devices")

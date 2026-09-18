@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { ActionIcon, Badge, Button, Group, NumberInput, SegmentedControl, SimpleGrid, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Badge, Button, Group, SegmentedControl, SimpleGrid, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconCircle, IconHeart, IconInfinity, IconPlus, IconRefresh, IconSquare, IconStar, IconTrash, IconTriangle, IconTypography } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
-import { formatPoint, parsePoint, pointsForPattern, routeLegForStop, type PatternTemplate } from './coords'
+import { formatPoint, parsePastedPoints, parsePoint, pointsForPattern, routeLegForStop, type PatternTemplate } from './coords'
 import { contoursToCoordinates, limitTextContours, loadTextPatternFont, orderTextContoursForTraversal, outerTextContours, simplifyCoordinatePath, TEXT_PATTERN_FONT_LOAD_ERROR, textContours, textPatternFontUrl, type TextRouteFont, unsupportedFontCharacters, validateTextPattern } from './textPattern'
 import { generateTextPatternOffThread } from './textPatternWorkerClient'
 import { SpeedSlider } from './SpeedSlider'
@@ -14,6 +14,7 @@ import { SwitchBar } from '../common/SwitchBar'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
+import { PasteCoordinatesModal } from '../common/PasteCoordinatesModal'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
@@ -27,6 +28,7 @@ import {
   PanelNotice,
   PanelSection,
   PanelStatus,
+  ValidatedNumberInput,
 } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -34,7 +36,7 @@ type SubMode = 'manual' | 'pattern'
 
 const WAYPOINT_COLOR = '#4a9af0'
 
-export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay }: PanelProps) {
+export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay, requestFlyTo }: PanelProps) {
   const t = useT()
   const [subMode, setSubMode] = useState<SubMode>('manual')
   const {
@@ -63,6 +65,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const [textPatternError, setTextPatternError] = useState<string | null>(null)
   const [textPreviewPaths, setTextPreviewPaths] = useState<LatLng[][]>([])
   const [textJumpLegIndices, setTextJumpLegIndices] = useState<number[]>([])
+  const [numericValidity, setNumericValidity] = useState({ patternSize: true, patternRotation: true, pauseMin: true, pauseMax: true })
 
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
@@ -73,6 +76,9 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const [pauseMin, setPauseMin] = useState(5)
   const [pauseMax, setPauseMax] = useState(20)
   const [straightLine, setStraightLine] = useState(true)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [importMessage, setImportMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -110,16 +116,23 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   // editor layout would leave a large empty panel beneath the controls.
   const isPatternEditor = isPattern && !isActive
   const isTextPattern = subMode === 'pattern' && patternTemplate === 'text'
-  const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy && (!isTextPattern || (textCapacity.valid && !textPatternError))
+  const numericInputsValid = isPattern
+    ? numericValidity.patternSize && (patternTemplate === 'circle' || numericValidity.patternRotation)
+    : !pauseEnabled || (numericValidity.pauseMin && numericValidity.pauseMax)
+  const canStart = deviceReady && !isActive && validWaypoints.length >= 2 && !isBusy && numericInputsValid && (!isTextPattern || (textCapacity.valid && !textPatternError))
 
-  const effectivePath = isActive
+  function setNumericFieldValidity(field: keyof typeof numericValidity, valid: boolean) {
+    setNumericValidity((current) => current[field] === valid ? current : { ...current, [field]: valid })
+  }
+
+  const effectivePath = useMemo(() => isActive
     ? (routePath.length >= 2 ? routePath : (validWaypoints.length >= 2 ? [...validWaypoints, validWaypoints[0]] : []))
-    : (validWaypoints.length >= 2 ? [...validWaypoints, validWaypoints[0]] : [])
+    : (validWaypoints.length >= 2 ? [...validWaypoints, validWaypoints[0]] : []), [isActive, routePath, validWaypoints])
 
   const isLocked = isActive || isBusy
-  const activePath = isRunning && validWaypoints.length >= 2
+  const activePath = useMemo(() => isRunning && validWaypoints.length >= 2
     ? routeLegs[(liveStopIndex ?? 1) - 1] ?? routeLegForStop(routePath, validWaypoints, liveStopIndex ?? 1, true)
-    : null
+    : null, [isRunning, validWaypoints, routeLegs, liveStopIndex, routePath])
 
   useEffect(() => {
     if (!focusNewWaypointRef.current) return
@@ -145,6 +158,32 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       description: t('confirm.clear_all_desc'),
       onConfirm: clearAllWaypoints,
     })
+  }
+
+  function processPasteSubmit() {
+    const { points, invalidCount } = parsePastedPoints(pasteText)
+    if (points.length === 0) {
+      setImportMessage({ kind: 'error', text: t('multistop.paste_empty') })
+      return
+    }
+    setAllWaypoints(points)
+    requestFlyTo(points[0].lat, points[0].lng)
+    setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
+    setPasteOpen(false)
+    setPasteText('')
+  }
+
+  function handlePasteSubmit() {
+    if (validWaypoints.length > 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: t('confirm.paste_overwrite_title'),
+        description: t('confirm.paste_overwrite_desc'),
+        onConfirm: processPasteSubmit,
+      })
+    } else {
+      processPasteSubmit()
+    }
   }
 
   // Clean up overlay on unmount only
@@ -537,6 +576,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
 
                 <Group gap="xs" wrap="nowrap">
                   <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button>
+                  <Button size="xs" variant="default" onClick={() => setPasteOpen(true)}>{t('multistop.paste_coords')}</Button>
                   <Tooltip label={t('routeloop.action.reverse')}>
                     <ActionIcon size="lg" variant="default" onClick={reverseWaypoints} aria-label={t('routeloop.action.reverse')}>
                       <IconRefresh size={16} />
@@ -548,6 +588,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                     </ActionIcon>
                   </Tooltip>
                 </Group>
+                {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
             </PanelSection>
           ) : (
             <Stack gap="lg">
@@ -572,13 +613,14 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   </Group>
                 )}
 
-                <NumberInput mt="sm" label={patternTemplate === 'text' ? t('routeloop.pattern.text_width') : t('routeloop.pattern.size')}
+                <ValidatedNumberInput mt="sm" label={patternTemplate === 'text' ? t('routeloop.pattern.text_width') : t('routeloop.pattern.size')}
                     min={0.01}
                     step={0.1}
                     value={patternSizeKm}
                     disabled={isActive}
                     onFocus={(e) => e.target.select()}
-                    onChange={(value) => setPatternSizeKm(Math.max(0.01, Number(value) || 0.01))}
+                    onChange={setPatternSizeKm}
+                    onValidityChange={(valid) => setNumericFieldValidity('patternSize', valid)}
                   />
               </PanelSection>
 
@@ -604,7 +646,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 {patternTemplate === 'text' && <TextInput mt="sm" label={t('routeloop.pattern.custom_text')} value={patternText} onChange={(event) => setPatternText(event.currentTarget.value)} error={textPatternError ?? textCapacityError} description={`${t('routeloop.pattern.chinese')} ${textCapacity.chinese}/5 · ${t('routeloop.pattern.english_letters')} ${textCapacity.englishLetters}/12`} disabled={isActive} />}
                 {patternTemplate === 'text' && <SegmentedControl mt="xs" fullWidth size="xs" value={textFont} onChange={(value) => setTextFont(value as TextRouteFont)} data={[{ label: t('routeloop.pattern.font_regular'), value: 'regular' }, { label: t('routeloop.pattern.font_black'), value: 'black' }]} />}
 
-                {patternTemplate !== 'circle' && <NumberInput mt="sm" label={t('routeloop.pattern.rotation')} min={0} max={359} value={patternRotation} disabled={isActive} onChange={(value) => setPatternRotation(Math.max(0, Math.min(359, Number(value) || 0)))} />}
+                {patternTemplate !== 'circle' && <ValidatedNumberInput mt="sm" label={t('routeloop.pattern.rotation')} min={0} max={359} value={patternRotation} disabled={isActive} onChange={setPatternRotation} onValidityChange={(valid) => setNumericFieldValidity('patternRotation', valid)} />}
               </PanelSection>
 
               <PanelSection title={t('routeloop.pattern.quality')}>
@@ -645,6 +687,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   maxLabel={t('panel.pause_max')}
                   onMinChange={(value) => setPauseMin(Number(value) || 0)}
                   onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                  onMinValidityChange={(valid) => setNumericFieldValidity('pauseMin', valid)}
+                  onMaxValidityChange={(valid) => setNumericFieldValidity('pauseMax', valid)}
                   minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
                   maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
                 />}
@@ -673,6 +717,13 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
           onClose={() => setContextMenu(null)}
         />
       )}
+      <PasteCoordinatesModal
+        isOpen={pasteOpen}
+        value={pasteText}
+        onChange={setPasteText}
+        onSubmit={handlePasteSubmit}
+        onClose={() => setPasteOpen(false)}
+      />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}

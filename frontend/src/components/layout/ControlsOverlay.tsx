@@ -31,7 +31,7 @@ function shallowEqualPanelProps(left: PanelProps, right: PanelProps): boolean {
 const DevicePanelWorkspace = memo(function DevicePanelWorkspace({ deviceId, focused, mode, panelProps, loadingLabel }: WorkspaceProps) {
   const Panel = PANEL_BY_MODE[mode]
   return (
-    <div key={deviceId} style={{ display: focused ? 'contents' : 'none' }}>
+    <div key={deviceId} className={focused ? 'device-panel-workspace--focused' : undefined} style={{ display: focused ? 'contents' : 'none' }}>
       <Suspense fallback={<p className="panel-hint">{loadingLabel}</p>}>
         <Panel {...panelProps} />
       </Suspense>

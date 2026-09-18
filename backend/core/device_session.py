@@ -1,10 +1,10 @@
 import asyncio
 import logging
+import struct
 
 from pymobiledevice3.exceptions import ConnectionTerminatedError
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
-from pymobiledevice3.services.simulate_location import DtSimulateLocation
 
 from config import MOUNT_TIMEOUT_SECONDS
 from core import device_manager
@@ -80,15 +80,23 @@ class LockdownSimulateLocationWrapper:
     def __init__(self, udid: str):
         self.udid = udid
 
+    async def _send(self, command: int, lat: float | None = None, lng: float | None = None) -> None:
+        async with await device_manager.get_lockdown(self.udid) as lockdown:
+            # DtSimulateLocation uses this wire format but leaves its fresh
+            # developer-service connection without an explicit close.
+            service = await lockdown.start_lockdown_developer_service("com.apple.dt.simulatelocation")
+            async with service:
+                await service.sendall(struct.pack(">I", command))
+                if command == 0:
+                    for coordinate in (lat, lng):
+                        encoded = str(coordinate).encode()
+                        await service.sendall(struct.pack(">I", len(encoded)) + encoded)
+
     async def set(self, lat: float, lng: float) -> None:
-        lockdown = await device_manager.get_lockdown(self.udid)
-        backend = DtSimulateLocation(lockdown)
-        await backend.set(lat, lng)
+        await self._send(0, lat, lng)
 
     async def clear(self) -> None:
-        lockdown = await device_manager.get_lockdown(self.udid)
-        backend = DtSimulateLocation(lockdown)
-        await backend.clear()
+        await self._send(1)
 
 
 async def get_session(udid: str) -> DeviceSession:
@@ -109,13 +117,20 @@ async def get_session(udid: str) -> DeviceSession:
             raise RuntimeError(device.detail or f"Device is not ready (status: {device.status}).")
 
         if device.transport == "lockdown":
-            lockdown = await device_manager.get_lockdown(udid)
-            try:
-                await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError as e:
-                raise RuntimeError(
-                    "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
-                ) from e
+            async with await device_manager.get_lockdown(udid) as lockdown:
+                if device.connection_type == "wireless_direct":
+                    # The disk image is prepared over USB during setup. iOS 16
+                    # can reject image-mounter requests over Wi-Fi, while the
+                    # mounted location service itself remains reachable.
+                    service = await lockdown.start_lockdown_developer_service("com.apple.dt.simulatelocation")
+                    await service.close()
+                else:
+                    try:
+                        await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
+                    except asyncio.TimeoutError as e:
+                        raise RuntimeError(
+                            "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
+                        ) from e
             session = DeviceSession(udid, transport="lockdown", backend=LockdownSimulateLocationWrapper(udid))
         else:
             rsd = await device_manager.get_rsd(udid)

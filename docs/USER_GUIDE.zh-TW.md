@@ -22,7 +22,7 @@ ArcWayfarer 可讓你透過電腦在地圖上設定 iPhone 的模擬位置、沿
 
 ### 系統需求
 
-- macOS（Apple Silicon 或 Intel），或 Windows 10 / 11 64 位元。
+- macOS 13 或更新版本（Apple Silicon 或 Intel），或 Windows 10 / 11 64 位元。
 - 以 USB 連接的 iPhone。
 - 可正常連線的網路；首次設定位置時需要下載必要的 Apple 開發者服務映像檔。
 

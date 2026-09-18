@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, NumberInput } from '@mantine/core'
+import { Button, Group } from '@mantine/core'
 import { pauseRandomWalk, pushHistory, resumeRandomWalk, setLocation, startRandomWalk, stopRandomWalk, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -11,7 +11,7 @@ import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { showToast } from '../common/Toast'
 import { useT } from '../../i18n'
-import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
+import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus, ValidatedNumberInput } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
 
@@ -22,6 +22,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
   const [center, setCenter] = useState<LatLng | null>(null)
   const [centerText, setCenterText] = useState('')
   const [radius, setRadius] = useState(100)
+  const [radiusValid, setRadiusValid] = useState(true)
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [speedKmh, setSpeedKmh] = useState(5)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
@@ -42,7 +43,7 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
     }
   }, [livePosition, center, centerText])
 
-  const canStart = deviceReady && !isActive && center !== null && radius > 0 && !isBusy
+  const canStart = deviceReady && !isActive && center !== null && radius > 0 && radiusValid && !isBusy
 
   useEffect(() => {
     setOverlay({
@@ -167,9 +168,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
             onFocus={() => requestPoint((lat, lng) => { setCenter({ lat, lng }); setCenterText(formatPoint({ lat, lng })) })}
             onChange={handleCenterTextChange}
           />
-          <NumberInput label={t('randomwalk.radius')} min={1} value={radius} disabled={isActive} onFocus={(event) => event.currentTarget.select()} onChange={(value) => setRadius(Number(value) || 0)} />
+          <ValidatedNumberInput label={t('randomwalk.radius')} min={1} value={radius} disabled={isActive} onFocus={(event) => event.currentTarget.select()} onChange={setRadius} onValidityChange={setRadiusValid} />
           <Group gap="xs">
-            {[50, 100, 300, 500].map((value) => <Button key={value} size="xs" variant={radius === value ? 'filled' : 'default'} disabled={isActive} onClick={() => setRadius(value)}>{`${value}m`}</Button>)}
+            {[50, 100, 300].map((value) => <Button key={value} size="xs" variant={radius === value ? 'filled' : 'default'} disabled={isActive} onClick={() => setRadius(value)}>{`${value}m`}</Button>)}
           </Group>
         </PanelSection>
         <PanelSection>

@@ -34,7 +34,7 @@ const MODE_SHORT_NAMES: Record<Mode, string> = {
  * fallback name. Keep that tab compact while retaining normal device names.
  */
 function displayDeviceName(device: Device): string {
-  if (device.name.toLowerCase() === device.udid.toLowerCase()) return device.udid.slice(-8)
+  if (device.name.toLowerCase() === device.udid.toLowerCase()) return device.udid.slice(-8).toUpperCase()
   return device.name
 }
 
@@ -42,6 +42,7 @@ function statusColor(device: Device, state: DeviceState | undefined): string {
   if (device.status !== 'ready') return 'var(--mantine-color-gray-5)'
   if (state === 'paused') return 'var(--mantine-color-yellow-6)'
   if (state && RUNNING_STATES.includes(state)) return 'var(--mantine-color-blue-6)'
+  if (device.connection_type === 'wireless_direct') return 'var(--mantine-color-gray-5)'
   return 'var(--mantine-color-green-6)'
 }
 
@@ -166,7 +167,9 @@ export function DeviceTabs({
             <button
               className={`device-tab${device.udid === focusedDeviceId ? ' active' : ''}`}
               onClick={() => onFocusChange(device.udid)}
-              title={[device.detail, `UDID: ${device.udid}`].filter(Boolean).join('\n')}
+              onFocus={() => setHoveredUdid(device.udid)}
+              onBlur={() => setHoveredUdid(null)}
+              aria-label={`${displayName}, UDID: ${device.udid}`}
             >
               <span className="device-tab-dot" style={{ background: statusColor(device, state) }} />
               <span className="device-tab-name">{displayName}</span>
@@ -178,7 +181,7 @@ export function DeviceTabs({
             </button>
 
             {hoveredUdid === device.udid && (
-              <div className="device-tab-hover-card">
+              <div className="device-tab-hover-card" role="tooltip">
                 <div className="hover-card-header">
                   <span className="hover-card-title">{displayName}</span>
                   <span className={`hover-card-status ${state}`}>
@@ -201,6 +204,10 @@ export function DeviceTabs({
                   {pos?.etaSeconds !== undefined && pos.etaSeconds > 0 ? (
                     <span>ETA {formatEta(pos.etaSeconds)}</span>
                   ) : null}
+                </div>
+                <div className="hover-card-device-meta">
+                  {device.detail && <span>{device.detail}</span>}
+                  <span>UDID: {device.udid}</span>
                 </div>
               </div>
             )}

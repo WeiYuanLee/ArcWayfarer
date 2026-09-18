@@ -28,7 +28,7 @@
     "@tabler/icons-react": "^3.46.0",
     "clipper-lib": "^6.4.2",
     "leaflet": "^1.9.4",
-    "maplibre-gl": "^6.4.0",
+    "maplibre-gl": "6.4.1",
     "opentype.js": "^2.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -42,8 +42,8 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
-    "electron": "^30.0.0",
-    "electron-builder": "^24.13.3",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^27.0.1",
     "typescript": "^5.5.0",
@@ -61,6 +61,16 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": false,
+      "grantFileProtocolExtraPrivileges": true
+    },
     "afterPack": "electron/after-pack.js",
     "extraResources": [
       {
@@ -86,10 +96,46 @@
       ],
       "icon": "build/arcwayfarer-icon.icns",
       "category": "public.app-category.utilities",
+      "minimumSystemVersion": "13.0",
+      "extendInfo": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "127.0.0.1": {
+              "NSIncludesSubdomains": false,
+              "NSTemporaryExceptionAllowsInsecureHTTPLoads": true
+            },
+            "localhost": {
+              "NSIncludesSubdomains": false,
+              "NSTemporaryExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
+      },
       "identity": null
     },
     "dmg": {
-      "artifactName": "${productName}-${version}-${arch}.dmg"
+      "artifactName": "${productName}-${version}-${arch}.dmg",
+      "background": "build/dmg-background.png",
+      "iconSize": 92,
+      "iconTextSize": 13,
+      "window": {
+        "width": 760,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 240,
+          "y": 164
+        },
+        {
+          "x": 520,
+          "y": 164,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "win": {
       "target": [

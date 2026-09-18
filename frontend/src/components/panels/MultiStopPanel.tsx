@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { ActionIcon, Badge, Button, FileButton, Group, NumberInput, SegmentedControl, Stack } from '@mantine/core'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Alert, Badge, Button, FileButton, Group, SegmentedControl, Stack } from '@mantine/core'
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
@@ -16,6 +16,7 @@ import {
 import type { LatLng, MapOverlay, OverlayCircle, OverlayLink, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
 import { formatPoint, parsePastedPoints, parsePoint, routeLegForStop } from './coords'
+import { MAX_OPTIMIZABLE_POINTS, optimizeRouteOrder } from './routeOptimizer'
 import { SpeedSlider } from './SpeedSlider'
 import { PlaybackControls } from './PlaybackControls'
 import { ActiveFlightHUD } from './ActiveFlightHUD'
@@ -31,6 +32,7 @@ import { useT } from '../../i18n'
 import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
+import type { WayPointItem } from '../../hooks/useWaypointList'
 import {
   CoordinateField,
   ModePanelLayout,
@@ -39,6 +41,7 @@ import {
   PanelNotice,
   PanelSection,
   PanelStatus,
+  ValidatedNumberInput,
 } from './ui'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
@@ -175,6 +178,7 @@ export function MultiStopPanel({
   const t = useT()
   const {
     items,
+    revision,
     validWaypoints,
     updateWaypoint,
     handleTextChange,
@@ -184,6 +188,8 @@ export function MultiStopPanel({
     moveWaypoint,
     clearAllWaypoints,
     setAllWaypoints,
+    reorderValidWaypoints,
+    restoreItems,
   } = useWaypointList(2)
   const [navMode, setNavMode] = useState<NavMode>('walk')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
@@ -206,7 +212,23 @@ export function MultiStopPanel({
   const [flowerPostWait, setFlowerPostWait] = useState(2)
   const [flowerRouteType, setFlowerRouteType] = useState<'stop_at_end' | 'return_to_start' | 'loop_forever'>('stop_at_end')
   const [flowerRounds, setFlowerRounds] = useState(1)
+  const [numericValidity, setNumericValidity] = useState({
+    jumpPreDelay: true,
+    jumpPostDelay: true,
+    pauseMin: true,
+    pauseMax: true,
+    flowerRadius: true,
+    flowerCircles: true,
+    flowerPreWait: true,
+    flowerPostWait: true,
+    flowerRounds: true,
+  })
   const [fruitOffsetOpen, setFruitOffsetOpen] = useState(false)
+  const [optimizationUndo, setOptimizationUndo] = useState<{
+    previousItems: WayPointItem[]
+    expectedRevision: number
+    message: string
+  } | null>(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [importMessage, setImportMessage] = useState<ImportMessage | null>(null)
@@ -238,7 +260,17 @@ export function MultiStopPanel({
   const flowerVisualProgress = flowerProgress
     ? { flowerIndex: flowerProgress.flowerIndex, phase: flowerProgress.phase }
     : null
-  const canStart = deviceReady && !isActive && validWaypoints.length >= (isFlower ? 1 : 2) && !isBusy
+  const numericInputsValid = isFlower
+    ? numericValidity.flowerRadius && numericValidity.flowerCircles && numericValidity.flowerPreWait && numericValidity.flowerPostWait
+      && (flowerRouteType !== 'return_to_start' || numericValidity.flowerRounds)
+    : jumpMode
+      ? numericValidity.jumpPreDelay && numericValidity.jumpPostDelay
+      : !pauseEnabled || (numericValidity.pauseMin && numericValidity.pauseMax)
+  const canStart = deviceReady && !isActive && validWaypoints.length >= (isFlower ? 1 : 2) && numericInputsValid && !isBusy
+
+  function setNumericFieldValidity(field: keyof typeof numericValidity, valid: boolean) {
+    setNumericValidity((current) => current[field] === valid ? current : { ...current, [field]: valid })
+  }
 
   useEffect(() => {
     if (!deviceId) return
@@ -335,9 +367,9 @@ export function MultiStopPanel({
   }, [validWaypoints, isActive])
 
   const isLocked = isActive || isBusy
-  const activePath = isRunning && validWaypoints.length >= 2
+  const activePath = useMemo(() => isRunning && validWaypoints.length >= 2
     ? routeLegs[(liveStopIndex ?? 1) - 1] ?? routeLegForStop(routePath, validWaypoints, liveStopIndex ?? 1, false)
-    : null
+    : null, [isRunning, validWaypoints, routeLegs, liveStopIndex, routePath])
 
   useEffect(() => {
     if (!focusNewWaypointRef.current) return
@@ -351,9 +383,62 @@ export function MultiStopPanel({
     })
   }, [items.length])
 
+  useEffect(() => {
+    if (optimizationUndo && revision !== optimizationUndo.expectedRevision) {
+      setOptimizationUndo(null)
+    }
+  }, [optimizationUndo, revision])
+
   function handleAddWaypoint() {
     focusNewWaypointRef.current = true
     addWaypoint()
+  }
+
+  function handleOptimizeRoute() {
+    if (validWaypoints.length < 3 || validWaypoints.length > MAX_OPTIMIZABLE_POINTS || isLocked) return
+    const result = optimizeRouteOrder(validWaypoints, {
+      isClosedLoop: isFlower && flowerRouteType !== 'stop_at_end',
+    })
+    if (result.wasLimited) {
+      showToast(t('multistop.optimize_too_many'))
+      return
+    }
+    const orderChanged = result.order.some((originalIndex, position) => originalIndex !== position)
+    const hasInvalidBeforeValid = items.some((item, index) =>
+      item.point === null && items.slice(index + 1).some((laterItem) => laterItem.point !== null),
+    )
+    if (!orderChanged && !hasInvalidBeforeValid) {
+      showToast(t('multistop.optimize_no_change'))
+      return
+    }
+
+    const expectedRevision = reorderValidWaypoints(result.order)
+    const hasMeaningfulSaving = result.savedDistance >= 1
+    const savedText = result.savedDistance >= 1000
+      ? `${(result.savedDistance / 1000).toFixed(2)} km`
+      : `${Math.round(result.savedDistance)} m`
+    const message = jumpMode
+      ? hasMeaningfulSaving
+        ? t('multistop.optimize_jump_success').replace('{saved}', savedText)
+        : t('multistop.optimize_jump_reordered')
+      : hasMeaningfulSaving
+        ? t('multistop.optimize_success')
+          .replace('{saved}', savedText)
+          .replace('{percent}', String(result.originalDistance > 0
+            ? Math.round(result.savedDistance / result.originalDistance * 100)
+            : 0))
+        : t('multistop.optimize_reordered')
+    setOptimizationUndo({
+      previousItems: items.map((item) => ({ ...item })),
+      expectedRevision,
+      message,
+    })
+  }
+
+  function handleUndoOptimization() {
+    if (!optimizationUndo || revision !== optimizationUndo.expectedRevision) return
+    restoreItems(optimizationUndo.previousItems)
+    setOptimizationUndo(null)
   }
 
   const [contextMenu, setContextMenu] = useState<{
@@ -611,6 +696,7 @@ export function MultiStopPanel({
     // The last coordinate field remains focused after typing.  Starting a
     // route must disarm its pending map pick before the user changes device.
     cancelPointRequest?.()
+    setOptimizationUndo(null)
     setStatus({ kind: 'busy' })
     try {
       if (isFlower) {
@@ -703,13 +789,13 @@ export function MultiStopPanel({
     : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined
 
   return (
-    <div className={`panel${isActive ? ' multistop-panel--active' : ''}${isFlower && !isActive ? ' multistop-panel--flower-editor' : ''}`}>
+    <div className={`panel${isActive ? ' multistop-panel--active' : ' multistop-panel--editor'}`}>
       <ModePanelLayout
         title={isFlower ? '種花模式' : t('multistop.title')}
         titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
         headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
-        alwaysShowScrollbar={isFlower && !isActive}
-        constrainBody={isFlower && !isActive}
+        alwaysShowScrollbar={!isActive}
+        constrainBody={!isActive}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? (
           <PanelFooter>
@@ -731,7 +817,10 @@ export function MultiStopPanel({
           fullWidth
           size="xs"
           value={subtab}
-          onChange={(value) => setSubtab(value as 'multi' | 'flower')}
+          onChange={(value) => {
+            setSubtab(value as 'multi' | 'flower')
+            setOptimizationUndo(null)
+          }}
           data={[
             { label: '基礎模式', value: 'multi' },
             { label: <span title="每個花點會自動建立 50m 進場點；後續輪次直接由最後一朵花前往第一朵花，不會重新走進場點。">種花模式</span>, value: 'flower' },
@@ -824,6 +913,31 @@ export function MultiStopPanel({
             </Group>
 
             {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
+            <Button
+              fullWidth
+              size="compact-sm"
+              variant="default"
+              title={validWaypoints.length > MAX_OPTIMIZABLE_POINTS
+                ? t('multistop.optimize_too_many')
+                : t('multistop.optimize_hint')}
+              onClick={handleOptimizeRoute}
+              disabled={validWaypoints.length < 3 || validWaypoints.length > MAX_OPTIMIZABLE_POINTS || isLocked}
+            >
+              {t('multistop.optimize_order')}
+            </Button>
+            {validWaypoints.length > MAX_OPTIMIZABLE_POINTS && (
+              <PanelNotice tone="warning">{t('multistop.optimize_too_many')}</PanelNotice>
+            )}
+            {optimizationUndo && (
+              <Alert color="green" variant="light" py="xs">
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <span>{optimizationUndo.message}</span>
+                  <Button size="compact-xs" variant="subtle" onClick={handleUndoOptimization}>
+                    {t('multistop.undo_optimize')}
+                  </Button>
+                </Group>
+              </Alert>
+            )}
             {isFlower && <Button fullWidth size="compact-sm" variant="default" onClick={() => setFruitOffsetOpen(true)} disabled={!validWaypoints.length}>產生建議領果座標</Button>}
           </PanelSection>
 
@@ -832,18 +946,20 @@ export function MultiStopPanel({
 
             {jumpMode && !isFlower ? (
             <>
-              <NumberInput label={t('multistop.jump_pre_delay')}
+              <ValidatedNumberInput label={t('multistop.jump_pre_delay')}
                   min={0}
                   value={jumpPreDelay}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(value) => setJumpPreDelay(Number(value) || 0)} />
-              <NumberInput label={t('multistop.jump_post_delay')}
+                  onChange={setJumpPreDelay}
+                  onValidityChange={(valid) => setNumericFieldValidity('jumpPreDelay', valid)} />
+              <ValidatedNumberInput label={t('multistop.jump_post_delay')}
                   min={0}
                   value={jumpPostDelay}
                   disabled={isActive}
                   onFocus={(e) => e.target.select()}
-                  onChange={(value) => setJumpPostDelay(Number(value) || 0)} />
+                  onChange={setJumpPostDelay}
+                  onValidityChange={(valid) => setNumericFieldValidity('jumpPostDelay', valid)} />
             </>
             ) : !isFlower ? (
             <>
@@ -861,6 +977,8 @@ export function MultiStopPanel({
                   maxLabel={t('panel.pause_max')}
                   onMinChange={(value) => setPauseMin(Number(value) || 0)}
                   onMaxChange={(value) => setPauseMax(Number(value) || 0)}
+                  onMinValidityChange={(valid) => setNumericFieldValidity('pauseMin', valid)}
+                  onMaxValidityChange={(valid) => setNumericFieldValidity('pauseMax', valid)}
                   minProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
                   maxProps={{ min: 0, disabled: isActive, onFocus: (event) => event.target.select() }}
                 />}
@@ -895,12 +1013,15 @@ export function MultiStopPanel({
                   { label: '圓周繞行', value: 'perimeter' },
                 ]}
               />
-              <NumberInput label="花朵半徑（公尺）" min={5} max={100} value={flowerRadius} onChange={(v) => setFlowerRadius(Number(v) || 5)} />
-              <NumberInput label="繞圈數" min={0.5} step={0.5} max={10} value={flowerCircles} onChange={(v) => setFlowerCircles(Number(v) || 0.5)} />
-              <NumberInput label="到達前等待（秒）" min={0} value={flowerPreWait} onChange={(v) => setFlowerPreWait(Number(v) || 0)} />
-              <NumberInput label="完成後等待（秒）" min={0} value={flowerPostWait} onChange={(v) => setFlowerPostWait(Number(v) || 0)} />
-              <SegmentedControl fullWidth size="xs" value={flowerRouteType} onChange={(v) => setFlowerRouteType(v as 'stop_at_end' | 'return_to_start' | 'loop_forever')} data={[{ label: '停在終點', value: 'stop_at_end' }, { label: '回到起點', value: 'return_to_start' }, { label: '持續循環', value: 'loop_forever' }]} />
-              {flowerRouteType === 'return_to_start' && <NumberInput label="巡迴輪數" min={1} max={20} value={flowerRounds} onChange={(v) => setFlowerRounds(Number(v) || 1)} />}
+              <ValidatedNumberInput label="花朵半徑（公尺）" min={5} max={100} value={flowerRadius} onChange={setFlowerRadius} onValidityChange={(valid) => setNumericFieldValidity('flowerRadius', valid)} />
+              <ValidatedNumberInput label="繞圈數" min={0.5} step={0.5} max={10} value={flowerCircles} onChange={setFlowerCircles} onValidityChange={(valid) => setNumericFieldValidity('flowerCircles', valid)} />
+              <ValidatedNumberInput label="到達前等待（秒）" min={0} value={flowerPreWait} onChange={setFlowerPreWait} onValidityChange={(valid) => setNumericFieldValidity('flowerPreWait', valid)} />
+              <ValidatedNumberInput label="完成後等待（秒）" min={0} value={flowerPostWait} onChange={setFlowerPostWait} onValidityChange={(valid) => setNumericFieldValidity('flowerPostWait', valid)} />
+              <SegmentedControl fullWidth size="xs" value={flowerRouteType} onChange={(v) => {
+                setFlowerRouteType(v as 'stop_at_end' | 'return_to_start' | 'loop_forever')
+                setOptimizationUndo(null)
+              }} data={[{ label: '停在終點', value: 'stop_at_end' }, { label: '回到起點', value: 'return_to_start' }, { label: '持續循環', value: 'loop_forever' }]} />
+              {flowerRouteType === 'return_to_start' && <ValidatedNumberInput label="巡迴輪數" min={1} max={20} value={flowerRounds} onChange={setFlowerRounds} onValidityChange={(valid) => setNumericFieldValidity('flowerRounds', valid)} />}
             </PanelSection>
           )}
         </>

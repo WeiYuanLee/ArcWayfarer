@@ -1,8 +1,71 @@
-const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, shell, ipcMain, session } = require('electron')
 const { spawn, execSync } = require('child_process')
 const path = require('path')
 const http = require('http')
 const net = require('net')
+const { pathToFileURL } = require('url')
+
+const isDev = !app.isPackaged
+const isStartupSmokeTest = process.env.ARCWAYFARER_STARTUP_SMOKE_TEST === '1'
+const DEV_SERVER_ORIGIN = 'http://localhost:5173'
+const ALLOWED_RENDERER_PERMISSIONS = new Set(['clipboard-read', 'clipboard-sanitized-write'])
+
+let backendProc = null
+let tunneldProc = null
+let mainWindow = null
+let lastRendererHeartbeatAt = 0
+let rendererRecoveryTimer = null
+let rendererRecoveryPromptOpen = false
+
+function productionEntryUrl() {
+  return pathToFileURL(path.join(__dirname, '../dist/index.html')).href
+}
+
+function isTrustedAppUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl)
+    if (isDev) return url.origin === DEV_SERVER_ORIGIN
+    const entryUrl = new URL(productionEntryUrl())
+    return url.protocol === entryUrl.protocol && url.host === entryUrl.host && url.pathname === entryUrl.pathname
+  } catch {
+    return false
+  }
+}
+
+function isTrustedIpcSender(event) {
+  const webContents = mainWindow?.webContents
+  return Boolean(
+    webContents &&
+    !webContents.isDestroyed() &&
+    event.sender === webContents &&
+    event.senderFrame === webContents.mainFrame &&
+    isTrustedAppUrl(event.senderFrame.url)
+  )
+}
+
+function isTrustedPermissionSource(webContents, details) {
+  return Boolean(
+    webContents &&
+    details?.isMainFrame &&
+    isTrustedAppUrl(details.requestingUrl || webContents.getURL())
+  )
+}
+
+function parseExternalUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return null
+  try {
+    const url = new URL(rawUrl)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+async function openExternalUrl(rawUrl) {
+  const url = parseExternalUrl(rawUrl)
+  if (!url) return
+  await shell.openExternal(url)
+}
 
 function getHardwareArch() {
   if (process.platform === 'darwin') {
@@ -17,7 +80,8 @@ function getHardwareArch() {
   return process.arch
 }
 
-ipcMain.handle('get-platform-info', () => {
+ipcMain.handle('get-platform-info', (event) => {
+  if (!isTrustedIpcSender(event)) throw new Error('Rejected IPC request from an untrusted renderer')
   return {
     platform: process.platform,
     arch: getHardwareArch(),
@@ -25,20 +89,10 @@ ipcMain.handle('get-platform-info', () => {
   }
 })
 
-ipcMain.handle('open-external', async (_, url) => {
-  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-    await shell.openExternal(url)
-  }
+ipcMain.handle('open-external', async (event, url) => {
+  if (!isTrustedIpcSender(event)) throw new Error('Rejected IPC request from an untrusted renderer')
+  await openExternalUrl(url)
 })
-
-
-const isDev = !app.isPackaged
-let backendProc = null
-let tunneldProc = null
-let mainWindow = null
-let lastRendererHeartbeatAt = 0
-let rendererRecoveryTimer = null
-let rendererRecoveryPromptOpen = false
 
 const TUNNELD_HOST = '127.0.0.1'
 const TUNNELD_PORT = 49151
@@ -241,7 +295,7 @@ async function offerRendererRecovery(reason) {
 }
 
 ipcMain.on('renderer-heartbeat', (event) => {
-  if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) {
+  if (isTrustedIpcSender(event)) {
     lastRendererHeartbeatAt = Date.now()
   }
 })
@@ -252,12 +306,32 @@ function createWindow() {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
     },
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    void openExternalUrl(url).catch((error) => {
+      console.error('[electron] could not open external URL:', error.message)
+    })
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isTrustedAppUrl(url)) return
+    event.preventDefault()
+    void openExternalUrl(url).catch((error) => {
+      console.error('[electron] could not open external navigation:', error.message)
+    })
+  })
+
+  mainWindow.webContents.on('will-attach-webview', (event) => {
+    event.preventDefault()
   })
 
   // Chromium intentionally throttles background renderers. Tell the page when
@@ -298,6 +372,20 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (isStartupSmokeTest) {
+    console.log(`[electron] startup smoke test passed (Electron ${process.versions.electron}, Chromium ${process.versions.chrome})`)
+    app.quit()
+    return
+  }
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, _requestingOrigin, details) => (
+    isTrustedPermissionSource(webContents, details) &&
+    ALLOWED_RENDERER_PERMISSIONS.has(permission)
+  ))
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(isTrustedPermissionSource(webContents, details) && ALLOWED_RENDERER_PERMISSIONS.has(permission))
+  })
+
   try {
     // On packaged macOS builds, request the administrator authorization before
     // showing any application UI. A remote iOS device cannot be used until

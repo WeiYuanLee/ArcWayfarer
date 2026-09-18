@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: http://127.0.0.1:8787; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:8787 ws://localhost:5173 https://api.github.com https://nominatim.openstreetmap.org https://tile.openstreetmap.org; form-action 'self'"
+    />
     <title>ArcWayfarer</title>
   </head>
   <body>

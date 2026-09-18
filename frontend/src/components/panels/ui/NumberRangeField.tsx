@@ -1,33 +1,38 @@
 import type { ReactNode } from 'react'
-import { Group, NumberInput, type NumberInputProps } from '@mantine/core'
+import { Group } from '@mantine/core'
+import { ValidatedNumberInput, type ValidatedNumberInputProps } from './ValidatedNumberInput'
 
 export type NumberRangeFieldProps = {
-  min: number | ''
-  max: number | ''
-  onMinChange: (value: number | '') => void
-  onMaxChange: (value: number | '') => void
+  min: number
+  max: number
+  onMinChange: (value: number) => void
+  onMaxChange: (value: number) => void
+  onMinValidityChange?: (valid: boolean) => void
+  onMaxValidityChange?: (valid: boolean) => void
   minLabel?: ReactNode
   maxLabel?: ReactNode
-  minProps?: Omit<NumberInputProps, 'value' | 'onChange' | 'label'>
-  maxProps?: Omit<NumberInputProps, 'value' | 'onChange' | 'label'>
+  minProps?: Omit<ValidatedNumberInputProps, 'value' | 'onChange' | 'label'>
+  maxProps?: Omit<ValidatedNumberInputProps, 'value' | 'onChange' | 'label'>
 }
 
 /** A responsive pair of numeric inputs for pause, dwell, or distance ranges. */
 export function NumberRangeField({
-  min, max, onMinChange, onMaxChange, minLabel, maxLabel, minProps, maxProps,
+  min, max, onMinChange, onMaxChange, onMinValidityChange, onMaxValidityChange, minLabel, maxLabel, minProps, maxProps,
 }: NumberRangeFieldProps) {
   return (
     <Group grow align="end" wrap="nowrap">
-      <NumberInput
+      <ValidatedNumberInput
         label={minLabel}
         value={min}
-        onChange={(value) => onMinChange(typeof value === 'number' ? value : '')}
+        onChange={onMinChange}
+        onValidityChange={onMinValidityChange}
         {...minProps}
       />
-      <NumberInput
+      <ValidatedNumberInput
         label={maxLabel}
         value={max}
-        onChange={(value) => onMaxChange(typeof value === 'number' ? value : '')}
+        onChange={onMaxChange}
+        onValidityChange={onMaxValidityChange}
         {...maxProps}
       />
     </Group>

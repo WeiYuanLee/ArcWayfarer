@@ -18,7 +18,7 @@ ArcWayfarer 讓你不需要實際移動，就能在地圖上傳送、導航或�
 [![Download](https://img.shields.io/github/v/release/lencelee/arcwayfarer?label=Download&style=for-the-badge)](https://github.com/lencelee/arcwayfarer/releases/latest)
 -->
 
-支援 **macOS**（Apple Silicon + Intel）和 **Windows 10/11**。
+支援 **macOS 13 或更新版本**（Apple Silicon + Intel）和 **Windows 10/11**。
 
 ---
 
@@ -55,7 +55,7 @@ ArcWayfarer 讓你不需要實際移動，就能在地圖上傳送、導航或�
 
 ### 系統需求
 
-- **macOS**（Intel 或 Apple Silicon）或 **Windows 10/11**（64 位元）
+- **macOS 13 或更新版本**（Intel 或 Apple Silicon）或 **Windows 10/11**（64 位元）
 - iOS 裝置透過 USB 連接至電腦
 
 ### iOS 相容性

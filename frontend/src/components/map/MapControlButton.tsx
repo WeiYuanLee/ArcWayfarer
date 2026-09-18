@@ -1,10 +1,13 @@
 import { ActionIcon, type ActionIconProps } from '@mantine/core'
-import type { MouseEventHandler, ReactNode } from 'react'
+import type { FocusEventHandler, MouseEventHandler, PointerEventHandler, ReactNode } from 'react'
 
 type Props = ActionIconProps & {
   children?: ReactNode
   className?: string
+  'aria-expanded'?: boolean
+  onFocus?: FocusEventHandler<HTMLButtonElement>
   onClick?: MouseEventHandler<HTMLButtonElement>
+  onPointerEnter?: PointerEventHandler<HTMLButtonElement>
   'aria-label'?: string
 }
 
