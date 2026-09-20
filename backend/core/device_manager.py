@@ -39,6 +39,7 @@ _device_scan_lock = asyncio.Lock()
 _device_scan_task: asyncio.Task[list[DeviceInfo]] | None = None
 _direct_addresses: dict[str, str] = {}
 _direct_usb_present: set[str] = set()
+_system_routes: set[str] = set()
 _direct_rsd_tunnels: dict[str, WiFiRsdTunnel] = {}
 _direct_rsd_devices: dict[str, DeviceInfo] = {}
 
@@ -124,7 +125,7 @@ def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType:
 
 
 async def _scan_devices() -> list[DeviceInfo]:
-    global _last_usb_discovery_diagnostic, _direct_usb_present
+    global _last_usb_discovery_diagnostic, _direct_usb_present, _system_routes
     devices: list[DeviceInfo] = []
     seen_udids: set[str] = set()
 
@@ -209,11 +210,21 @@ async def _scan_devices() -> list[DeviceInfo]:
                 )
             )
 
-    # An explicit Direct connection can replace the system Wi-Fi route, while
-    # a physical USB connection keeps priority. Both are the same phone.
+    _system_routes = {
+        item.udid.lower() for item in devices
+        if item.status == "ready" and item.connection_type != "wireless_direct"
+    }
+
+    # A healthy system USB or Wi-Fi route always has priority. Wireless Direct
+    # is a fallback for phones that the system transport cannot currently use;
+    # keeping it above a recovered Network route makes ordinary Wi-Fi location
+    # commands reuse a stale Direct tunnel.
     for key in dict.fromkeys([*_direct_addresses, *_direct_rsd_devices]):
         ip = _direct_addresses.get(key)
-        if any(item.udid.lower() == key and item.connection_type == "usb" and item.status == "ready" for item in devices):
+        previous = next((item for item in devices if item.udid.lower() == key), None)
+        if previous is not None and previous.status == "ready" and previous.connection_type != "wireless_direct":
+            await _clear_direct_runtime(key)
+            logger.info("System %s route available for %s; released Wireless Direct", previous.connection_type, key)
             continue
         try:
             if key in _direct_rsd_devices:
@@ -224,7 +235,6 @@ async def _scan_devices() -> list[DeviceInfo]:
                 assert ip is not None
                 direct = await asyncio.wait_for(_describe_direct(key, ip), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS)
         except Exception:
-            previous = next((item for item in devices if item.udid.lower() == key), None)
             if previous is not None and previous.connection_type == "wifi" and previous.status == "ready":
                 # A remembered Direct route must not replace a healthy system
                 # Wi-Fi route after the phone changes networks. Keep pairing
@@ -262,10 +272,13 @@ async def _scan_devices() -> list[DeviceInfo]:
                 name=canonical_udid,
                 ios_version=saved_ver or "unknown",
                 transport="rsd" if is_rsd else "lockdown",
-                connection_type="wireless_direct",
+                # Authorization is a stored capability, not an active route.
+                # Do not make a disconnected USB/Wi-Fi phone appear to have
+                # fallen back into Wireless Direct without an explicit connect.
+                connection_type="unknown",
                 direct_paired=True,
                 status="error",
-                detail="已授權，尚未連線",
+                detail="已授權，裝置目前離線",
             ))
 
     return devices
@@ -441,20 +454,51 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
         # matched again after DHCP assigns it a new address.
         ios17_cands = list(iter_remote_paired_identifiers())
         ios17_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
+
+        async def probe_remote_pairing(cand: str):
+            # Endpoint selection only verifies an existing authorization.
+            # Pair setup belongs on the trusted USB channel so a failed Wi-Fi
+            # probe cannot replace credentials behind the user's back.
+            return await asyncio.wait_for(
+                tunnel_service.create_core_device_tunnel_service_using_remotepairing(
+                    cand, ip, port, autopair=False
+                ),
+                timeout=3.0,
+            )
+
         for cand in ios17_cands:
             if await has_blocking_session(cand):
                 logger.info("Candidate %s has an active navigation session, skipping probe", cand)
                 continue
             try:
-                provider = await asyncio.wait_for(
-                    tunnel_service.create_core_device_tunnel_service_using_remotepairing(cand, ip, port),
-                    timeout=3.0,
-                )
+                provider = await probe_remote_pairing(cand)
                 await provider.close()
                 matched_udid = cand
                 break
             except Exception:
                 continue
+
+        # A stale key can only be repaired over the trusted USB lockdown
+        # channel. If exactly one USB phone is present, retry on the error
+        # screen performs that repair automatically and verifies this IP again.
+        if not matched_udid:
+            try:
+                mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+                usb_udids = [
+                    device.serial for device in mux_devices
+                    if device.serial and _connection_type_from_mux(device) == "usb"
+                ]
+            except Exception:
+                usb_udids = []
+            if len(usb_udids) == 1 and not await has_blocking_session(usb_udids[0]):
+                usb_udid = usb_udids[0]
+                try:
+                    await enable_direct_pairing(usb_udid)
+                    provider = await probe_remote_pairing(usb_udid)
+                    await provider.close()
+                    matched_udid = usb_udid
+                except Exception:
+                    logger.exception("USB RemotePairing refresh did not unlock endpoint %s", ip)
 
         # 2. Non-destructively probe iOS 16 paired devices
         if not matched_udid:
@@ -477,9 +521,15 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
                     continue
 
         if not matched_udid:
+            # A failed switch must not leave its idle predecessor displayed as
+            # Wireless Direct and prevent a healthy usbmux Wi-Fi route from
+            # taking over. Active navigation sessions remain protected.
+            for active_udid in list(_direct_rsd_tunnels):
+                if not _has_active_session(active_udid):
+                    await disconnect_direct(active_udid)
             raise ValueError(
                 f"已找到 {ip}，但手機拒絕目前的 Wireless Direct 授權。"
-                "請用 USB 接上這台手機，解鎖後在裝置管理按「刷新無線授權」，再拔線重連。"
+                "請用 USB 接上這台手機並解鎖，然後直接按「重新連線」以刷新授權。"
             )
 
         if await has_blocking_session(matched_udid):
@@ -951,25 +1001,9 @@ async def _describe_device(
 
 
 async def get_device(udid: str) -> DeviceInfo:
-    key = udid.lower()
-    if key in _direct_rsd_devices and key not in _direct_usb_present:
-        device = _direct_rsd_devices[key]
-        if _direct_rsd_tunnels[key].rsd is not None:
-            return device
-        # Fall through to normal discovery. If usbmux still has a healthy
-        # Network route, callers can continue without manually disconnecting
-        # Wireless Direct first.
-        await _clear_direct_runtime(udid)
-    ip = direct_address(udid)
-    if ip is not None and key not in _direct_usb_present:
-        # A selected Direct device can start a location session without
-        # asking usbmuxd/AMDS to enumerate devices first.
-        try:
-            return await _describe_direct(udid, ip)
-        except Exception:
-            # iOS 16 Direct TCP may also become stale after DHCP changes the
-            # address. Prefer a currently discoverable system Wi-Fi route.
-            await _clear_direct_runtime(udid)
+    # Refresh route ownership before choosing a transport. The scan preserves
+    # Direct when no system route exists and clears it when USB/Network has
+    # recovered, so location commands cannot be trapped by an old selection.
     for device in await list_devices():
         if device.udid.lower() == udid.lower():
             return device
@@ -977,6 +1011,8 @@ async def get_device(udid: str) -> DeviceInfo:
 
 
 async def get_lockdown(udid: str) -> LockdownClient:
+    if udid.lower() in _system_routes:
+        return await create_using_usbmux(serial=udid)
     ip = direct_address(udid)
     if ip is not None:
         # Route from the last discovery snapshot. A direct location command
@@ -990,10 +1026,10 @@ async def get_lockdown(udid: str) -> LockdownClient:
 async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
     key = udid.lower()
 
-    # A physical USB path has priority once discovery confirms it. Otherwise
-    # an old, closed Wi-Fi tunnel shadows tunneld and every command reports a
-    # Wireless Direct error even though the UI correctly shows USB.
-    if key in _direct_usb_present:
+    # Any healthy system route has priority once discovery confirms it. This
+    # covers both USB and ordinary Network Wi-Fi and prevents a live but stale
+    # Direct object from hijacking the original Wi-Fi location path.
+    if key in _system_routes or key in _direct_usb_present:
         rsd = await get_tunneld_device_by_udid(udid)
         if rsd is not None:
             return rsd

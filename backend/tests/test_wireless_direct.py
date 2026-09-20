@@ -56,12 +56,14 @@ class PairingStoreTests(unittest.TestCase):
 class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         device_manager._direct_addresses.clear()
+        device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
 
     async def asyncTearDown(self) -> None:
         device_manager._direct_addresses.clear()
+        device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
@@ -102,6 +104,56 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         verified.connect.assert_awaited_once_with(autopair=False)
         verified.close.assert_awaited_once()
         save.assert_called_once_with(udid, PAIR_RECORD)
+
+    async def test_retry_refreshes_single_usb_phone_then_connects_selected_ip(self) -> None:
+        """端點驗證失敗後，插一台 USB 再重試會刷新金鑰並連回同一 IP。"""
+        udid = "00008101-001239E11EB9003A"
+        ip = "192.168.1.184"
+        connected = DeviceInfo(
+            udid=udid, name="Lence", ios_version="26.6.2", transport="rsd",
+            connection_type="wireless_direct", ip_address=ip, status="ready",
+        )
+        provider = SimpleNamespace(close=AsyncMock())
+        probe = AsyncMock(side_effect=[ConnectionError("stale key"), provider])
+        usb = SimpleNamespace(serial=udid, connection_type="USB")
+
+        with (
+            patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[udid]),
+            patch.object(device_manager.tunnel_service, "create_core_device_tunnel_service_using_remotepairing", probe),
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[usb])),
+            patch.object(device_manager, "enable_direct_pairing", AsyncMock()) as refresh,
+            patch.object(device_manager, "_connect_direct_rsd", AsyncMock(return_value=connected)),
+            patch.object(device_manager, "_has_active_session", return_value=False),
+            patch.object(pairing_store, "list_udids", return_value=[]),
+            patch.object(pairing_store, "load_version", return_value="26.6.2"),
+        ):
+            result = await device_manager.connect_direct("auto", ip, fallback_bonjour=False)
+
+        self.assertEqual(result, connected)
+        refresh.assert_awaited_once_with(udid)
+        self.assertEqual(probe.await_count, 2)
+        self.assertTrue(all(call.kwargs["autopair"] is False for call in probe.await_args_list))
+
+    async def test_failed_switch_releases_idle_direct_runtime_for_wifi_fallback(self) -> None:
+        """新 IP 驗證失敗時，不可讓閒置舊 Direct 狀態繼續遮蔽一般 Wi-Fi。"""
+        old_udid = "00008101-001239E11EB9003A"
+        with (
+            patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[old_udid]),
+            patch.object(
+                device_manager.tunnel_service,
+                "create_core_device_tunnel_service_using_remotepairing",
+                AsyncMock(side_effect=ConnectionError("stale key")),
+            ),
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
+            patch.object(device_manager, "_direct_rsd_tunnels", {old_udid.lower(): SimpleNamespace(rsd=object())}),
+            patch.object(device_manager, "_has_active_session", return_value=False),
+            patch.object(device_manager, "disconnect_direct", AsyncMock()) as disconnect,
+            patch.object(pairing_store, "list_udids", return_value=[]),
+        ):
+            with self.assertRaisesRegex(ValueError, "USB.*重新連線"):
+                await device_manager.connect_direct("auto", "192.168.1.184")
+
+        disconnect.assert_awaited_once_with(old_udid.lower())
 
     async def test_windows_remote_pairing_browse_keeps_port_and_ipv6_scope(self) -> None:
         udid = "00008030-001234567890ABCD"
@@ -502,17 +554,13 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await device_manager.has_blocking_session(udid))
         close_session.assert_not_awaited()
 
-    async def test_selected_direct_device_bypasses_usbmux_discovery(self) -> None:
+    async def test_selected_direct_device_is_returned_when_scan_has_no_system_route(self) -> None:
         direct = DeviceInfo(udid="A1B2C3D4", name="Phone", ios_version="16.7", transport="lockdown", connection_type="wireless_direct", status="ready")
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
-            patch.object(device_manager, "_direct_usb_present", set()),
-            patch.object(device_manager, "_describe_direct", AsyncMock(return_value=direct)) as describe,
-            patch.object(device_manager, "list_devices", AsyncMock()) as discover,
+            patch.object(device_manager, "list_devices", AsyncMock(return_value=[direct])) as discover,
         ):
             self.assertEqual(await device_manager.get_device("A1B2C3D4"), direct)
-            describe.assert_awaited_once_with("A1B2C3D4", "192.168.1.20")
-            discover.assert_not_awaited()
+            discover.assert_awaited_once()
 
     async def test_direct_service_socket_is_unbound_before_tls(self) -> None:
         import asyncio
@@ -555,7 +603,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].connection_type, "usb")
 
-    async def test_explicit_direct_row_replaces_system_wifi_row_without_duplicate(self) -> None:
+    async def test_system_wifi_row_replaces_direct_row_without_duplicate(self) -> None:
         wifi = DeviceInfo(udid="A1B2C3D4", name="Phone", ios_version="16.7", transport="lockdown", connection_type="wifi", status="ready")
         direct = wifi.model_copy(update={"connection_type": "wireless_direct", "ip_address": "192.168.1.20"})
 
@@ -573,7 +621,8 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         ):
             rows = await device_manager._scan_devices()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].connection_type, "wireless_direct")
+        self.assertEqual(rows[0].connection_type, "wifi")
+        self.assertNotIn("a1b2c3d4", device_manager._direct_addresses)
 
     async def test_closed_direct_route_falls_back_to_ready_system_wifi(self) -> None:
         """Direct 斷線時保留授權，但不可覆蓋同一手機可用的一般 Wi-Fi 路徑。"""
@@ -607,7 +656,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(udid.lower(), device_manager._direct_rsd_tunnels)
         tunnel.aclose.assert_awaited_once()
 
-    async def test_get_device_immediately_falls_back_after_direct_tunnel_closes(self) -> None:
+    async def test_get_device_uses_fresh_system_wifi_snapshot_before_direct(self) -> None:
         udid = "A1B2C3D4"
         wifi = DeviceInfo(
             udid=udid, name="Phone", ios_version="17.4", transport="rsd",
@@ -625,7 +674,57 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(found.connection_type, "wifi")
         discover.assert_awaited_once()
-        tunnel.aclose.assert_awaited_once()
+
+    async def test_system_wifi_rsd_has_priority_over_live_direct_tunnel(self) -> None:
+        udid = "A1B2C3D4"
+        system_rsd = object()
+        direct_rsd = object()
+        with (
+            patch.object(device_manager, "_system_routes", {udid.lower()}),
+            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=direct_rsd)}),
+            patch.object(device_manager, "get_tunneld_device_by_udid", AsyncMock(return_value=system_rsd)) as tunneld,
+        ):
+            self.assertIs(await device_manager.get_rsd(udid), system_rsd)
+        tunneld.assert_awaited_once_with(udid)
+
+    async def test_usb_or_wifi_disconnect_does_not_reactivate_direct(self) -> None:
+        """系統路徑曾接管後，拔線或關 Wi-Fi 只能變離線，不可自動回 Direct。"""
+        udid = "00008101-001239E11EB9003A"
+        for mux_type, expected_type in (("USB", "usb"), ("Network", "wifi")):
+            with self.subTest(mux_type=mux_type):
+                device_manager._direct_addresses.clear()
+                device_manager._direct_rsd_devices.clear()
+                device_manager._direct_rsd_tunnels.clear()
+                device_manager._system_routes.clear()
+                device_manager._direct_addresses[udid.lower()] = "192.168.1.184"
+                tunnel = SimpleNamespace(rsd=object(), aclose=AsyncMock())
+                device_manager._direct_rsd_tunnels[udid.lower()] = tunnel
+                online = DeviceInfo(
+                    udid=udid, name="Lence", ios_version="26.6.2", transport="rsd",
+                    connection_type=expected_type, status="ready", direct_paired=True,
+                )
+                device_manager._direct_rsd_devices[udid.lower()] = online.model_copy(
+                    update={"connection_type": "wireless_direct"}
+                )
+                mux = SimpleNamespace(serial=udid, connection_type=mux_type)
+
+                with (
+                    patch.object(device_manager, "_list_tunnel_udids", AsyncMock(side_effect=[{udid}, set()])),
+                    patch.object(device_manager, "usbmux_list_devices", AsyncMock(side_effect=[[mux], []])),
+                    patch.object(device_manager, "_describe_device", AsyncMock(return_value=online)),
+                    patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[udid]),
+                    patch.object(pairing_store, "list_udids", return_value=[udid]),
+                    patch.object(pairing_store, "load_version", return_value="26.6.2"),
+                ):
+                    first = await device_manager._scan_devices()
+                    disconnected = await device_manager._scan_devices()
+
+                self.assertEqual(first[0].connection_type, expected_type)
+                self.assertEqual(len(disconnected), 1)
+                self.assertEqual(disconnected[0].connection_type, "unknown")
+                self.assertEqual(disconnected[0].detail, "已授權，裝置目前離線")
+                self.assertNotIn(udid.lower(), device_manager._direct_addresses)
+                self.assertNotIn(udid.lower(), device_manager._direct_rsd_tunnels)
 
     async def test_multi_device_probing_skips_active_navigation_session(self) -> None:
         udid_a = "PHONE_A_NAVIGATING"
@@ -659,7 +758,8 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *_args):
                 return None
 
-        async def mock_create_tunnel(target_udid, ip, port):
+        async def mock_create_tunnel(target_udid, ip, port, autopair=True):
+            self.assertFalse(autopair)
             if target_udid == udid_a:
                 raise AssertionError("Active navigation device A should NOT have been probed!")
             if target_udid == udid_b and ip == "192.168.1.55":
@@ -800,7 +900,8 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *_args):
                 return None
 
-        async def fake_probe(cand, ip, _port):
+        async def fake_probe(cand, ip, _port, autopair=True):
+            self.assertFalse(autopair)
             if cand == udid_b and ip == reassigned_ip:
                 return MockBProvider()
             raise ConnectionRefusedError("Handshake failed")

@@ -339,6 +339,10 @@ export function DeviceManagerModal({
         // Transition back to list view
         setView('list')
       } catch (err: any) {
+        // The backend may have released an idle stale Direct tunnel so a
+        // normal usbmux Wi-Fi route can take over. Refresh immediately instead
+        // of leaving the device list showing the obsolete transport.
+        await onRefreshDevices?.()
         setConnectingState((prev) => ({
           ...prev,
           status: 'error',
