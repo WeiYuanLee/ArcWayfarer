@@ -42,7 +42,8 @@ function statusColor(device: Device, state: DeviceState | undefined): string {
   if (device.status !== 'ready') return 'var(--mantine-color-gray-5)'
   if (state === 'paused') return 'var(--mantine-color-yellow-6)'
   if (state && RUNNING_STATES.includes(state)) return 'var(--mantine-color-blue-6)'
-  if (device.connection_type === 'wireless_direct') return 'var(--mantine-color-gray-5)'
+  // A ready Wireless Direct route is healthy just like USB or system Wi-Fi.
+  // Gray is reserved for authorized/offline and other non-ready states.
   return 'var(--mantine-color-green-6)'
 }
 

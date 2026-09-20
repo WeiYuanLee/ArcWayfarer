@@ -63,7 +63,7 @@ export type WirelessDirectEndpoint = {
   ip: string
   port: number
   endpoint: string
-  source: 'paired' | 'bonjour'
+  source: 'paired' | 'remotepairing' | 'mobdev2'
   status?: 'online' | 'history'
   last_connected?: string | null
   device_name?: string | null

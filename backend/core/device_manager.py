@@ -225,6 +225,14 @@ async def _scan_devices() -> list[DeviceInfo]:
                 direct = await asyncio.wait_for(_describe_direct(key, ip), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS)
         except Exception:
             previous = next((item for item in devices if item.udid.lower() == key), None)
+            if previous is not None and previous.connection_type == "wifi" and previous.status == "ready":
+                # A remembered Direct route must not replace a healthy system
+                # Wi-Fi route after the phone changes networks. Keep pairing
+                # credentials on disk, but release the dead runtime tunnel so
+                # normal usbmux Wi-Fi remains immediately usable.
+                await _clear_direct_runtime(key)
+                logger.info("Wireless Direct unavailable for %s; using system Wi-Fi", key)
+                continue
             direct = DeviceInfo(
                 udid=previous.udid if previous else key,
                 name=previous.name if previous else key,
@@ -295,11 +303,13 @@ async def enable_direct_pairing(udid: str) -> None:
         if not lockdown.paired or lockdown.pair_record is None or lockdown.udid.lower() != udid.lower():
             raise ValueError("請用 USB 接上手機、解鎖並選擇信任此電腦。")
         modern = Version(lockdown.product_version) >= IOS_17
-        if modern and udid.lower() not in {identifier.lower() for identifier in iter_remote_paired_identifiers()}:
-            # On a fresh Windows host CoreDevice has not created a RemotePairing
-            # record. The already trusted USB lockdown channel can create it.
-            if platform.system() != "Windows":
-                raise ValueError("這台手機尚無可用的無線 RSD 配對紀錄。請保持 USB 連線並完成開發者配對。")
+        if modern:
+            # A RemotePairing file can still exist after the phone has rejected
+            # its key. This happens, for example, after the phone restarts its
+            # wireless pairing service while moving between networks. Merely
+            # checking the filename then leaves the user permanently stuck.
+            # Revalidate over the already trusted USB channel every time this
+            # action is requested; autopair refreshes an invalid key in place.
             try:
                 service = await RemotePairingLockdownService.create(lockdown)
                 try:
@@ -339,11 +349,36 @@ def _has_active_session(udid: str) -> bool:
         return False
 
 
+async def has_blocking_session(udid: str) -> bool:
+    """Return whether a healthy location session must block transport changes.
+
+    A network change closes the Wi-Fi RSD tunnel asynchronously. Its location
+    session can remain in the registry until the next location command tries
+    to use it. Treating that dead session as active prevents the same phone
+    from being probed at its new IP, so release only this demonstrably stale
+    state before reconnecting. Healthy sessions continue to block switching.
+    """
+    if not _has_active_session(udid):
+        return False
+
+    key = udid.lower()
+    tunnel = _direct_rsd_tunnels.get(key)
+    if tunnel is None or tunnel.rsd is not None:
+        return True
+
+    from core import device_session
+
+    await device_session.close_session(udid)
+    await disconnect_direct(udid)
+    logger.info("Released stale Wireless Direct session for %s before reconnect", udid)
+    return False
+
+
 async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
     global _device_scan_task
     if not pairing_store.exists(udid):
         raise ValueError("請先用 USB 在裝置管理設定無線授權。")
-    if _has_active_session(udid):
+    if await has_blocking_session(udid):
         raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
 
     await disconnect_direct(udid)
@@ -401,11 +436,13 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
         matched_udid: str | None = None
 
         # 1. Non-destructively probe iOS 17+ paired devices
-        # Skip any candidate with an active session to protect ongoing navigation
+        # A healthy session protects ongoing navigation. A tunnel that the
+        # watcher already marked closed is released so this phone can be
+        # matched again after DHCP assigns it a new address.
         ios17_cands = list(iter_remote_paired_identifiers())
         ios17_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
         for cand in ios17_cands:
-            if _has_active_session(cand):
+            if await has_blocking_session(cand):
                 logger.info("Candidate %s has an active navigation session, skipping probe", cand)
                 continue
             try:
@@ -424,7 +461,7 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
             ios16_cands = pairing_store.list_udids()
             ios16_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
             for cand in ios16_cands:
-                if _has_active_session(cand):
+                if await has_blocking_session(cand):
                     logger.info("iOS 16 candidate %s has an active session, skipping probe", cand)
                     continue
                 try:
@@ -440,14 +477,17 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
                     continue
 
         if not matched_udid:
-            raise ValueError(f"無法在 {ip} 上配對到任何已授權的手機。請確認同一 Wi-Fi，且該手機先前已完成 USB 授權。")
+            raise ValueError(
+                f"已找到 {ip}，但手機拒絕目前的 Wireless Direct 授權。"
+                "請用 USB 接上這台手機，解鎖後在裝置管理按「刷新無線授權」，再拔線重連。"
+            )
 
-        if _has_active_session(matched_udid):
+        if await has_blocking_session(matched_udid):
             raise ValueError(f"裝置 {matched_udid} 正在執行導航或定位模擬，請先停止定位再切換連線。")
 
         udid = matched_udid
 
-    if _has_active_session(udid):
+    if await has_blocking_session(udid):
         raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
 
     saved_version = pairing_store.load_version(udid)
@@ -525,13 +565,18 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
 
 async def disconnect_direct(udid: str) -> None:
     global _device_scan_task
+    await _clear_direct_runtime(udid)
+    _device_scan_task = None
+
+
+async def _clear_direct_runtime(udid: str) -> None:
+    """Release an active Direct route without deleting its saved authorization."""
     key = udid.lower()
     _direct_addresses.pop(key, None)
     _direct_rsd_devices.pop(key, None)
     tunnel = _direct_rsd_tunnels.pop(key, None)
     if tunnel is not None:
         await tunnel.aclose()
-    _device_scan_task = None
 
 
 _discovered_direct_endpoints: dict[str, dict] = {}
@@ -709,7 +754,7 @@ async def list_direct_endpoints() -> list[dict]:
                         "ip": ip,
                         "port": port,
                         "endpoint": endpoint,
-                        "source": "bonjour",
+                        "source": "remotepairing",
                         "status": "history" if ip.startswith("169.254.") else "online",
                         "last_connected": None,
                         "device_name": service.host.removesuffix(".local") if service.host else None,
@@ -721,9 +766,7 @@ async def list_direct_endpoints() -> list[dict]:
     # 1. Native macOS dns-sd discovery
     if platform.system() == "Darwin":
         try:
-            rp_task = asyncio.create_task(_browse_dns_sd_services("_remotepairing._tcp", duration=1.0))
-            mob_task = asyncio.create_task(_browse_dns_sd_services("_apple-mobdev2._tcp", duration=1.0))
-            rp_insts, mob_insts = await asyncio.gather(rp_task, mob_task)
+            rp_insts = await _browse_dns_sd_services("_remotepairing._tcp", duration=1.0)
 
             # Known paired identifiers to strictly verify DNS-SD instance names
             rp_paired_identifiers = {i.lower(): i for i in iter_remote_paired_identifiers()}
@@ -737,93 +780,26 @@ async def list_direct_endpoints() -> list[dict]:
                     ips = await _resolve_host_ips_async(host)
                     verified_udid = rp_paired_identifiers.get(inst.lower()) or known_udids.get(inst.lower())
                     for ip in ips:
-                        ep_str = f"{ip}:49152"
+                        # RemotePairing publishes its current listener port in
+                        # the SRV record. It can change when the phone leaves a
+                        # hotspot and joins another Wi-Fi network, so carrying
+                        # the old/default 49152 here makes the new IP unusable.
+                        ep_str = f"{ip}:{port}"
                         is_link_local = ip.startswith("169.254.")
                         scan_endpoints[ep_str] = {
                             "udid": verified_udid,
                             "ip": ip,
-                            "port": 49152,
+                            "port": port,
                             "endpoint": ep_str,
-                            "source": "bonjour",
+                            "source": "remotepairing",
                             "status": "history" if is_link_local else "online",
                             "last_connected": None,
                             "device_name": dev_name,
                             "ios_version": "unknown",
                         }
 
-            # Resolve mobdev services
-            for inst in mob_insts:
-                m = re.search(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})@", inst)
-                if m:
-                    mac = _normalize_mac(m.group(1))
-                    if mac in arp_map:
-                        ip = arp_map[mac]
-                        ep_str = f"{ip}:49152"
-                        if ep_str not in scan_endpoints:
-                            scan_endpoints[ep_str] = {
-                                "udid": None,
-                                "ip": ip,
-                                "port": 49152,
-                                "endpoint": ep_str,
-                                "source": "bonjour",
-                                "status": "online",
-                                "last_connected": None,
-                                "device_name": None,
-                                "ios_version": "unknown",
-                            }
-
-                host, port = await _resolve_dns_sd_instance(inst, "_apple-mobdev2._tcp")
-                if host:
-                    dev_name = host.replace(".local", "")
-                    ips = await _resolve_host_ips_async(host)
-                    for ip in ips:
-                        ep_str = f"{ip}:49152"
-                        is_link_local = ip.startswith("169.254.")
-                        if ep_str not in scan_endpoints:
-                            scan_endpoints[ep_str] = {
-                                "udid": None,
-                                "ip": ip,
-                                "port": 49152,
-                                "endpoint": ep_str,
-                                "source": "bonjour",
-                                "status": "history" if is_link_local else "online",
-                                "last_connected": None,
-                                "device_name": dev_name,
-                                "ios_version": "unknown",
-                            }
-                        elif dev_name and not scan_endpoints[ep_str].get("device_name"):
-                            scan_endpoints[ep_str]["device_name"] = dev_name
         except Exception as e:
             logger.debug("Native dns-sd browse failed: %s", e)
-
-        # Check ARP table for known Apple devices actively responding on LAN
-        for mac, ip in arp_map.items():
-            if mac.startswith("f0:1f:c7") or mac.startswith("92:e9:7a"):
-                ep_str = f"{ip}:49152"
-                if ep_str not in scan_endpoints:
-                    scan_endpoints[ep_str] = {
-                        "udid": None,
-                        "ip": ip,
-                        "port": 49152,
-                        "endpoint": ep_str,
-                        "source": "bonjour",
-                        "status": "online",
-                        "last_connected": None,
-                        "device_name": None,
-                        "ios_version": "unknown",
-                    }
-
-    # ARP is a weak hint, so never attach a UDID from a historical record.
-    # Keep this Windows fallback for networks where multicast DNS is blocked.
-    if platform.system() == "Windows":
-        for mac, ip in arp_map.items():
-            if mac.startswith(("f0:1f:c7", "92:e9:7a")):
-                endpoint = f"{ip}:49152"
-                scan_endpoints.setdefault(endpoint, {
-                    "udid": None, "ip": ip, "port": 49152, "endpoint": endpoint,
-                    "source": "bonjour", "status": "online", "last_connected": None,
-                    "device_name": None, "ios_version": "unknown",
-                })
 
     # 2. pymobiledevice3 browse_mobdev2
     try:
@@ -832,19 +808,26 @@ async def list_direct_endpoints() -> list[dict]:
             dev_name = service.host.replace(".local", "") if getattr(service, "host", None) else None
             txt_props = getattr(service, "properties", {}) or {}
             identifier = txt_props.get("identifier")
+            saved_version = pairing_store.load_version(identifier) if identifier else None
+            # mobdev2 advertises ordinary lockdown Wi-Fi, not an iOS 17+
+            # RemotePairing listener. Only expose it for a known, authorized
+            # pre-iOS-17 phone; otherwise it becomes a false green :49152 row.
+            if not identifier or not saved_version or Version(saved_version) >= IOS_17:
+                continue
+            service_port = int(getattr(service, "port", 62078) or 62078)
             for address in getattr(service, "addresses", []):
                 try:
                     ip_str = getattr(address, "ip", None) or str(address)
                     if "." in ip_str and not ip_str.startswith("127."):
-                        ep_str = f"{ip_str}:49152"
+                        ep_str = f"{ip_str}:{service_port}"
                         is_link_local = ip_str.startswith("169.254.")
                         if ep_str not in scan_endpoints:
                             scan_endpoints[ep_str] = {
                                 "udid": identifier,
                                 "ip": ip_str,
-                                "port": 49152,
+                                "port": service_port,
                                 "endpoint": ep_str,
-                                "source": "bonjour",
+                                "source": "mobdev2",
                                 "status": "history" if is_link_local else "online",
                                 "last_connected": None,
                                 "device_name": dev_name,
@@ -880,10 +863,7 @@ async def list_direct_endpoints() -> list[dict]:
             ep_str = f"{addr}:49152"
             if ep_str not in seen_endpoints:
                 is_link_local = addr.startswith("169.254.")
-                in_arp = any(ip == addr for ip in arp_map.values())
-                reachable = is_link_local or in_arp
-                if not reachable:
-                    reachable = await _ping_tcp_async(addr, 49152)
+                reachable = is_link_local or await _ping_tcp_async(addr, 49152)
                 if not reachable:
                     continue
 
@@ -971,21 +951,25 @@ async def _describe_device(
 
 
 async def get_device(udid: str) -> DeviceInfo:
-    if udid.lower() in _direct_rsd_devices and udid.lower() not in _direct_usb_present:
-        device = _direct_rsd_devices[udid.lower()]
-        if _direct_rsd_tunnels[udid.lower()].rsd is None:
-            raise ValueError("無線 RSD 連線已中斷，請在裝置管理重新連線。")
-        return device
-    ip = direct_address(udid)
-    if ip is not None and udid.lower() not in _direct_usb_present:
-        if udid.lower() in _direct_rsd_devices:
-            device = _direct_rsd_devices[udid.lower()]
-            if _direct_rsd_tunnels[udid.lower()].rsd is None:
-                raise ValueError("無線 RSD 連線已中斷，請在裝置管理重新連線。")
+    key = udid.lower()
+    if key in _direct_rsd_devices and key not in _direct_usb_present:
+        device = _direct_rsd_devices[key]
+        if _direct_rsd_tunnels[key].rsd is not None:
             return device
+        # Fall through to normal discovery. If usbmux still has a healthy
+        # Network route, callers can continue without manually disconnecting
+        # Wireless Direct first.
+        await _clear_direct_runtime(udid)
+    ip = direct_address(udid)
+    if ip is not None and key not in _direct_usb_present:
         # A selected Direct device can start a location session without
         # asking usbmuxd/AMDS to enumerate devices first.
-        return await _describe_direct(udid, ip)
+        try:
+            return await _describe_direct(udid, ip)
+        except Exception:
+            # iOS 16 Direct TCP may also become stale after DHCP changes the
+            # address. Prefer a currently discoverable system Wi-Fi route.
+            await _clear_direct_runtime(udid)
     for device in await list_devices():
         if device.udid.lower() == udid.lower():
             return device
@@ -1004,8 +988,18 @@ async def get_lockdown(udid: str) -> LockdownClient:
 
 
 async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
-    if udid.lower() in _direct_rsd_tunnels:
-        rsd = _direct_rsd_tunnels[udid.lower()].rsd
+    key = udid.lower()
+
+    # A physical USB path has priority once discovery confirms it. Otherwise
+    # an old, closed Wi-Fi tunnel shadows tunneld and every command reports a
+    # Wireless Direct error even though the UI correctly shows USB.
+    if key in _direct_usb_present:
+        rsd = await get_tunneld_device_by_udid(udid)
+        if rsd is not None:
+            return rsd
+
+    if key in _direct_rsd_tunnels:
+        rsd = _direct_rsd_tunnels[key].rsd
         if rsd is None:
             raise RuntimeError("無線 RSD 連線已中斷，請在裝置管理重新連線。")
         return rsd

@@ -40,7 +40,7 @@ async def pair_wireless_direct(udid: str, request: Request) -> dict:
 async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request: Request) -> DeviceInfo:
     _require_desktop(request)
     target_udid = "" if udid.lower() in {"auto", "unknown"} else udid
-    if target_udid and device_session.has_session(target_udid):
+    if target_udid and await device_manager.has_blocking_session(target_udid):
         raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
     try:
         return await device_manager.connect_direct(

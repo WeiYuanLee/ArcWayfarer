@@ -550,10 +550,11 @@ export function DeviceManagerModal({
                                 )}
                               </Group>
 
-                              {/* Pairing prompt if connected via USB but not paired */}
+                              {/* Keep this action available for an already paired
+                                  USB device. A saved RemotePairing file may exist
+                                  even after the phone has invalidated its key. */}
                               {item.device &&
                                 item.connection_type === 'usb' &&
-                                !item.direct_paired &&
                                 Number.parseInt(item.ios_version, 10) >= 16 && (
                                   <Button
                                     size="compact-xs"
@@ -563,7 +564,9 @@ export function DeviceManagerModal({
                                     loading={pairingBusyId === item.udid}
                                     onClick={() => void handlePair(item.device!)}
                                   >
-                                    配對此裝置（啟用 Wi-Fi 連線）
+                                    {item.direct_paired
+                                      ? '刷新無線授權'
+                                      : '配對此裝置（啟用 Wi-Fi 連線）'}
                                   </Button>
                                 )}
                             </div>
