@@ -105,8 +105,6 @@ async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
     devices = await asyncio.shield(scan_task)
     # Keep one physical discovery task for all callers. Filtering its stable
     # result here avoids a USB-only refresh racing a Wi-Fi-enabled refresh.
-    # ``unknown`` remains visible because tunneld cannot always report whether
-    # its RSD originated from USB or Wi-Fi.
     if include_wifi:
         return devices
     return [device for device in devices if device.connection_type != "wifi"]
@@ -217,21 +215,15 @@ async def _scan_devices() -> list[DeviceInfo]:
                 )
             )
 
-    _system_routes = {
-        item.udid.lower() for item in devices
-        if item.status == "ready" and item.connection_type != "wireless_direct"
-    }
-
-    # A healthy system USB or Wi-Fi route always has priority. Wireless Direct
-    # is a fallback for phones that the system transport cannot currently use;
-    # keeping it above a recovered Network route makes ordinary Wi-Fi location
-    # commands reuse a stale Direct tunnel.
+    # USB takes ownership immediately. A live Wireless Direct route was
+    # explicitly selected by the user, so it stays selected over ordinary
+    # Wi-Fi until it fails or is disconnected.
     for key in dict.fromkeys([*_direct_addresses, *_direct_rsd_devices]):
         ip = _direct_addresses.get(key)
         previous = next((item for item in devices if item.udid.lower() == key), None)
-        if previous is not None and previous.status == "ready" and previous.connection_type != "wireless_direct":
+        if previous is not None and previous.status == "ready" and previous.connection_type == "usb":
             await _clear_direct_runtime(key)
-            logger.info("System %s route available for %s; released Wireless Direct", previous.connection_type, key)
+            logger.info("USB route available for %s; released Wireless Direct", key)
             continue
         try:
             if key in _direct_rsd_devices:
@@ -249,6 +241,13 @@ async def _scan_devices() -> list[DeviceInfo]:
             continue
         devices = [item for item in devices if item.udid.lower() != key]
         devices.append(direct)
+
+    # This set describes the route that is actually visible and selectable
+    # after explicit Direct ownership has been resolved.
+    _system_routes = {
+        item.udid.lower() for item in devices
+        if item.status == "ready" and item.connection_type != "wireless_direct"
+    }
 
     return devices
 
@@ -980,14 +979,13 @@ async def get_device(udid: str) -> DeviceInfo:
 
 
 async def get_lockdown(udid: str) -> LockdownClient:
-    if udid.lower() in _system_routes:
-        return await create_using_usbmux(serial=udid)
+    key = udid.lower()
+    if key in _direct_usb_present:
+        return await create_using_usbmux(serial=udid, connection_type="USB")
     ip = direct_address(udid)
     if ip is not None:
-        # Route from the last discovery snapshot. A direct location command
-        # must not call usbmuxd/AMDS when no USB device is present.
-        if udid.lower() in _direct_usb_present:
-            return await create_using_usbmux(serial=udid, connection_type="USB")
+        # Only an explicit successful Direct connection populates this
+        # runtime address; saved pairing history alone never selects it.
         return await _connect_direct_tcp(udid, ip)
     return await create_using_usbmux(serial=udid)
 
@@ -995,14 +993,15 @@ async def get_lockdown(udid: str) -> LockdownClient:
 async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
     key = udid.lower()
 
-    # Any healthy system route has priority once discovery confirms it. This
-    # covers both USB and ordinary Network Wi-Fi and prevents a live but stale
-    # Direct object from hijacking the original Wi-Fi location path.
-    if key in _system_routes or key in _direct_usb_present:
+    # A physical USB route always wins and clears Direct during discovery.
+    if key in _direct_usb_present:
         rsd = await get_tunneld_device_by_udid(udid)
         if rsd is not None:
             return rsd
 
+    # This map only contains a tunnel created by an explicit Direct action.
+    # Keep using it while healthy, even if ordinary Wi-Fi discovery also sees
+    # the phone on the same network.
     if key in _direct_rsd_tunnels:
         rsd = _direct_rsd_tunnels[key].rsd
         if rsd is None:
