@@ -12,7 +12,7 @@ class _MuxDevice:
         self.connection_type = connection_type
 
 
-def _device(udid: str, connection_type: str = "unknown") -> DeviceInfo:
+def _device(udid: str, connection_type: str = "wifi") -> DeviceInfo:
     return DeviceInfo(
         udid=udid,
         name=udid,
@@ -36,7 +36,7 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
     def test_connection_type_is_distinct_from_service_transport(self) -> None:
         self.assertEqual(device_manager._connection_type_from_mux(_MuxDevice("a", "USB")), "usb")
         self.assertEqual(device_manager._connection_type_from_mux(_MuxDevice("a", "Network")), "wifi")
-        self.assertEqual(device_manager._connection_type_from_mux(_MuxDevice("a", "other")), "unknown")
+        self.assertIsNone(device_manager._connection_type_from_mux(_MuxDevice("a", "other")))
 
     async def test_concurrent_callers_share_one_scan(self) -> None:
         started = asyncio.Event()
@@ -84,11 +84,29 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             device_manager,
             "_scan_devices",
-            AsyncMock(return_value=[_device("usb", "usb"), _device("wifi", "wifi"), _device("rsd")]),
+            AsyncMock(return_value=[_device("usb", "usb"), _device("wifi", "wifi"), _device("rsd", "wifi")]),
         ):
             devices = await device_manager.list_devices(include_wifi=False)
 
-        self.assertEqual([device.udid for device in devices], ["usb", "rsd"])
+        self.assertEqual([device.udid for device in devices], ["usb"])
+
+    async def test_tunneld_only_device_is_classified_as_wifi(self) -> None:
+        with (
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
+            patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value={"wifi-rsd"})),
+        ):
+            devices = await device_manager._scan_devices()
+
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0].connection_type, "wifi")
+        self.assertEqual(devices[0].status, "ready")
+
+    async def test_unrecognized_mux_transport_is_not_rendered(self) -> None:
+        with (
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[_MuxDevice("mystery", "Bluetooth")])),
+            patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
+        ):
+            self.assertEqual(await device_manager._scan_devices(), [])
 
     async def test_usb_discovery_failure_keeps_a_support_diagnostic(self) -> None:
         with (

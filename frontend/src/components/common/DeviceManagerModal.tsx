@@ -36,7 +36,7 @@ import {
   clearQuickReconnectRecord,
   clearWirelessDirectAddress,
   connectWirelessDirect,
-  getQuickReconnectRecord,
+  getQuickReconnectRecords,
   getWirelessDirectEndpoints,
   pairWirelessDirect,
   saveQuickReconnectRecord,
@@ -162,14 +162,14 @@ export function DeviceManagerModal({
   })
 
   // Quick reconnect cached record
-  const [quickReconnect, setQuickReconnect] = useState<QuickReconnectRecord | null>(null)
+  const [quickReconnects, setQuickReconnects] = useState<QuickReconnectRecord[]>([])
   const [pairingBusyId, setPairingBusyId] = useState<string | null>(null)
 
   // Reset view on modal close/open
   useEffect(() => {
     if (isOpen) {
       setView('list')
-      setQuickReconnect(getQuickReconnectRecord())
+      setQuickReconnects(getQuickReconnectRecords())
     }
   }, [isOpen])
 
@@ -194,19 +194,17 @@ export function DeviceManagerModal({
       rawName: string
       model: string
       ios_version: string
-      connection_type?: Device['connection_type']
-      status: Device['status'] | 'offline'
+      connection_type: Device['connection_type']
+      status: Device['status']
       direct_paired?: boolean
       device?: Device
       isActive: boolean
     }> = []
 
-    const seenUdids = new Set<string>()
-
-    // First, connected devices
+    // The backend returns discovered routes only. Hidden means disabled for
+    // control; it must never resurrect a device that discovery cannot see.
     for (const d of devices) {
       const key = normalized(d.udid)
-      seenUdids.add(key)
       const isHidden = hiddenKeys.has(key)
       const isUsable = !usableKeys || usableKeys.has(key)
       const isActive = !isHidden && isUsable
@@ -225,28 +223,6 @@ export function DeviceManagerModal({
         direct_paired: d.direct_paired,
         device: d,
         isActive,
-      })
-    }
-
-    // Second, hidden/offline devices
-    for (const h of hiddenDevices) {
-      const key = normalized(h.udid)
-      if (seenUdids.has(key)) continue
-      seenUdids.add(key)
-      const custom = deviceNames[key]
-      const rawName = h.name || h.udid.slice(-8).toUpperCase()
-      const displayName = custom || rawName
-
-      list.push({
-        udid: h.udid,
-        name: displayName,
-        rawName,
-        model: 'iPhone',
-        ios_version: h.iosVersion || '',
-        connection_type: undefined,
-        status: 'offline',
-        direct_paired: false,
-        isActive: false,
       })
     }
 
@@ -323,8 +299,7 @@ export function DeviceManagerModal({
           port,
           timestamp: formatCurrentTime(),
         }
-        saveQuickReconnectRecord(rec)
-        setQuickReconnect(rec)
+        setQuickReconnects(saveQuickReconnectRecord(rec))
 
         // Auto unhide device so it activates on the dashboard IF under capacity
         const isAlreadyActive = allDevices.some((d) => d.udid === effectiveUdid && d.isActive)
@@ -406,16 +381,15 @@ export function DeviceManagerModal({
   }
 
   const handleClearQuickReconnect = async () => {
-    if (quickReconnect?.udid) {
-      try {
-        await clearWirelessDirectAddress(quickReconnect.udid)
-      } catch (err: any) {
-        showToast(err instanceof Error ? err.message : '清除後端連線紀錄失敗，請稍後重試。')
-        return
-      }
+    try {
+      const udids = [...new Set(quickReconnects.map((record) => record.udid).filter(Boolean))] as string[]
+      await Promise.all(udids.map((udid) => clearWirelessDirectAddress(udid)))
+    } catch (err: any) {
+      showToast(err instanceof Error ? err.message : '清除後端連線紀錄失敗，請稍後重試。')
+      return
     }
     clearQuickReconnectRecord()
-    setQuickReconnect(null)
+    setQuickReconnects([])
     showToast('已清除快速復連歷史紀錄')
   }
 
@@ -540,12 +514,6 @@ export function DeviceManagerModal({
                                     Wi-Fi
                                   </Badge>
                                 )}
-                                {item.status === 'offline' && (
-                                  <Badge size="xs" variant="light" color="gray" tt="none" className="device-manager-connection-badge">
-                                    未連線
-                                  </Badge>
-                                )}
-
                                 {/* Simulation State Badge */}
                                 {state !== 'idle' && (
                                   <Badge size="xs" variant="filled" color="green">
@@ -580,7 +548,7 @@ export function DeviceManagerModal({
                           <Group gap="xs" wrap="nowrap">
                             <Switch
                               checked={item.isActive}
-                              disabled={isSwitchBusy || item.status === 'offline'}
+                              disabled={isSwitchBusy}
                               onChange={(e) => void handleToggle(item, e.currentTarget.checked)}
                               size="md"
                               color="arcBlue"
@@ -596,7 +564,7 @@ export function DeviceManagerModal({
             )}
 
             {/* Quick Reconnect Section (Matches Competitor Screenshot 5) */}
-            {quickReconnect && (
+            {quickReconnects.length > 0 && (
               <Stack gap="xs" mt="xs">
                 <Group justify="space-between" align="center">
                   <Group gap={4}>
@@ -628,40 +596,43 @@ export function DeviceManagerModal({
                   </Menu>
                 </Group>
 
-                <Paper
-                  withBorder
-                  p="sm"
-                  radius="md"
-                  className="device-manager-secondary-card"
-                >
-                  <Group justify="space-between" wrap="nowrap">
-                    <Group gap="sm" wrap="nowrap">
-                      <ThemeIcon variant="light" color="arcBlue" size="md" radius="md">
-                        <IconWifi size={18} stroke={1.8} />
-                      </ThemeIcon>
-                      <div>
-                        <Text fw={600} size="sm">
-                          {quickReconnect.endpoint}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          歷史連線紀錄： {quickReconnect.name} 於 {quickReconnect.timestamp}
-                        </Text>
-                      </div>
-                    </Group>
+                {quickReconnects.map((record) => (
+                  <Paper
+                    key={record.udid || record.endpoint}
+                    withBorder
+                    p="sm"
+                    radius="md"
+                    className="device-manager-secondary-card"
+                  >
+                    <Group justify="space-between" wrap="nowrap">
+                      <Group gap="sm" wrap="nowrap">
+                        <ThemeIcon variant="light" color="arcBlue" size="md" radius="md">
+                          <IconWifi size={18} stroke={1.8} />
+                        </ThemeIcon>
+                        <div>
+                          <Text fw={600} size="sm">
+                            {record.endpoint}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            歷史連線紀錄： {record.name} 於 {record.timestamp}
+                          </Text>
+                        </div>
+                      </Group>
 
-                    <Button
-                      size="xs"
-                      variant="light"
-                      color="arcBlue"
-                      leftSection={<IconWifi size={14} />}
-                      onClick={() =>
-                        void executeConnect(quickReconnect.udid || '', quickReconnect.ip, quickReconnect.name, true, quickReconnect.port)
-                      }
-                    >
-                      點擊連線
-                    </Button>
-                  </Group>
-                </Paper>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="arcBlue"
+                        leftSection={<IconWifi size={14} />}
+                        onClick={() =>
+                          void executeConnect(record.udid || '', record.ip, record.name, true, record.port)
+                        }
+                      >
+                        點擊連線
+                      </Button>
+                    </Group>
+                  </Paper>
+                ))}
               </Stack>
             )}
 

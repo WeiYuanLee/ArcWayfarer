@@ -112,7 +112,7 @@ async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
     return [device for device in devices if device.connection_type != "wifi"]
 
 
-def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType:
+def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType | None:
     """Translate usbmux's physical connection names into API values."""
     connection_type = str(getattr(mux_device, "connection_type", "")).upper()
     if connection_type == "USB":
@@ -121,7 +121,7 @@ def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType:
         # usbmux calls an iPhone paired with "Connect over Wi-Fi" a Network
         # device. It is the Wi-Fi connection surfaced to this application.
         return "wifi"
-    return "unknown"
+    return None
 
 
 async def _scan_devices() -> list[DeviceInfo]:
@@ -159,6 +159,10 @@ async def _scan_devices() -> list[DeviceInfo]:
             continue
         seen_udids.add(udid.lower())
         connection_type = _connection_type_from_mux(mux_device)
+        if connection_type is None:
+            # The device list contract only exposes routes that can be named
+            # and selected. An unrecognized usbmux transport is not actionable.
+            continue
         try:
             devices.append(
                 await asyncio.wait_for(
@@ -204,7 +208,10 @@ async def _scan_devices() -> list[DeviceInfo]:
                     name=udid,
                     ios_version="unknown",
                     transport="rsd",
-                    connection_type="unknown",
+                    # A tunneld route with no matching physical USB usbmux row
+                    # is the system's network route. App-owned Direct tunnels
+                    # are tracked separately below and can never reach here.
+                    connection_type="wifi",
                     status="ready",
                     direct_paired=pairing_store.exists(udid),
                 )
@@ -235,51 +242,13 @@ async def _scan_devices() -> list[DeviceInfo]:
                 assert ip is not None
                 direct = await asyncio.wait_for(_describe_direct(key, ip), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS)
         except Exception:
-            if previous is not None and previous.connection_type == "wifi" and previous.status == "ready":
-                # A remembered Direct route must not replace a healthy system
-                # Wi-Fi route after the phone changes networks. Keep pairing
-                # credentials on disk, but release the dead runtime tunnel so
-                # normal usbmux Wi-Fi remains immediately usable.
-                await _clear_direct_runtime(key)
-                logger.info("Wireless Direct unavailable for %s; using system Wi-Fi", key)
-                continue
-            direct = DeviceInfo(
-                udid=previous.udid if previous else key,
-                name=previous.name if previous else key,
-                ios_version=previous.ios_version if previous else "unknown",
-                transport="rsd" if key in _direct_rsd_devices else "lockdown",
-                connection_type="wireless_direct",
-                ip_address=ip,
-                direct_paired=True,
-                status="error",
-                detail="無線直連已中斷。確認手機與電腦可互相連線後重試。",
-            )
+            # A dead runtime is no longer a discovered connection. Remove it
+            # instead of rendering an offline/errored Wireless Direct row.
+            await _clear_direct_runtime(key)
+            logger.info("Wireless Direct runtime disappeared for %s", key)
+            continue
         devices = [item for item in devices if item.udid.lower() != key]
         devices.append(direct)
-
-    known = {item.udid.lower() for item in devices}
-    remote_paired = {identifier.lower(): identifier for identifier in iter_remote_paired_identifiers()}
-    for udid in pairing_store.list_udids():
-        if udid.lower() not in known:
-            canonical_udid = remote_paired.get(udid.lower(), udid.upper() if "-" in udid else udid.upper())
-            saved_ver = pairing_store.load_version(udid)
-            is_rsd = (
-                (saved_ver and Version(saved_ver) >= IOS_17)
-                or (saved_ver is None and udid.lower() in remote_paired)
-            )
-            devices.append(DeviceInfo(
-                udid=canonical_udid,
-                name=canonical_udid,
-                ios_version=saved_ver or "unknown",
-                transport="rsd" if is_rsd else "lockdown",
-                # Authorization is a stored capability, not an active route.
-                # Do not make a disconnected USB/Wi-Fi phone appear to have
-                # fallen back into Wireless Direct without an explicit connect.
-                connection_type="unknown",
-                direct_paired=True,
-                status="error",
-                detail="已授權，裝置目前離線",
-            ))
 
     return devices
 
@@ -959,7 +928,7 @@ async def _list_tunnel_udids() -> set[str]:
 
 async def _describe_device(
     udid: str,
-    connection_type: DeviceConnectionType = "unknown",
+    connection_type: DeviceConnectionType,
     tunnel_udids: set[str] | None = None,
 ) -> DeviceInfo:
     lockdown = await create_using_usbmux(serial=udid)

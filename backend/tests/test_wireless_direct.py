@@ -56,6 +56,7 @@ class PairingStoreTests(unittest.TestCase):
 class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         device_manager._direct_addresses.clear()
+        device_manager._direct_usb_present.clear()
         device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
@@ -63,6 +64,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         device_manager._direct_addresses.clear()
+        device_manager._direct_usb_present.clear()
         device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
@@ -720,9 +722,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                     disconnected = await device_manager._scan_devices()
 
                 self.assertEqual(first[0].connection_type, expected_type)
-                self.assertEqual(len(disconnected), 1)
-                self.assertEqual(disconnected[0].connection_type, "unknown")
-                self.assertEqual(disconnected[0].detail, "已授權，裝置目前離線")
+                self.assertEqual(disconnected, [])
                 self.assertNotIn(udid.lower(), device_manager._direct_addresses)
                 self.assertNotIn(udid.lower(), device_manager._direct_rsd_tunnels)
 

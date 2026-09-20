@@ -15,7 +15,6 @@ export function useDevices(includeWifi = false) {
   const scanGenerationRef = useRef(0)
   const hiddenAtRef = useRef<number | null>(null)
   const lastResumeScanAtRef = useRef(Number.NEGATIVE_INFINITY)
-  const backgroundMissCountsRef = useRef<Map<string, number>>(new Map())
 
   const refresh = useCallback((background = false): Promise<void> => {
     const inFlight = scanInFlightRef.current
@@ -35,37 +34,13 @@ export function useDevices(includeWifi = false) {
         const result = await listDevices({ includeWifi })
         if (!mountedRef.current || scanGeneration !== scanGenerationRef.current) return
 
-        // Retain unknown rows for compatibility with older backends, but never
-        // expose a known Wi-Fi row while Wi-Fi discovery is disabled.
+        // A successful scan is authoritative: only currently discovered
+        // routes may appear, and disabling Wi-Fi hides network routes.
         const visible = includeWifi ? result : result.filter((device) => device.connection_type !== 'wifi')
         const unique = visible.filter(
           (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
         )
-        if (background) {
-          // A renderer often resumes before usbmux/tunneld has repopulated its
-          // device list. Require two consecutive background misses before
-          // removing a known device so one recovery race cannot erase panel
-          // state. A user-requested foreground scan remains authoritative.
-          setDevices((current) => {
-            const foundIds = new Set(unique.map((device) => device.udid.toLowerCase()))
-            const retained = current.filter((device) => {
-              const key = device.udid.toLowerCase()
-              if (foundIds.has(key)) {
-                backgroundMissCountsRef.current.delete(key)
-                return false
-              }
-              const misses = (backgroundMissCountsRef.current.get(key) ?? 0) + 1
-              backgroundMissCountsRef.current.set(key, misses)
-              if (misses < 2) return true
-              backgroundMissCountsRef.current.delete(key)
-              return false
-            })
-            return [...unique, ...retained]
-          })
-        } else {
-          backgroundMissCountsRef.current.clear()
-          setDevices(unique)
-        }
+        setDevices(unique)
         setScanError(null)
         setLastSuccessfulScanAt(Date.now())
         // This endpoint reads an in-memory snapshot only; it never starts a

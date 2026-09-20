@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEVICE_SCAN_INTERVAL_MS, useDevices } from './useDevices'
-import { getDeviceDiscoveryDiagnostic, listDevices } from '../services/api'
+import { getDeviceDiscoveryDiagnostic, listDevices, type Device } from '../services/api'
 
 vi.mock('../services/api', () => ({
   listDevices: vi.fn(),
@@ -18,6 +18,7 @@ const device = {
   transport: 'lockdown' as const,
   status: 'ready' as const,
   detail: null,
+  connection_type: 'usb' as const,
 }
 const wifiDevice = { ...device, udid: 'wifi-device', name: 'Wi-Fi iPhone', connection_type: 'wifi' as const }
 
@@ -85,19 +86,13 @@ describe('useDevices', () => {
     expect(result.current.isStale).toBe(true)
   })
 
-  it('requires two background misses before removing a known device', async () => {
+  it('removes a device on the first successful scan that no longer finds it', async () => {
     mockedListDevices
       .mockResolvedValueOnce([device])
-      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
 
     const { result } = renderHook(() => useDevices(true))
     await flushRequests()
-    expect(result.current.devices).toEqual([device])
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
-    })
     expect(result.current.devices).toEqual([device])
 
     await act(async () => {
@@ -160,7 +155,7 @@ describe('useDevices', () => {
   })
 
   it('immediately hides Wi-Fi devices and ignores an older Wi-Fi scan when disabled', async () => {
-    let resolveWifiScan: ((devices: typeof device[]) => void) | undefined
+    let resolveWifiScan: ((devices: Device[]) => void) | undefined
     mockedListDevices
       .mockResolvedValueOnce([device, wifiDevice])
       .mockImplementationOnce(() => new Promise((resolve) => { resolveWifiScan = resolve }))

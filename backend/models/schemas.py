@@ -3,7 +3,7 @@ from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 
 Transport = Literal["lockdown", "rsd"]
-DeviceConnectionType = Literal["usb", "wifi", "wireless_direct", "unknown"]
+DeviceConnectionType = Literal["usb", "wifi", "wireless_direct"]
 DeviceStatus = Literal["ready", "mounting", "tunnel_required", "error"]
 
 
@@ -14,7 +14,7 @@ class DeviceInfo(BaseModel):
     transport: Transport
     # The physical path used to discover the device. This is intentionally
     # separate from ``transport``, which selects the location-service API.
-    connection_type: DeviceConnectionType = "unknown"
+    connection_type: DeviceConnectionType
     ip_address: Optional[str] = None
     direct_paired: bool = False
     status: DeviceStatus

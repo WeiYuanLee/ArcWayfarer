@@ -19,8 +19,8 @@ export type Device = {
   transport: 'lockdown' | 'rsd'
   status: DeviceStatus
   detail: string | null
-  /** Physical discovery path, when supplied by newer backends. */
-  connection_type?: 'usb' | 'wifi' | 'wireless_direct' | 'unknown'
+  /** Every discovered device has exactly one active connection path. */
+  connection_type: 'usb' | 'wifi' | 'wireless_direct'
   ip_address?: string | null
   direct_paired?: boolean
 }
@@ -84,20 +84,35 @@ export type QuickReconnectRecord = {
 }
 
 const QUICK_RECONNECT_KEY = 'arcwayfarer.quick_reconnect'
+const QUICK_RECONNECT_LIMIT = 2
 
-export function getQuickReconnectRecord(): QuickReconnectRecord | null {
+export function getQuickReconnectRecords(): QuickReconnectRecord[] {
   try {
     const raw = localStorage.getItem(QUICK_RECONNECT_KEY)
-    return raw ? JSON.parse(raw) : null
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    // Migrate the previous single-record format in place on the next save.
+    const records = Array.isArray(parsed) ? parsed : [parsed]
+    return records.filter((record): record is QuickReconnectRecord => (
+      record && typeof record.endpoint === 'string' && typeof record.ip === 'string'
+    )).slice(0, QUICK_RECONNECT_LIMIT)
   } catch {
-    return null
+    return []
   }
 }
 
-export function saveQuickReconnectRecord(record: QuickReconnectRecord): void {
+export function saveQuickReconnectRecord(record: QuickReconnectRecord): QuickReconnectRecord[] {
+  const identity = record.udid ? `udid:${record.udid.toLowerCase()}` : `endpoint:${record.endpoint}`
+  const updated = [record, ...getQuickReconnectRecords().filter((existing) => {
+    const existingIdentity = existing.udid
+      ? `udid:${existing.udid.toLowerCase()}`
+      : `endpoint:${existing.endpoint}`
+    return existingIdentity !== identity
+  })].slice(0, QUICK_RECONNECT_LIMIT)
   try {
-    localStorage.setItem(QUICK_RECONNECT_KEY, JSON.stringify(record))
+    localStorage.setItem(QUICK_RECONNECT_KEY, JSON.stringify(updated))
   } catch {}
+  return updated
 }
 
 export function clearQuickReconnectRecord(): void {
@@ -152,10 +167,8 @@ export async function listDevices({ includeWifi = false }: { includeWifi?: boole
     })
     if (!res.ok) throw new Error(`Failed to list devices (${res.status})`)
     const devices = await res.json() as Device[]
-    // The API filter is intentionally duplicated here until all packaged
-    // backend versions understand include_wifi. Unknown is retained for
-    // backwards compatibility with older backends that did not report a
-    // physical connection type.
+    // Keep the filter in the renderer too so switching Wi-Fi discovery off
+    // cannot expose a network route from an older packaged backend.
     return includeWifi ? devices : devices.filter((device) => device.connection_type !== 'wifi')
   } catch (err: any) {
     if (err.name === 'AbortError') {
