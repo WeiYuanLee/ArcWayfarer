@@ -90,6 +90,13 @@ MIT — see [LICENSE](LICENSE).
 <details>
 <summary>Developer / build instructions</summary>
 
+### Architecture documents
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): project-wide module contracts and invariants.
+- [Device management architecture proposal](docs/device-management-architecture.zh-TW.md): Device Registry, Aggregate, and the P0–P4 migration plan.
+- [ADR-0001](docs/adr/0001-device-management-registry.md): accepted device-management decision and tradeoffs.
+- [Windows Wireless Direct test plan](docs/wireless-direct-windows-test.md): Windows validation steps and device-state matrix.
+
 ### Requirements
 
 - Python 3.11+

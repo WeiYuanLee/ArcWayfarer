@@ -19,10 +19,22 @@ powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
 
 1. 用 USB 接上手機，解鎖並在手機選擇信任這部電腦。先確認 ArcWayfarer 能列出該裝置。
 2. 在裝置管理開啟 Wireless Direct，執行無線授權。全新 Windows 配對紀錄會透過 USB lockdown 建立，完成後才保存 ArcWayfarer 的授權狀態。
-3. 確認手機與電腦在可互通的同一網路，拔掉 USB。重新掃描端點，記錄是否出現 `_remotepairing` 的 IP 與埠號；若沒有，可用手機 IP 手動連線測試預設埠 `49152`。
+3. 確認手機與電腦在可互通的同一網路，拔掉 USB。重新掃描端點，記錄 `_remotepairing` 廣告提供的 IP 與埠號；埠號不保證為 `49152`。若沒有廣告，可手動輸入手機 IP，並只把 `49152` 當成缺少 SRV 資訊時的預設測試值。
 4. 點選端點連線，確認顯示的 UDID 是原手機。設定一個容易辨識的測試位置，親眼確認手機地圖移動，再按停止並親眼確認位置還原。
 5. 完全關閉並重啟 ArcWayfarer，不接 USB 重複連線、設定與還原。
 6. 若可行，再測手機鎖定、IP 變更、Wi-Fi 暫時中斷。每次記錄介面狀態及是否真正還原定位。
+
+## 設備狀態驗收
+
+以下行為依 [設備管理架構決策](device-management-architecture.zh-TW.md)驗收：
+
+1. 即時裝置清單只顯示目前具有可用 route 的設備；配對紀錄只出現在快速復連或授權資訊，不得生成離線卡片。
+2. 每台顯示中的設備只能有 USB、Wi-Fi、Wireless Direct 一個 `selected_route`，Badge 必須與實際定位通道一致。
+3. Direct 只能由使用者點擊連線後啟用；拔 USB、關 Wi-Fi 或背景掃描不得自動啟用 Direct。
+4. Direct 成功後保持黏著；系統 Wi-Fi 被同時掃到時不得覆蓋。Direct 實際失敗後才可改用仍健康的系統 Wi-Fi。
+5. 定位 session 執行中插入 USB 不得中斷導航；USB 只更新 availability，待 session 結束後才接管。
+6. 設備 B 的掃描、連線或失敗不得改變設備 A 的 tunnel、session 或顯示狀態。
+7. 掃描服務失敗與成功但沒有設備必須顯示為不同結果；暫時性 AMDS、tunneld 或 mDNS 錯誤不得關閉現有 Direct。
 
 ## 建議回報格式
 
@@ -30,4 +42,4 @@ powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
 
 若 `NO_CIPHERS_AVAILABLE` 出現在打包 exe，需記錄該 exe 使用的 Python／OpenSSL 版本，再檢查 PSK cipher 是否存在。若掃描不到手機，先區分 mDNS 無結果、網路不通與配對驗證失敗。Windows `arp -a` 只是輔助候選來源，不能證明某個 IP 屬於指定手機。
 
-目前一次只測一台 iOS 17+ 無線裝置；現有 userspace RSD 隧道是單程序單通道。Windows 多機與 iOS 17.0–17.3.1 另列後續驗證。
+目前一次只測一台 iOS 17+ 無線裝置；現有 userspace RSD 隧道是單程序單通道。Windows 多機與 iOS 17.0–17.3.1 另列後續驗證。多設備驗收至少必須包含「A 保持導航，B 掃描／連線失敗」的隔離案例。

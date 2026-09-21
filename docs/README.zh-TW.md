@@ -89,6 +89,13 @@ MIT — 詳見 [LICENSE](../LICENSE)。
 <details>
 <summary>開發者 / 建置說明</summary>
 
+### 架構文件
+
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md)：全專案模組合約與不可違反的不變量。
+- [設備管理架構決策提案](device-management-architecture.zh-TW.md)：Device Registry、Aggregate 與 P0～P4 遷移路線。
+- [ADR-0001](adr/0001-device-management-registry.md)：設備管理重構的正式決策與取捨。
+- [Windows Wireless Direct 實機測試](wireless-direct-windows-test.md)：Windows 驗收步驟與狀態矩陣。
+
 ### 環境需求
 
 - Python 3.11+

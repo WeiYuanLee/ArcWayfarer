@@ -1,6 +1,6 @@
 # macOS 無線直連測試版
 
-目前只開放 **macOS + iOS 16 及以下的無線直連測試版**。修正 Direct TCP 服務的 TLS 建立方式後，一台 iOS 16.7.16 實機已透過 ArcWayfarer 後端 Direct TCP 流程改變並還原定位；測試時已模擬 usbmux／AMDS 故障。iOS 17 以上的 RSD 無線通道仍待實機驗證。
+macOS 已分別以 iOS 16.7.16 的 Direct TCP 與 iOS 26.6.2 的 RemotePairing／RSD 完成限定環境實機驗證。這些結果不能推定所有 iOS 版本與網路環境都可用；目前設備狀態與切換行為以 [設備管理架構決策](device-management-architecture.zh-TW.md)為準。
 
 ## 使用步驟
 
@@ -9,7 +9,7 @@
 3. 拔除 USB 線，保持手機與 Mac 位於可互相連線的區域網路。按「連線 Direct」。若 mDNS 找不到手機，可以在進階欄位輸入手機「設定 → Wi-Fi → 已連線網路旁的 ⓘ」顯示的 IP。
 4. 設定一次定位並執行「停止並還原」。只有手機地圖實際移動且恢復，才算完成驗收；單憑「Direct 已連線」仍不足以證明定位有效。
 
-若定位正在執行，程式會阻止切換或移除這台手機的直連授權；先停止並還原定位。若無線連線中斷，裝置卡片會保留，讓使用者重新搜尋或輸入 IP。設定會保存配對憑證與最後一次驗證成功的 IP 位址；IP 變更後可重新搜尋或手動輸入。選擇 Direct 時會切換同一台手機的 Wi-Fi 路徑；實體 USB 保持優先。
+若定位正在執行，session 必須維持原本的 `bound_route`；先停止並還原定位，才能切換連線或移除授權。無線連線實際失敗且沒有其他可用 route 時，裝置會從即時清單消失；配對憑證與最近驗證成功的端點仍保留在獨立的快速復連紀錄。掃描只能回報 Direct 候選端點；active Direct 健康狀態由 tunnel lifecycle 或實際定位 I/O 判定。裝置閒置時 USB 可接管；操作進行中插入 USB 只更新可用狀態，待 session 結束後才切換。
 
 ## 2026-09-17 實機結果與待解問題
 
@@ -27,9 +27,9 @@
 
 在 `pymobiledevice3==11.3.1` 中，`create_using_tcp` 先建立 asyncio reader/writer，定位服務 TLS 隨後走 `StreamWriter.start_tls()`；usbmux `Network` 的服務 socket 在 TLS 前沒有 reader/writer，會讓 `ServiceConnection.ssl_start()` 直接建立 TLS stream。把 Direct TCP **服務連線**改成後者後，USB 已拔除的 iOS 16.7.16 實機於 20 秒測試中確實移到東京並恢復。專案新增 `DirectTcpLockdownClient`，只改服務 socket 的建立方式，保留原本的 Direct TCP lockdown 配對與 UDID 驗證。這是目前最有力的原因推論，尚未取得手機端日誌證明 `start_tls()` 具體在哪一步造成無效命令。
 
-修正後的 ArcWayfarer 正式 Direct 後端 `connect_direct` → `device_session.set_location` → `clear_location` 已在 USB 拔除時執行成功。另在測試程序內讓 `usbmux_list_devices` 與 `create_using_usbmux` 一律拋錯，重跑相同流程 20 秒；使用者確認手機地圖移到東京並在結束後恢復。這證明本次定位操作確實經由 Direct TCP 完成，沒有退回系統 Wi-Fi 的 usbmux 通道。其他 iOS 16 機型、Windows 與 iOS 17+ 均未驗證。
+修正後的 ArcWayfarer 正式 Direct 後端 `connect_direct` → `device_session.set_location` → `clear_location` 已在 USB 拔除時執行成功。另在測試程序內讓 `usbmux_list_devices` 與 `create_using_usbmux` 一律拋錯，重跑相同流程 20 秒；使用者確認手機地圖移到東京並在結束後恢復。這證明本次定位操作確實經由 Direct TCP 完成，沒有退回系統 Wi-Fi 的 usbmux 通道。其他 iOS 16 機型與 Windows 尚未驗證；iOS 17+ 使用另一條 RemotePairing／RSD 路徑，結果見 [iOS 26.6.2 實機驗證](wireless-direct-ios26-spike.md)。
 
-Direct 被明確選取後，`get_device` 與每次定位的 `get_lockdown` 走配對紀錄及已驗證的 IP，不再對 usbmuxd 發出裝置查詢。背景裝置掃描仍會嘗試列舉 USB，以便插線時優先選用實體路徑；即使該列舉失敗，也會保留已選取的 Direct 裝置。這項改動已在 macOS 以注入故障測試，尚未在 Windows 的 AMDS 故障環境實機驗證。
+Direct 被明確選取後，定位操作會使用配對紀錄及已驗證的 IP。背景掃描仍可列舉 USB 與系統 Wi-Fi，但依正式架構合約不得藉由掃描關閉或替換 Direct。掃描 source 失敗也不得等同成功空結果。既有分支尚在依 strangler 路線遷移到這個模型；本段的實機結果只證明 Direct TCP 定位路徑可用，不代表舊狀態管理已符合全部不變量。
 
 ### 後續驗證門檻
 

@@ -1,6 +1,6 @@
 # iOS 26.6.2 無線 RSD 通道實機驗證
 
-日期：2026-09-17。測試環境為 macOS、`pymobiledevice3==11.3.1` 與一台 iOS 26.6.2 iPhone。這是獨立測試程序的結果；ArcWayfarer 尚未整合此 iOS 17+ 無線路徑。
+日期：2026-09-17。測試環境為 macOS、`pymobiledevice3==11.3.1` 與一台 iOS 26.6.2 iPhone。這是當時獨立測試程序的結果；後續功能分支已開始整合 iOS 17+ 無線路徑，但設備狀態治理仍依 [設備管理架構決策](device-management-architecture.zh-TW.md)分階段重構。
 
 ## 測試步驟與結果
 

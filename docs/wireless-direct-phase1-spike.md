@@ -2,6 +2,8 @@
 
 日期：2026-09-16。這是技術探測紀錄，不代表無線定位功能已完成。
 
+本文件保存當時的通道探測結果；目前設備狀態、路由與 session 規格以 [設備管理架構決策](device-management-architecture.zh-TW.md)及 [ADR-0001](adr/0001-device-management-registry.md)為準。
+
 後續已完成 [macOS + iOS 16 Direct TCP 定位實測](wireless-direct-macos-test.md)，以及 [macOS + iOS 26.6.2 純 Wi-Fi RemotePairing／RSD 定位實測](wireless-direct-ios26-spike.md)。兩項均為限定裝置與環境的實機結果。
 
 ## 已完成的實機驗證
@@ -32,7 +34,7 @@ python scripts/wireless_channel_spike.py --udid <裝置 UDID> --probe-rsd
 
 1. 寫入無線設定的範例參數順序錯誤。11.3.1 的介面是 `set_value(value, domain=..., key=...)`；應使用 `await lockdown.set_enable_wifi_connections(True)`，再讀回確認。原提案的 `set_value("EnableWifiConnections", True, domain=...)` 會造成參數衝突，不能執行。
 2. `lockdown.pair_record` 可以作為候選資料來源，但取得後仍須檢查是否配對成功、必要欄位是否存在，以及重新開啟 TCP 時是否有效。Windows ACL、原子寫入與刪除行為仍須實作和測試。
-3. 「插 USB 自動切到 USB，拔線再切回直連」不能只替換 Badge。iOS 17+ 的定位狀態依賴持續存在的 RSD/DVT 會話；操作進行中切換通道可能中斷定位。首版宜在裝置閒置時切換，操作中維持當前健康會話；失聯時先停下相關工作並顯示恢復狀態。
+3. 「插 USB 自動切到 USB，拔線再切回直連」不能只替換 Badge。正式決策採 session pinning：操作進行中維持建立 session 的健康 route；USB 只更新 availability，session 結束後才可接管。拔線或關閉 Wi-Fi 不得自動啟用 Direct。
 4. `ready` 必須指目前的定位通道確實可操作；若僅曾通過拔線測試，應另記錄「上次驗證成功」，避免把歷史結果顯示成即時連線。
 5. 「停止並還原定位」在完全失聯時可能無法立即傳送至手機。UI 必須顯示「已停止本機排程，待重連後嘗試還原」與最終結果，不可先宣稱手機定位已還原。
 

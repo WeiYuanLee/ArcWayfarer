@@ -35,7 +35,6 @@ docs/*_plan.md
 
 # Local agent/project notes (not release source)
 /.gemini/
-/ARCHITECTURE.md
 /CLAUDE.md
 /main.js
 frontend/src/components/panels/MultiStopPanel.draft.test.ts
