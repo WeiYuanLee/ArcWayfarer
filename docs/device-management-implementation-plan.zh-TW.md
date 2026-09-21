@@ -1,10 +1,21 @@
 # 設備管理重構實作計畫
 
-> 狀態：Ready for execution
+> 狀態：In progress
 >
 > 基準分支：`feat/windows-wireless-direct-spike`
 >
 > 架構依據：[設備管理架構決策提案](device-management-architecture.zh-TW.md)、[ADR-0001](adr/0001-device-management-registry.md)、[`ARCHITECTURE.md`](../ARCHITECTURE.md#設備管理與傳輸路由)
+
+---
+
+## 實作進度（2026-09-21）
+
+- [x] **P0-A**：加入 `DeviceDiscoveryPort`、immutable `DiscoverySnapshot`、公開 `DeviceManagementService` 與可控制完成順序的 fake。
+- [x] **P0-B（第一批）**：加入 query safety、source failure、single-flight、多設備失敗隔離、Direct I/O failure 等回歸案例；revision 競爭案例隨 P1-C 完成。
+- [x] **P1-A**：`GET /api/devices` 與 `_scan_devices()` 不再 probe 或關閉 Direct runtime；RSD watcher 關閉時可投影回一般 Wi-Fi，實際 Direct I/O 失敗才清理該設備 runtime。
+- [ ] **P1-B**：已移除 auto endpoint 失敗時的跨設備清理；per-device operation lock 尚待下一個批次。
+
+目前驗證基線：後端 77 項、前端 106 項測試全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過，產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`。
 
 ---
 

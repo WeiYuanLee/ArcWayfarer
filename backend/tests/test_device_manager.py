@@ -25,9 +25,9 @@ def _device(udid: str, connection_type: str = "wifi") -> DeviceInfo:
 
 class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        # A finished task is deliberately retained for callers that joined a
-        # scan; reset it here so each test starts a new discovery operation.
-        device_manager._device_scan_task = None
+        # A finished snapshot is deliberately retained for callers that joined
+        # a scan; invalidate through the public service boundary between tests.
+        device_manager._device_management_service.invalidate()
         device_manager._last_usb_discovery_diagnostic = None
         stored_records = patch.object(device_manager.pairing_store, "list_udids", return_value=[])
         stored_records.start()
@@ -58,6 +58,25 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await first)[0].udid, "shared")
             self.assertEqual((await second)[0].udid, "shared")
             self.assertEqual(scan.await_count, 1)
+
+    async def test_get_device_read_does_not_close_direct_runtime(self) -> None:
+        """D7: public device reads cannot release a transport."""
+        udid = "A1B2C3D4"
+        direct = _device(udid, "wireless_direct")
+        tunnel = type("Tunnel", (), {"rsd": object()})()
+        with (
+            patch.object(device_manager, "_direct_rsd_devices", {udid.lower(): direct}),
+            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): tunnel}),
+            patch.object(device_manager, "_direct_addresses", {udid.lower(): "192.168.1.20"}),
+            patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
+            patch.object(device_manager, "_clear_direct_runtime", AsyncMock()) as clear,
+        ):
+            device_manager._device_management_service.invalidate()
+            found = await device_manager.get_device(udid)
+
+        self.assertEqual(found.connection_type, "wireless_direct")
+        clear.assert_not_awaited()
 
     async def test_usb_is_preferred_and_connection_type_is_retained(self) -> None:
         described: list[tuple[str, str]] = []

@@ -20,7 +20,7 @@
 
 ## 1. 現況病根診斷（已對照原始碼查證）
 
-以下每一條都已對 `backend/core/device_manager.py`（1022 行）、`device_session.py`、`frontend/src/hooks/useDevices.ts`、`backend/tests/test_wireless_direct.py` 逐行核對。
+以下每一條都已對重構前基線 commit `c805349` 的 `backend/core/device_manager.py`（1022 行）、`device_session.py`、`frontend/src/hooks/useDevices.ts`、`backend/tests/test_wireless_direct.py` 逐行核對。已完成項目與目前測試基線以[實作計畫](device-management-implementation-plan.zh-TW.md#實作進度2026-09-21)為準。
 
 ### 1.1 確認成立的缺陷
 

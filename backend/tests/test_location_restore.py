@@ -6,6 +6,36 @@ from core import device_session, events, simulation_engine, teleport
 
 
 class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_direct_io_failure_releases_only_its_runtime(self) -> None:
+        backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("network changed"))})()
+        session = device_session.DeviceSession(
+            "device-direct",
+            transport="rsd",
+            backend=backend,
+            bound_route="wireless_direct",
+        )
+
+        with patch.object(device_session.device_manager, "disconnect_direct", AsyncMock()) as disconnect:
+            with self.assertRaises(ConnectionError):
+                await session.set(25.0, 121.0)
+
+        disconnect.assert_awaited_once_with("device-direct")
+
+    async def test_system_wifi_io_failure_does_not_enable_or_clear_direct(self) -> None:
+        backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("wifi lost"))})()
+        session = device_session.DeviceSession(
+            "device-wifi",
+            transport="rsd",
+            backend=backend,
+            bound_route="wifi",
+        )
+
+        with patch.object(device_session.device_manager, "disconnect_direct", AsyncMock()) as disconnect:
+            with self.assertRaises(ConnectionError):
+                await session.set(25.0, 121.0)
+
+        disconnect.assert_not_awaited()
+
     async def test_clear_flushes_the_stop_command_before_closing_its_session(self) -> None:
         session = type("Session", (), {"clear": AsyncMock()})()
 

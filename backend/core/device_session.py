@@ -8,6 +8,7 @@ from pymobiledevice3.services.dvt.instruments.location_simulation import Locatio
 
 from config import MOUNT_TIMEOUT_SECONDS
 from core import device_manager
+from models.schemas import DeviceConnectionType
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,12 @@ class DeviceSession:
     is open, so every mode reuses the same session instead of opening/closing per call.
     """
 
-    def __init__(self, udid, transport, backend, dvt_cm=None, ls_cm=None):
+    def __init__(self, udid, transport, backend, bound_route: DeviceConnectionType, dvt_cm=None, ls_cm=None):
         self.udid = udid
         self.transport = transport
+        # Preserve the route that created this session. Discovery may observe
+        # other routes later, but it must not silently move active I/O.
+        self.bound_route = bound_route
         self._backend = backend
         self._dvt_cm = dvt_cm
         self._ls_cm = ls_cm
@@ -41,19 +45,26 @@ class DeviceSession:
         async with self._lock:
             try:
                 await asyncio.wait_for(self._backend.set(lat, lng), timeout=10.0)
-            except Exception:
+            except Exception as exc:
                 _sessions.pop(self.udid, None)
                 await self.close()
+                await self._release_failed_direct_runtime(exc)
                 raise
 
     async def clear(self) -> None:
         async with self._lock:
             try:
                 await asyncio.wait_for(self._backend.clear(), timeout=10.0)
-            except Exception:
+            except Exception as exc:
                 _sessions.pop(self.udid, None)
                 await self.close()
+                await self._release_failed_direct_runtime(exc)
                 raise
+
+    async def _release_failed_direct_runtime(self, exc: Exception) -> None:
+        """Clear only this session's Direct runtime after confirmed I/O loss."""
+        if self.bound_route == "wireless_direct" and isinstance(exc, _DEAD_CONNECTION_ERRORS):
+            await device_manager.disconnect_direct(self.udid)
 
     async def close(self) -> None:
         if self._ls_cm is not None:
@@ -131,14 +142,26 @@ async def get_session(udid: str) -> DeviceSession:
                         raise RuntimeError(
                             "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
                         ) from e
-            session = DeviceSession(udid, transport="lockdown", backend=LockdownSimulateLocationWrapper(udid))
+            session = DeviceSession(
+                udid,
+                transport="lockdown",
+                backend=LockdownSimulateLocationWrapper(udid),
+                bound_route=device.connection_type,
+            )
         else:
             rsd = await device_manager.get_rsd(udid)
             dvt_cm = DvtProvider(rsd)
             dvt = await dvt_cm.__aenter__()
             ls_cm = LocationSimulation(dvt)
             location_simulation = await ls_cm.__aenter__()
-            session = DeviceSession(udid, transport="rsd", backend=location_simulation, dvt_cm=dvt_cm, ls_cm=ls_cm)
+            session = DeviceSession(
+                udid,
+                transport="rsd",
+                backend=location_simulation,
+                bound_route=device.connection_type,
+                dvt_cm=dvt_cm,
+                ls_cm=ls_cm,
+            )
 
         _sessions[udid] = session
         return session

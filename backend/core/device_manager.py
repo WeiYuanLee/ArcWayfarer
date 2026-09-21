@@ -24,6 +24,8 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 
 from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
+from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
+from core.device_service import DeviceManagementService
 from core.wireless_rsd import WiFiRsdTunnel
 from models.schemas import DeviceConnectionType, DeviceInfo
 
@@ -33,10 +35,6 @@ IOS_17 = Version("17.0")
 DEVICE_LIST_TIMEOUT_SECONDS = 5.0
 DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
 
-# All callers in a polling interval share one discovery operation. In
-# particular, do not let a slow Network lockdown lookup start a second scan.
-_device_scan_lock = asyncio.Lock()
-_device_scan_task: asyncio.Task[list[DeviceInfo]] | None = None
 _direct_addresses: dict[str, str] = {}
 _direct_usb_present: set[str] = set()
 _system_routes: set[str] = set()
@@ -58,6 +56,29 @@ class DeviceDiscoveryDiagnostic:
 
 
 _last_usb_discovery_diagnostic: DeviceDiscoveryDiagnostic | None = None
+
+
+async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
+    """Expose the legacy scanner through the new immutable read contract."""
+    devices = await _scan_devices()
+    usb_source = DiscoverySourceResult(
+        "failed" if _last_usb_discovery_diagnostic is not None else "success",
+        _last_usb_discovery_diagnostic.message if _last_usb_discovery_diagnostic is not None else None,
+    )
+    return DiscoverySnapshot(
+        devices=tuple(devices),
+        sources={
+            "usb": usb_source,
+            "system_wifi": DiscoverySourceResult("success"),
+            "direct_endpoints": DiscoverySourceResult("not_requested"),
+        },
+    )
+
+
+# P0/P1 keep the legacy scanner as the production adapter.  Callers now use a
+# public service boundary, so later Registry work can replace the adapter
+# without changing API handlers or tests.
+_device_management_service = DeviceManagementService(CallbackDiscoveryPort(_legacy_discovery_snapshot))
 
 
 def _pymobiledevice3_version() -> str:
@@ -93,21 +114,7 @@ def get_usb_discovery_diagnostic() -> dict[str, str] | None:
 
 
 async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
-    global _device_scan_task
-
-    async with _device_scan_lock:
-        if _device_scan_task is None or _device_scan_task.done():
-            _device_scan_task = asyncio.create_task(_scan_devices())
-        scan_task = _device_scan_task
-
-    # Shielding means cancellation of one HTTP request cannot cancel the
-    # shared discovery work needed by other callers.
-    devices = await asyncio.shield(scan_task)
-    # Keep one physical discovery task for all callers. Filtering its stable
-    # result here avoids a USB-only refresh racing a Wi-Fi-enabled refresh.
-    if include_wifi:
-        return devices
-    return [device for device in devices if device.connection_type != "wifi"]
+    return await _device_management_service.list_devices(include_wifi=include_wifi)
 
 
 def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType | None:
@@ -215,30 +222,50 @@ async def _scan_devices() -> list[DeviceInfo]:
                 )
             )
 
-    # USB takes ownership immediately. A live Wireless Direct route was
-    # explicitly selected by the user, so it stays selected over ordinary
-    # Wi-Fi until it fails or is disconnected.
+    # Build the selected-route projection without changing transport state.
+    # USB wins while idle, and a healthy explicitly selected Direct route wins
+    # over ordinary Wi-Fi.  Discovery must never close either runtime.
     for key in dict.fromkeys([*_direct_addresses, *_direct_rsd_devices]):
         ip = _direct_addresses.get(key)
         previous = next((item for item in devices if item.udid.lower() == key), None)
         if previous is not None and previous.status == "ready" and previous.connection_type == "usb":
-            await _clear_direct_runtime(key)
-            logger.info("USB route available for %s; released Wireless Direct", key)
             continue
-        try:
-            if key in _direct_rsd_devices:
-                direct = _direct_rsd_devices[key]
-                if _direct_rsd_tunnels[key].rsd is None:
-                    raise ConnectionError("Wi-Fi RSD tunnel closed")
+
+        if key in _direct_rsd_devices:
+            tunnel = _direct_rsd_tunnels.get(key)
+            # The tunnel watcher is authoritative for RSD lifecycle.  A closed
+            # tunnel stops being selected, but cleanup is left to a command or
+            # session failure handler instead of this read path.
+            if tunnel is None or tunnel.rsd is None:
+                continue
+            direct = _direct_rsd_devices[key]
+        else:
+            # A Direct TCP address is only stored after an explicit successful
+            # connection.  Re-probing it from a GET made a transient timeout
+            # destructive; project the known runtime until real I/O fails.
+            assert ip is not None
+            if previous is not None:
+                direct = previous.model_copy(
+                    update={
+                        "connection_type": "wireless_direct",
+                        "ip_address": ip,
+                        "direct_paired": True,
+                        "status": "ready",
+                        "detail": "Direct TCP 定位通道已就緒。",
+                    }
+                )
             else:
-                assert ip is not None
-                direct = await asyncio.wait_for(_describe_direct(key, ip), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS)
-        except Exception:
-            # A dead runtime is no longer a discovered connection. Remove it
-            # instead of rendering an offline/errored Wireless Direct row.
-            await _clear_direct_runtime(key)
-            logger.info("Wireless Direct runtime disappeared for %s", key)
-            continue
+                direct = DeviceInfo(
+                    udid=key,
+                    name=key,
+                    ios_version=pairing_store.load_version(key) or "unknown",
+                    transport="lockdown",
+                    connection_type="wireless_direct",
+                    ip_address=ip,
+                    direct_paired=True,
+                    status="ready",
+                    detail="Direct TCP 定位通道已就緒。",
+                )
         devices = [item for item in devices if item.udid.lower() != key]
         devices.append(direct)
 
@@ -279,7 +306,6 @@ async def _connect_direct_tcp(udid: str, ip: str) -> LockdownClient:
 
 
 async def enable_direct_pairing(udid: str) -> None:
-    global _device_scan_task
     async with await create_using_usbmux(serial=udid, connection_type="USB", autopair=False) as lockdown:
         if not lockdown.paired or lockdown.pair_record is None or lockdown.udid.lower() != udid.lower():
             raise ValueError("請用 USB 接上手機、解鎖並選擇信任此電腦。")
@@ -319,7 +345,7 @@ async def enable_direct_pairing(udid: str) -> None:
             await ensure_mounted(lockdown)
         pairing_store.save(udid, lockdown.pair_record)
         pairing_store.save_version(udid, lockdown.product_version)
-        _device_scan_task = None
+        _device_management_service.invalidate()
 
 
 def _has_active_session(udid: str) -> bool:
@@ -356,7 +382,6 @@ async def has_blocking_session(udid: str) -> bool:
 
 
 async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    global _device_scan_task
     if not pairing_store.exists(udid):
         raise ValueError("請先用 USB 在裝置管理設定無線授權。")
     if await has_blocking_session(udid):
@@ -393,7 +418,7 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
                 logger.warning("Failed to save direct address %s for %s: %s", actual_ip, udid, e)
         _direct_rsd_tunnels[udid.lower()] = tunnel
         _direct_rsd_devices[udid.lower()] = device
-        _device_scan_task = None
+        _device_management_service.invalidate()
         return device
     except ValueError:
         await tunnel.aclose()
@@ -407,8 +432,6 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
 
 
 async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    global _device_scan_task
-
     # Handle auto / unspecified udid when ip is provided
     if not udid or udid.lower() == "auto":
         if not ip:
@@ -489,12 +512,9 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
                     continue
 
         if not matched_udid:
-            # A failed switch must not leave its idle predecessor displayed as
-            # Wireless Direct and prevent a healthy usbmux Wi-Fi route from
-            # taking over. Active navigation sessions remain protected.
-            for active_udid in list(_direct_rsd_tunnels):
-                if not _has_active_session(active_udid):
-                    await disconnect_direct(active_udid)
+            # A failed probe belongs only to the requested endpoint.  It must
+            # never tear down another phone's explicit Direct runtime; route
+            # projection already lets a healthy system Wi-Fi row remain usable.
             raise ValueError(
                 f"已找到 {ip}，但手機拒絕目前的 Wireless Direct 授權。"
                 "請用 USB 接上這台手機並解鎖，然後直接按「重新連線」以刷新授權。"
@@ -573,7 +593,7 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
             raise ValueError("TCP 已連線，但手機的定位服務尚未就緒。請重新接上 USB 並更新無線授權。") from exc
         pairing_store.save_address(udid, address)
         _direct_addresses[udid.lower()] = address
-        _device_scan_task = None
+        _device_management_service.invalidate()
         return device
 
     if not fallback_bonjour and ip is not None:
@@ -582,9 +602,8 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
 
 
 async def disconnect_direct(udid: str) -> None:
-    global _device_scan_task
     await _clear_direct_runtime(udid)
-    _device_scan_task = None
+    _device_management_service.invalidate()
 
 
 async def _clear_direct_runtime(udid: str) -> None:
@@ -969,10 +988,10 @@ async def _describe_device(
 
 
 async def get_device(udid: str) -> DeviceInfo:
-    # Refresh route ownership before choosing a transport. The scan preserves
-    # Direct when no system route exists and clears it when USB/Network has
-    # recovered, so location commands cannot be trapped by an old selection.
-    for device in await list_devices():
+    # Keep this lookup on the public list boundary.  Besides preserving one
+    # query contract, callers and tests can replace the discovery service
+    # without patching manager internals.
+    for device in await list_devices(include_wifi=True):
         if device.udid.lower() == udid.lower():
             return device
     raise ValueError(f"Device not found: {udid}")
@@ -993,7 +1012,7 @@ async def get_lockdown(udid: str) -> LockdownClient:
 async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
     key = udid.lower()
 
-    # A physical USB route always wins and clears Direct during discovery.
+    # Physical USB has the highest idle priority.
     if key in _direct_usb_present:
         rsd = await get_tunneld_device_by_udid(udid)
         if rsd is not None:
@@ -1001,12 +1020,14 @@ async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
 
     # This map only contains a tunnel created by an explicit Direct action.
     # Keep using it while healthy, even if ordinary Wi-Fi discovery also sees
-    # the phone on the same network.
+    # the phone on the same network.  If its watcher has confirmed closure,
+    # fall through to a system route without making this read clean it up.
     if key in _direct_rsd_tunnels:
         rsd = _direct_rsd_tunnels[key].rsd
-        if rsd is None:
+        if rsd is not None:
+            return rsd
+        if key not in _system_routes:
             raise RuntimeError("無線 RSD 連線已中斷，請在裝置管理重新連線。")
-        return rsd
     rsd = await get_tunneld_device_by_udid(udid)
     if rsd is None:
         raise RuntimeError(
