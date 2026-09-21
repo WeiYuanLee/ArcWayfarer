@@ -427,7 +427,7 @@ simulation_engine.start(loop=True) 會無限循環
 | `discovery/*_scanner.py` | 回報 USB、系統 Wi-Fi 與 Direct 端點的 immutable snapshot | 不得建立、切換或關閉 transport |
 | `device_registry.py` | 保存每台設備的 aggregate、revision 與最新觀測 | 不得直接操作 socket 或 tunnel |
 | `route_policy.py` | 以純函式計算唯一 `selected_route` | 不得 I/O 或修改 registry |
-| `transport_controller.py` | 建立、切換與關閉 transport | 不得由 GET 或背景掃描直接呼叫破壞性操作 |
+| `transport_controller.py` | 建立、切換與關閉 transport | 只接受 command、Registry policy effect、session failure 或 shutdown；不得由 GET 或 scanner 直接呼叫 |
 | `pairing_manager.py` | 建立、驗證、刷新及刪除配對能力 | 不得把已配對視為已連線 |
 | `device_session.py` | 維護定位 session 及其 `bound_route` | 不得反向查詢並改寫 manager 全域狀態 |
 
@@ -635,6 +635,7 @@ P1／P2 遷移完成後，設備快照必須同時提供 snapshot revision、各
 ## 10. 設備管理重構文件
 
 - [設備管理架構決策提案](docs/device-management-architecture.zh-TW.md)：完整診斷、目標模型與 P0～P4 路線。
+- [設備管理重構實作計畫](docs/device-management-implementation-plan.zh-TW.md)：PR 切分、驗收條件、回退點與 release gate。
 - [ADR-0001：採用 Device Registry、Aggregate 與 Strangler 遷移](docs/adr/0001-device-management-registry.md)：決策、替代方案與後果。
 - [macOS Wireless Direct 實機測試](docs/wireless-direct-macos-test.md)：平台驗證步驟與已知限制。
 - [Windows Wireless Direct 實機測試](docs/wireless-direct-windows-test.md)：Windows 驗收矩陣與回報格式。

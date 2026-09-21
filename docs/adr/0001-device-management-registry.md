@@ -4,6 +4,7 @@
 - 日期：2026-09-21
 - 決策範圍：USB、系統 Wi-Fi、Wireless Direct、配對能力與定位 session 的狀態管理
 - 詳細設計：[設備管理架構決策提案](../device-management-architecture.zh-TW.md)
+- 實作計畫：[設備管理重構實作計畫](../device-management-implementation-plan.zh-TW.md)
 - 正式不變量：[ARCHITECTURE.md](../../ARCHITECTURE.md#設備管理與傳輸路由)
 
 ## 背景
@@ -22,6 +23,7 @@
 6. Active session 綁定建立它的 route，直到 session 停止或該 transport 實際失敗。
 7. Wireless Direct 採嚴格手動、黏著模式：配對與歷史紀錄不會自動啟用 Direct。
 8. 每次 aggregate 變更遞增 revision；前端不得用較舊的 scan 覆蓋較新的 command 結果。
+9. Discovery coordinator 可發布 observation event；HTTP GET 只能讀 snapshot。Policy 產生的 transport effect 只有 Controller 能執行，且必須按設備與 revision 去重。
 9. 以 P0～P4 strangler 階段替換既有實作，不進行一次性切換。
 
 Direct endpoint discovery 只提供連線候選，不是 active Direct 健康狀態的權威來源。只有 Transport Controller 的 tunnel lifecycle 或實際 session I/O 結果能把 Direct runtime 轉為 `ready` 或 `failed`。

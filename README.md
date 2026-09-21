@@ -94,6 +94,7 @@ MIT — see [LICENSE](LICENSE).
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): project-wide module contracts and invariants.
 - [Device management architecture proposal](docs/device-management-architecture.zh-TW.md): Device Registry, Aggregate, and the P0–P4 migration plan.
+- [Device management implementation plan](docs/device-management-implementation-plan.zh-TW.md): PR sequence, acceptance gates, rollback points, and cross-platform release criteria.
 - [ADR-0001](docs/adr/0001-device-management-registry.md): accepted device-management decision and tradeoffs.
 - [Windows Wireless Direct test plan](docs/wireless-direct-windows-test.md): Windows validation steps and device-state matrix.
 

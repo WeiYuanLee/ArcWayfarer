@@ -7,6 +7,8 @@
 > 不可退讓的護欄：**全面重寫必須以 strangler 分階段替換完成，嚴禁一次性大爆炸切換**。理由見 §7。
 >
 > 文件關係：本文件保存完整診斷與目標設計；根目錄 [`ARCHITECTURE.md`](../ARCHITECTURE.md) 保存必須遵守的不變量；[`ADR-0001`](adr/0001-device-management-registry.md) 保存本次決策與取捨。
+>
+> 實作安排：[`device-management-implementation-plan.zh-TW.md`](device-management-implementation-plan.zh-TW.md) 定義 PR 切分、驗收、回退與跨平台 release gate。
 
 ---
 
@@ -142,7 +144,7 @@ select_route(device):
 | `discovery/usb_scanner` `system_wifi_scanner` `direct_endpoint_scanner` | 只回報觀測，產出 immutable snapshot | **禁止**呼叫任何關閉 / 斷線 / clear |
 | `device_registry` | 保存每台 DeviceAggregate 與 revision，接收 discovery snapshot、command、session event | 唯一狀態真相來源 |
 | `route_policy` | 純函式，輸入 aggregate 輸出 selected_route | 無 I/O、無副作用 |
-| `transport_controller` | **唯一**能建立 / 關閉 tunnel 的地方 | 只由明確 command 或 session 失敗事件觸發 |
+| `transport_controller` | **唯一**能建立 / 關閉 tunnel 的地方 | 只由明確 command、Registry policy effect、session 失敗事件或 application shutdown 觸發；HTTP GET 不得觸發 |
 | `pairing_manager` | 憑證建立 / 驗證 / 刷新 / 刪除 | 配對紀錄 ≠ 已連線 |
 | `device_session` | 持有明確 `bound_route` | 不再反向 import manager 查全域 |
 
@@ -188,7 +190,7 @@ flowchart LR
 
 | 階段 | 內容 | 驗收 |
 |---|---|---|
-| **P0** | 把 §4 不變量寫進 ARCHITECTURE.md + ADR；建立**不碰內部全域**的行為測試（含多裝置隔離、競爭、網路抖動、session pinning） | 新測試在**現有**程式上能重現既有 bug（紅燈） |
+| **P0** | 把 §4 不變量寫進 ARCHITECTURE.md + ADR；建立**不碰內部全域**的行為測試（含多裝置隔離、競爭、網路抖動、session pinning） | 在修正分支證明新測試對父 commit 會失敗；測試與最小修正一同合併，合併結果全綠 |
 | **P1** | 止血三刀，改動最小：① 掃描不再 clear/disconnect（移除 `:224`、`:236-241` 的清除）② 移除跨裝置清理（`:495-497`）③ 前端 revision + pendingForegroundRefresh | P0 的止血相關測試轉綠，其餘行為不變 |
 | **P2** | 導入 `DeviceRegistry` + `route_policy` 純函式，與現有全域**並存**；先讓 policy 接管 selected_route 計算 | route policy table test 全綠；對外 API 輸出不變 |
 | **P3** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 改持 `bound_route`、斷開對 manager 的反向依賴 | 只剩單一入口能改 transport；循環依賴消失 |

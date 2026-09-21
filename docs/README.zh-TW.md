@@ -93,6 +93,7 @@ MIT — 詳見 [LICENSE](../LICENSE)。
 
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md)：全專案模組合約與不可違反的不變量。
 - [設備管理架構決策提案](device-management-architecture.zh-TW.md)：Device Registry、Aggregate 與 P0～P4 遷移路線。
+- [設備管理重構實作計畫](device-management-implementation-plan.zh-TW.md)：PR 排程、驗收、回退與跨平台 release gate。
 - [ADR-0001](adr/0001-device-management-registry.md)：設備管理重構的正式決策與取捨。
 - [Windows Wireless Direct 實機測試](wireless-direct-windows-test.md)：Windows 驗收步驟與狀態矩陣。
 
