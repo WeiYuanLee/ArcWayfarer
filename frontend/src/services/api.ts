@@ -23,9 +23,17 @@ export type Device = {
   connection_type: 'usb' | 'wifi' | 'wireless_direct'
   ip_address?: string | null
   direct_paired?: boolean
+  revision?: number
+  selected_route?: 'usb' | 'wifi' | 'wireless_direct' | null
 }
 
-export function pairWirelessDirect(udid: string): Promise<{ status: string }> {
+export type DeviceSnapshot = {
+  snapshot_revision: number
+  sources: Record<string, { status: 'success' | 'failed' | 'not_requested'; detail?: string | null }>
+  devices: Device[]
+}
+
+export function pairWirelessDirect(udid: string): Promise<{ status: string; revision: number }> {
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/pair`, {}, undefined, 150000)
 }
 
@@ -46,15 +54,15 @@ export function connectWirelessDirect(udid: string, ip?: string, fallbackBonjour
   )
 }
 
-export function disconnectWirelessDirect(udid: string): Promise<{ status: string }> {
+export function disconnectWirelessDirect(udid: string): Promise<{ status: string; revision: number }> {
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/disconnect`, {})
 }
 
-export function removeWirelessDirectPairing(udid: string): Promise<{ status: string }> {
+export function removeWirelessDirectPairing(udid: string): Promise<{ status: string; revision: number }> {
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/remove-pairing`, {})
 }
 
-export function clearWirelessDirectAddress(udid: string): Promise<{ status: string }> {
+export function clearWirelessDirectAddress(udid: string): Promise<{ status: string; revision: number }> {
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/clear-address`, {})
 }
 
@@ -174,6 +182,25 @@ export async function listDevices({ includeWifi = false }: { includeWifi?: boole
     if (err.name === 'AbortError') {
       throw new Error('Device scan timed out (15s). Please check device connection.')
     }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+export async function getDeviceSnapshot({ includeWifi = false }: { includeWifi?: boolean } = {}): Promise<DeviceSnapshot> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+  try {
+    const query = includeWifi ? '?include_wifi=true' : ''
+    const res = await fetch(`${API_BASE_URL}/api/devices/snapshot${query}`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`Failed to scan devices (${res.status})`)
+    return await res.json() as DeviceSnapshot
+  } catch (err: any) {
+    if (err.name === 'AbortError') throw new Error('Device scan timed out (15s). Please check device connection.')
     throw err
   } finally {
     clearTimeout(timeoutId)

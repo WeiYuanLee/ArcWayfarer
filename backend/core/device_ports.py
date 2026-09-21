@@ -28,11 +28,14 @@ class DiscoverySnapshot:
 
     devices: tuple[DeviceInfo, ...]
     sources: Mapping[str, DiscoverySourceResult] = field(default_factory=dict)
+    snapshot_revision: int = 0
+    device_revisions: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Copy before wrapping so adapters cannot mutate source outcomes after
         # publishing a snapshot shared by concurrent readers.
         object.__setattr__(self, "sources", MappingProxyType(dict(self.sources)))
+        object.__setattr__(self, "device_revisions", MappingProxyType(dict(self.device_revisions)))
 
 
 class DeviceDiscoveryPort(Protocol):

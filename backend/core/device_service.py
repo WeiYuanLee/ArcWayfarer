@@ -31,6 +31,10 @@ class DeviceManagementService:
 
     async def list_devices(self, include_wifi: bool = True) -> list[DeviceInfo]:
         snapshot = await self.snapshot()
+        return self._project_devices(snapshot, include_wifi)
+
+    @staticmethod
+    def _project_devices(snapshot: DiscoverySnapshot, include_wifi: bool) -> list[DeviceInfo]:
         devices = snapshot.devices if include_wifi else tuple(
             device for device in snapshot.devices if device.connection_type != "wifi"
         )
@@ -45,8 +49,24 @@ class DeviceManagementService:
             if key in seen:
                 continue
             seen.add(key)
-            unique.append(device)
+            unique.append(device.model_copy(update={
+                "revision": snapshot.device_revisions.get(key, 0),
+                "selected_route": device.connection_type,
+            }))
         return unique
+
+    async def projected_snapshot(self, include_wifi: bool = True) -> DiscoverySnapshot:
+        snapshot = await self.snapshot()
+        # Project devices and metadata from the exact same completed scan.
+        # Calling list_devices() here could start a second scan once the shared
+        # task is done and combine two different revisions in one response.
+        devices = self._project_devices(snapshot, include_wifi)
+        return DiscoverySnapshot(
+            devices=tuple(devices),
+            sources=snapshot.sources,
+            snapshot_revision=snapshot.snapshot_revision,
+            device_revisions=snapshot.device_revisions,
+        )
 
     async def get_device(self, udid: str) -> DeviceInfo:
         for device in await self.list_devices(include_wifi=True):

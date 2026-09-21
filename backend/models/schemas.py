@@ -19,6 +19,9 @@ class DeviceInfo(BaseModel):
     direct_paired: bool = False
     status: DeviceStatus
     detail: Optional[str] = None
+    # P1 migration fields. Older clients safely ignore them.
+    revision: int = 0
+    selected_route: Optional[DeviceConnectionType] = None
 
 
 class SetLocationRequest(BaseModel):

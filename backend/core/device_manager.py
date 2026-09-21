@@ -25,7 +25,9 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
+from core.device_revision import device_revision_ledger
 from core.device_service import DeviceManagementService
+from core.keyed_async_lock import device_command_locks
 from core.wireless_rsd import WiFiRsdTunnel
 from models.schemas import DeviceConnectionType, DeviceInfo
 
@@ -60,6 +62,9 @@ _last_usb_discovery_diagnostic: DeviceDiscoveryDiagnostic | None = None
 
 async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
     """Expose the legacy scanner through the new immutable read contract."""
+    # Capture before any I/O. A command that completes while this scan is in
+    # flight must have a newer revision than this eventual response.
+    revision = device_revision_ledger.capture()
     devices = await _scan_devices()
     usb_source = DiscoverySourceResult(
         "failed" if _last_usb_discovery_diagnostic is not None else "success",
@@ -72,6 +77,8 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
             "system_wifi": DiscoverySourceResult("success"),
             "direct_endpoints": DiscoverySourceResult("not_requested"),
         },
+        snapshot_revision=revision.snapshot_revision,
+        device_revisions=revision.device_revisions,
     )
 
 
@@ -115,6 +122,10 @@ def get_usb_discovery_diagnostic() -> dict[str, str] | None:
 
 async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
     return await _device_management_service.list_devices(include_wifi=include_wifi)
+
+
+async def get_device_snapshot(include_wifi: bool = True) -> DiscoverySnapshot:
+    return await _device_management_service.projected_snapshot(include_wifi=include_wifi)
 
 
 def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType | None:
@@ -345,6 +356,7 @@ async def enable_direct_pairing(udid: str) -> None:
             await ensure_mounted(lockdown)
         pairing_store.save(udid, lockdown.pair_record)
         pairing_store.save_version(udid, lockdown.product_version)
+        device_revision_ledger.bump(udid)
         _device_management_service.invalidate()
 
 
@@ -387,7 +399,9 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
     if await has_blocking_session(udid):
         raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
 
-    await disconnect_direct(udid)
+    # Replacing this target's runtime is part of one connect command, so do
+    # not publish an intermediate disconnect revision.
+    await _clear_direct_runtime(udid)
     tunnel = WiFiRsdTunnel(serial=udid, ip=ip, autopair=False, fallback_bonjour=fallback_bonjour, port=port)
     try:
         rsd = await asyncio.wait_for(tunnel.aopen(), timeout=25)
@@ -431,100 +445,94 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
         raise
 
 
-async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    # Handle auto / unspecified udid when ip is provided
-    if not udid or udid.lower() == "auto":
-        if not ip:
-            raise ValueError("未指定目標裝置 UDID，請提供 IP 位址以進行配對搜尋。")
+async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
+    """Identify one authorized endpoint without holding a device command lock."""
+    matched_udid: str | None = None
 
-        matched_udid: str | None = None
+    # 1. Non-destructively probe iOS 17+ paired devices. A healthy session
+    # protects ongoing navigation, so endpoint matching skips that device.
+    ios17_cands = list(iter_remote_paired_identifiers())
+    ios17_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
 
-        # 1. Non-destructively probe iOS 17+ paired devices
-        # A healthy session protects ongoing navigation. A tunnel that the
-        # watcher already marked closed is released so this phone can be
-        # matched again after DHCP assigns it a new address.
-        ios17_cands = list(iter_remote_paired_identifiers())
-        ios17_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
+    async def probe_remote_pairing(cand: str):
+        # Endpoint selection only verifies an existing authorization.
+        # Pair setup belongs on the trusted USB channel so a failed Wi-Fi
+        # probe cannot replace credentials behind the user's back.
+        return await asyncio.wait_for(
+            tunnel_service.create_core_device_tunnel_service_using_remotepairing(
+                cand, ip, port, autopair=False
+            ),
+            timeout=3.0,
+        )
 
-        async def probe_remote_pairing(cand: str):
-            # Endpoint selection only verifies an existing authorization.
-            # Pair setup belongs on the trusted USB channel so a failed Wi-Fi
-            # probe cannot replace credentials behind the user's back.
-            return await asyncio.wait_for(
-                tunnel_service.create_core_device_tunnel_service_using_remotepairing(
-                    cand, ip, port, autopair=False
-                ),
-                timeout=3.0,
-            )
+    for cand in ios17_cands:
+        if await has_blocking_session(cand):
+            logger.info("Candidate %s has an active navigation session, skipping probe", cand)
+            continue
+        try:
+            provider = await probe_remote_pairing(cand)
+            await provider.close()
+            matched_udid = cand
+            break
+        except Exception:
+            continue
 
-        for cand in ios17_cands:
+    # A stale key can only be repaired over the trusted USB lockdown channel.
+    # If exactly one USB phone is present, refresh and verify this IP again.
+    if not matched_udid:
+        try:
+            mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+            usb_udids = [
+                device.serial for device in mux_devices
+                if device.serial and _connection_type_from_mux(device) == "usb"
+            ]
+        except Exception:
+            usb_udids = []
+        if len(usb_udids) == 1 and not await has_blocking_session(usb_udids[0]):
+            usb_udid = usb_udids[0]
+            try:
+                await enable_direct_pairing(usb_udid)
+                provider = await probe_remote_pairing(usb_udid)
+                await provider.close()
+                matched_udid = usb_udid
+            except Exception:
+                logger.exception("USB RemotePairing refresh did not unlock endpoint %s", ip)
+
+    # 2. Non-destructively probe iOS 16 paired devices.
+    if not matched_udid:
+        ios16_cands = pairing_store.list_udids()
+        ios16_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
+        for cand in ios16_cands:
             if await has_blocking_session(cand):
-                logger.info("Candidate %s has an active navigation session, skipping probe", cand)
+                logger.info("iOS 16 candidate %s has an active session, skipping probe", cand)
                 continue
             try:
-                provider = await probe_remote_pairing(cand)
-                await provider.close()
+                await asyncio.wait_for(_describe_direct(cand, ip), timeout=2.0)
+                async with await _connect_direct_tcp(cand, ip) as lockdown:
+                    service = await asyncio.wait_for(
+                        lockdown.start_lockdown_developer_service("com.apple.dt.simulatelocation"), timeout=2.5
+                    )
+                    await service.close()
                 matched_udid = cand
                 break
             except Exception:
                 continue
 
-        # A stale key can only be repaired over the trusted USB lockdown
-        # channel. If exactly one USB phone is present, retry on the error
-        # screen performs that repair automatically and verifies this IP again.
-        if not matched_udid:
-            try:
-                mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
-                usb_udids = [
-                    device.serial for device in mux_devices
-                    if device.serial and _connection_type_from_mux(device) == "usb"
-                ]
-            except Exception:
-                usb_udids = []
-            if len(usb_udids) == 1 and not await has_blocking_session(usb_udids[0]):
-                usb_udid = usb_udids[0]
-                try:
-                    await enable_direct_pairing(usb_udid)
-                    provider = await probe_remote_pairing(usb_udid)
-                    await provider.close()
-                    matched_udid = usb_udid
-                except Exception:
-                    logger.exception("USB RemotePairing refresh did not unlock endpoint %s", ip)
+    if not matched_udid:
+        # A failed probe belongs only to the requested endpoint. It must never
+        # tear down another phone's explicit Direct runtime.
+        raise ValueError(
+            f"已找到 {ip}，但手機拒絕目前的 Wireless Direct 授權。"
+            "請用 USB 接上這台手機並解鎖，然後直接按「重新連線」以刷新授權。"
+        )
 
-        # 2. Non-destructively probe iOS 16 paired devices
-        if not matched_udid:
-            ios16_cands = pairing_store.list_udids()
-            ios16_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
-            for cand in ios16_cands:
-                if await has_blocking_session(cand):
-                    logger.info("iOS 16 candidate %s has an active session, skipping probe", cand)
-                    continue
-                try:
-                    await asyncio.wait_for(_describe_direct(cand, ip), timeout=2.0)
-                    async with await _connect_direct_tcp(cand, ip) as lockdown:
-                        service = await asyncio.wait_for(
-                            lockdown.start_lockdown_developer_service("com.apple.dt.simulatelocation"), timeout=2.5
-                        )
-                        await service.close()
-                    matched_udid = cand
-                    break
-                except Exception:
-                    continue
+    if await has_blocking_session(matched_udid):
+        raise ValueError(f"裝置 {matched_udid} 正在執行導航或定位模擬，請先停止定位再切換連線。")
 
-        if not matched_udid:
-            # A failed probe belongs only to the requested endpoint.  It must
-            # never tear down another phone's explicit Direct runtime; route
-            # projection already lets a healthy system Wi-Fi row remain usable.
-            raise ValueError(
-                f"已找到 {ip}，但手機拒絕目前的 Wireless Direct 授權。"
-                "請用 USB 接上這台手機並解鎖，然後直接按「重新連線」以刷新授權。"
-            )
+    return matched_udid
 
-        if await has_blocking_session(matched_udid):
-            raise ValueError(f"裝置 {matched_udid} 正在執行導航或定位模擬，請先停止定位再切換連線。")
 
-        udid = matched_udid
-
+async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
     if await has_blocking_session(udid):
         raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
 
@@ -601,8 +609,26 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
     raise ValueError("找不到已授權的手機。請確認手機已連上同一 Wi-Fi，且螢幕已解鎖。")
 
 
+async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
+    if not udid or udid.lower() == "auto":
+        if not ip:
+            raise ValueError("未指定目標裝置 UDID，請提供 IP 位址以進行配對搜尋。")
+        # Concurrent clicks for one endpoint share resolution work. Release
+        # this lock before entering the per-device command domain so lock
+        # ordering can never form an endpoint/device cycle.
+        async with device_command_locks.hold(f"endpoint:{ip}:{port}"):
+            matched_udid = await _resolve_direct_target_udid(ip, port)
+        return await connect_direct(matched_udid, ip, fallback_bonjour, port)
+    async with device_command_locks.hold(f"device:{udid}"):
+        device = await _connect_direct_impl(udid, ip, fallback_bonjour, port)
+        revision = device_revision_ledger.bump(device.udid)
+        _device_management_service.invalidate()
+        return device.model_copy(update={"revision": revision, "selected_route": "wireless_direct"})
+
+
 async def disconnect_direct(udid: str) -> None:
     await _clear_direct_runtime(udid)
+    device_revision_ledger.bump(udid)
     _device_management_service.invalidate()
 
 

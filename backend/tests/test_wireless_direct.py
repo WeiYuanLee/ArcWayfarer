@@ -131,7 +131,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await device_manager.connect_direct("auto", ip, fallback_bonjour=False)
 
-        self.assertEqual(result, connected)
+        self.assertEqual(result.udid, connected.udid)
+        self.assertEqual(result.connection_type, "wireless_direct")
+        self.assertGreater(result.revision, 0)
         refresh.assert_awaited_once_with(udid)
         self.assertEqual(probe.await_count, 2)
         self.assertTrue(all(call.kwargs["autopair"] is False for call in probe.await_args_list))

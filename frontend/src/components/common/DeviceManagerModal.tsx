@@ -67,7 +67,7 @@ type Props = {
   onUnhideDevice: (udid: string) => void
   onRestoreDevice?: (udid: string) => void | Promise<void>
   onSetDeviceName: (udid: string, name: string) => void
-  onRefreshDevices?: () => void | Promise<void>
+  onRefreshDevices?: (minimumRevision?: number) => void | Promise<void>
   /** For example, disable restore while all three usable slots are occupied. */
   isUnhideDisabled?: (udid: string) => boolean
   unhideDisabledReason?: (udid: string) => string | undefined
@@ -309,7 +309,7 @@ export function DeviceManagerModal({
         } else {
           showToast(`Wireless Direct 已連線至「${rec.name}」（席位已滿 3 台，請先在清單關閉其他裝置後再啟用）`)
         }
-        await onRefreshDevices?.()
+        await onRefreshDevices?.(connectedDevice.revision)
 
         // Transition back to list view
         setView('list')
@@ -352,9 +352,9 @@ export function DeviceManagerModal({
   const handlePair = async (device: Device) => {
     setPairingBusyId(device.udid)
     try {
-      await pairWirelessDirect(device.udid)
+      const result = await pairWirelessDirect(device.udid)
       showToast(`已完成 Wi-Fi 連線授權，拔線後即可無線控制。`)
-      await onRefreshDevices?.()
+      await onRefreshDevices?.(result.revision)
     } catch (err: any) {
       showToast(err instanceof Error ? err.message : '配對失敗，請確認手機已解鎖並信任此電腦。')
     } finally {

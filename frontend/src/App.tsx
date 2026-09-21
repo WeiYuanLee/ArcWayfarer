@@ -456,7 +456,7 @@ export default function App() {
           onUnhideDevice={unhideDevice}
           onRestoreDevice={handleRestoreBackgroundDevice}
           onSetDeviceName={setDeviceName}
-          onRefreshDevices={refreshDevices}
+          onRefreshDevices={(minimumRevision) => refreshDevices(false, minimumRevision)}
           isUnhideDisabled={isUnhideDisabled}
           unhideDisabledReason={() => undefined}
         />}

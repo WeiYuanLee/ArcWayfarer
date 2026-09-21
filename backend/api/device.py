@@ -1,11 +1,14 @@
 from ipaddress import IPv4Address
 import platform
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from pymobiledevice3.exceptions import DeviceNotFoundError
 
 from core import device_manager, device_session, pairing_store
+from core.device_revision import device_revision_ledger
+from core.keyed_async_lock import device_command_locks
 from models.schemas import DeviceInfo
 
 router = APIRouter(prefix="/api")
@@ -15,6 +18,17 @@ class DirectConnectRequest(BaseModel):
     ip: str | None = None
     port: int = Field(default=49152, ge=1, le=65535)
     fallback_bonjour: bool = True
+
+
+class DiscoverySourceResponse(BaseModel):
+    status: Literal["success", "failed", "not_requested"]
+    detail: str | None = None
+
+
+class DeviceSnapshotResponse(BaseModel):
+    snapshot_revision: int
+    sources: dict[str, DiscoverySourceResponse]
+    devices: list[DeviceInfo]
 
 
 def _require_desktop(request: Request) -> None:
@@ -29,19 +43,20 @@ def _require_desktop(request: Request) -> None:
 @router.post("/devices/{udid}/wireless-direct/pair")
 async def pair_wireless_direct(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    try:
-        await device_manager.enable_direct_pairing(udid)
-    except (ValueError, OSError, TimeoutError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": "paired"}
+    async with device_command_locks.hold(f"device:{udid}"):
+        try:
+            await device_manager.enable_direct_pairing(udid)
+        except (ValueError, OSError, TimeoutError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"status": "paired", "revision": device_revision_ledger.revision_for(udid)}
 
 
 @router.post("/devices/{udid}/wireless-direct/connect")
 async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request: Request) -> DeviceInfo:
     _require_desktop(request)
     target_udid = "" if udid.lower() in {"auto", "unknown"} else udid
-    if target_udid and await device_manager.has_blocking_session(target_udid):
-        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
+    # Lock ownership lives in the manager so auto resolution can release its
+    # endpoint lock before entering the identified device's command lock.
     try:
         return await device_manager.connect_direct(
             target_udid,
@@ -56,27 +71,31 @@ async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request
 @router.post("/devices/{udid}/wireless-direct/disconnect")
 async def disconnect_wireless_direct(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    if device_session.has_session(udid):
-        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
-    await device_manager.disconnect_direct(udid)
-    return {"status": "disconnected"}
+    async with device_command_locks.hold(f"device:{udid}"):
+        if device_session.has_session(udid):
+            raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
+        await device_manager.disconnect_direct(udid)
+        return {"status": "disconnected", "revision": device_revision_ledger.revision_for(udid)}
 
 
 @router.post("/devices/{udid}/wireless-direct/remove-pairing")
 async def remove_wireless_direct_pairing(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    if device_session.has_session(udid):
-        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
-    await device_manager.disconnect_direct(udid)
-    pairing_store.remove(udid)
-    return {"status": "removed"}
+    async with device_command_locks.hold(f"device:{udid}"):
+        if device_session.has_session(udid):
+            raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
+        await device_manager.disconnect_direct(udid)
+        pairing_store.remove(udid)
+        return {"status": "removed", "revision": device_revision_ledger.revision_for(udid)}
 
 
 @router.post("/devices/{udid}/wireless-direct/clear-address")
 async def clear_wireless_direct_address(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    pairing_store.remove_address(udid)
-    return {"status": "cleared"}
+    async with device_command_locks.hold(f"device:{udid}"):
+        pairing_store.remove_address(udid)
+        revision = device_revision_ledger.bump(udid)
+        return {"status": "cleared", "revision": revision}
 
 
 @router.get("/devices/wireless-direct/endpoints")
@@ -89,6 +108,20 @@ async def get_wireless_direct_endpoints(request: Request) -> list[dict]:
 async def get_devices(include_wifi: bool = Query(default=False)) -> list[DeviceInfo]:
     """List USB devices and, when requested, devices discovered over Wi-Fi."""
     return await device_manager.list_devices(include_wifi=include_wifi)
+
+
+@router.get("/devices/snapshot")
+async def get_devices_snapshot(include_wifi: bool = Query(default=False)) -> DeviceSnapshotResponse:
+    """Return one revisioned observation; this query never changes a transport."""
+    snapshot = await device_manager.get_device_snapshot(include_wifi=include_wifi)
+    return DeviceSnapshotResponse(
+        snapshot_revision=snapshot.snapshot_revision,
+        sources={
+            name: DiscoverySourceResponse(status=value.status, detail=value.detail)
+            for name, value in snapshot.sources.items()
+        },
+        devices=list(snapshot.devices),
+    )
 
 
 @router.get("/devices/diagnostics")

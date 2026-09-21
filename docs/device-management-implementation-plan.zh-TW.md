@@ -13,9 +13,10 @@
 - [x] **P0-A**：加入 `DeviceDiscoveryPort`、immutable `DiscoverySnapshot`、公開 `DeviceManagementService` 與可控制完成順序的 fake。
 - [x] **P0-B（第一批）**：加入 query safety、source failure、single-flight、多設備失敗隔離、Direct I/O failure 等回歸案例；revision 競爭案例隨 P1-C 完成。
 - [x] **P1-A**：`GET /api/devices` 與 `_scan_devices()` 不再 probe 或關閉 Direct runtime；RSD watcher 關閉時可投影回一般 Wi-Fi，實際 Direct I/O 失敗才清理該設備 runtime。
-- [ ] **P1-B**：已移除 auto endpoint 失敗時的跨設備清理；per-device operation lock 尚待下一個批次。
+- [x] **P1-B**：移除跨設備清理；pair／connect／disconnect／remove／clear-address 使用引用計數 keyed lock，同 UDID 序列化、不同設備可並行，auto endpoint 先以 endpoint key 防止重複探測，辨識後進入 UDID lock。
+- [x] **P1-C**：加入 `DeviceRevisionLedger`、`GET /api/devices/snapshot`、command revision、同 snapshot 投影、前端 stale revision 拒絕與單一 pending foreground refresh。
 
-目前驗證基線：後端 77 項、前端 106 項測試全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過，產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`。
+目前驗證基線：後端 81 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過。產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`，SHA-256 為 `f48b608eb6c0a52793e6fb228224997dc23300c00d568dc5211bdd2a95d1f060`。
 
 ---
 

@@ -2,14 +2,14 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEVICE_SCAN_INTERVAL_MS, useDevices } from './useDevices'
-import { getDeviceDiscoveryDiagnostic, listDevices, type Device } from '../services/api'
+import { getDeviceDiscoveryDiagnostic, getDeviceSnapshot, type Device } from '../services/api'
 
 vi.mock('../services/api', () => ({
-  listDevices: vi.fn(),
+  getDeviceSnapshot: vi.fn(),
   getDeviceDiscoveryDiagnostic: vi.fn(),
 }))
 
-const mockedListDevices = vi.mocked(listDevices)
+const mockedGetDeviceSnapshot = vi.mocked(getDeviceSnapshot)
 const mockedGetDeviceDiscoveryDiagnostic = vi.mocked(getDeviceDiscoveryDiagnostic)
 const device = {
   udid: 'device-1',
@@ -21,11 +21,12 @@ const device = {
   connection_type: 'usb' as const,
 }
 const wifiDevice = { ...device, udid: 'wifi-device', name: 'Wi-Fi iPhone', connection_type: 'wifi' as const }
+const snapshot = (devices: Device[], revision = 0) => ({ snapshot_revision: revision, sources: {}, devices })
 
 describe('useDevices', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    mockedListDevices.mockReset()
+    mockedGetDeviceSnapshot.mockReset()
     mockedGetDeviceDiscoveryDiagnostic.mockReset()
     mockedGetDeviceDiscoveryDiagnostic.mockResolvedValue(null)
   })
@@ -45,9 +46,9 @@ describe('useDevices', () => {
 
   it('rescans every 20 seconds without overlapping a pending scan', async () => {
     let resolveBackgroundScan: ((devices: typeof device[]) => void) | undefined
-    mockedListDevices
-      .mockResolvedValueOnce([device])
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveBackgroundScan = resolve }))
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device], 1))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveBackgroundScan = (devices) => resolve(snapshot(devices, 2)) }))
 
     const { result } = renderHook(() => useDevices(true))
     await flushRequests()
@@ -56,7 +57,7 @@ describe('useDevices', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS * 2)
     })
-    expect(mockedListDevices).toHaveBeenCalledTimes(2)
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(2)
 
     await act(async () => {
       resolveBackgroundScan?.([device])
@@ -65,12 +66,12 @@ describe('useDevices', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
     })
-    expect(mockedListDevices).toHaveBeenCalledTimes(3)
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(3)
   })
 
   it('keeps the last successful device list when a later scan fails', async () => {
-    mockedListDevices
-      .mockResolvedValueOnce([device])
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device], 1))
       .mockRejectedValueOnce(new Error('Device scan timed out'))
 
     const { result } = renderHook(() => useDevices(true))
@@ -86,10 +87,38 @@ describe('useDevices', () => {
     expect(result.current.isStale).toBe(true)
   })
 
+  it('queues one fresh foreground scan and ignores a stale response after a command', async () => {
+    let resolveOldScan: ((value: ReturnType<typeof snapshot>) => void) | undefined
+    const directDevice = { ...device, connection_type: 'wireless_direct' as const, revision: 2 }
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device], 1))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOldScan = resolve }))
+      .mockResolvedValueOnce(snapshot([directDevice], 2))
+
+    const { result } = renderHook(() => useDevices(true))
+    await flushRequests()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
+    })
+    let foreground!: Promise<void>
+    act(() => {
+      foreground = result.current.refresh(false, 2)
+    })
+
+    await act(async () => {
+      resolveOldScan?.(snapshot([device], 1))
+      await foreground
+    })
+
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(3)
+    expect(result.current.devices).toEqual([directDevice])
+  })
+
   it('removes a device on the first successful scan that no longer finds it', async () => {
-    mockedListDevices
-      .mockResolvedValueOnce([device])
-      .mockResolvedValueOnce([])
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device], 1))
+      .mockResolvedValueOnce(snapshot([], 2))
 
     const { result } = renderHook(() => useDevices(true))
     await flushRequests()
@@ -102,7 +131,7 @@ describe('useDevices', () => {
   })
 
   it('only polls when Wi-Fi discovery is enabled', async () => {
-    mockedListDevices.mockResolvedValue([device])
+    mockedGetDeviceSnapshot.mockResolvedValue(snapshot([device], 1))
 
     renderHook(() => useDevices())
     await flushRequests()
@@ -110,18 +139,18 @@ describe('useDevices', () => {
       await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
     })
 
-    expect(mockedListDevices).toHaveBeenCalledTimes(1)
-    expect(mockedListDevices).toHaveBeenCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(1)
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledWith({ includeWifi: false })
   })
 
   it('rescans a USB-only device list once when the window becomes visible again', async () => {
     let visibility: DocumentVisibilityState = 'visible'
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
-    mockedListDevices.mockResolvedValue([device])
+    mockedGetDeviceSnapshot.mockResolvedValue(snapshot([device], 1))
 
     renderHook(() => useDevices(false))
     await flushRequests()
-    expect(mockedListDevices).toHaveBeenCalledTimes(1)
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(1)
 
     visibility = 'hidden'
     document.dispatchEvent(new Event('visibilitychange'))
@@ -129,8 +158,8 @@ describe('useDevices', () => {
     document.dispatchEvent(new Event('visibilitychange'))
     await flushRequests()
 
-    expect(mockedListDevices).toHaveBeenCalledTimes(2)
-    expect(mockedListDevices).toHaveBeenLastCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(2)
+    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false })
   })
 
   it('loads a non-blocking support diagnostic only when discovery finds no devices', async () => {
@@ -143,7 +172,7 @@ describe('useDevices', () => {
       platform: 'Darwin 25.0.0 (arm64)',
       pymobiledevice3_version: '11.3.1',
     }
-    mockedListDevices.mockResolvedValue([])
+    mockedGetDeviceSnapshot.mockResolvedValue(snapshot([], 1))
     mockedGetDeviceDiscoveryDiagnostic.mockResolvedValue(diagnostic)
 
     const { result } = renderHook(() => useDevices())
@@ -156,10 +185,10 @@ describe('useDevices', () => {
 
   it('immediately hides Wi-Fi devices and ignores an older Wi-Fi scan when disabled', async () => {
     let resolveWifiScan: ((devices: Device[]) => void) | undefined
-    mockedListDevices
-      .mockResolvedValueOnce([device, wifiDevice])
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveWifiScan = resolve }))
-      .mockResolvedValueOnce([device, wifiDevice])
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device, wifiDevice], 1))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveWifiScan = (devices) => resolve(snapshot(devices, 2)) }))
+      .mockResolvedValueOnce(snapshot([device, wifiDevice], 3))
 
     const { result, rerender } = renderHook(({ includeWifi }) => useDevices(includeWifi), {
       initialProps: { includeWifi: true },
@@ -180,6 +209,6 @@ describe('useDevices', () => {
     })
 
     expect(result.current.devices).toEqual([device])
-    expect(mockedListDevices).toHaveBeenLastCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false })
   })
 })

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getDeviceDiscoveryDiagnostic, listDevices, type Device, type DeviceDiscoveryDiagnostic } from '../services/api'
+import { getDeviceDiscoveryDiagnostic, getDeviceSnapshot, type Device, type DeviceDiscoveryDiagnostic } from '../services/api'
 
 export const DEVICE_SCAN_INTERVAL_MS = 20_000
 export const DEVICE_RESUME_SCAN_DEBOUNCE_MS = 5_000
@@ -12,17 +12,29 @@ export function useDevices(includeWifi = false) {
   const [discoveryDiagnostic, setDiscoveryDiagnostic] = useState<DeviceDiscoveryDiagnostic | null>(null)
   const mountedRef = useRef(false)
   const scanInFlightRef = useRef<Promise<void> | null>(null)
+  const pendingForegroundRefreshRef = useRef<Promise<void> | null>(null)
+  const highestSnapshotRevisionRef = useRef(0)
+  const highestDeviceRevisionsRef = useRef<Map<string, number>>(new Map())
   const scanGenerationRef = useRef(0)
   const hiddenAtRef = useRef<number | null>(null)
   const lastResumeScanAtRef = useRef(Number.NEGATIVE_INFINITY)
 
-  const refresh = useCallback((background = false): Promise<void> => {
+  const refresh = useCallback((background = false, minimumRevision = 0): Promise<void> => {
+    highestSnapshotRevisionRef.current = Math.max(highestSnapshotRevisionRef.current, minimumRevision)
     const inFlight = scanInFlightRef.current
     if (inFlight) {
-      // A manual rescan can still show progress, but it shares the existing
-      // request so periodic scans never compete for device connections.
-      if (!background) setLoading(true)
-      return inFlight
+      if (background) return inFlight
+      setLoading(true)
+      // A command-triggered refresh must observe state newer than the request
+      // already in flight. Coalesce all foreground waiters into one follow-up.
+      if (pendingForegroundRefreshRef.current) return pendingForegroundRefreshRef.current
+      let pending!: Promise<void>
+      pending = inFlight.then(() => {
+        if (pendingForegroundRefreshRef.current === pending) pendingForegroundRefreshRef.current = null
+        return refresh(false, minimumRevision)
+      })
+      pendingForegroundRefreshRef.current = pending
+      return pending
     }
 
     if (!background) setLoading(true)
@@ -30,32 +42,43 @@ export function useDevices(includeWifi = false) {
 
     let scan!: Promise<void>
     scan = (async () => {
+      let staleRevision = false
       try {
-        const result = await listDevices({ includeWifi })
+        const snapshot = await getDeviceSnapshot({ includeWifi })
         if (!mountedRef.current || scanGeneration !== scanGenerationRef.current) return
-
-        // A successful scan is authoritative: only currently discovered
-        // routes may appear, and disabling Wi-Fi hides network routes.
-        const visible = includeWifi ? result : result.filter((device) => device.connection_type !== 'wifi')
-        const unique = visible.filter(
-          (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
-        )
-        setDevices(unique)
-        setScanError(null)
-        setLastSuccessfulScanAt(Date.now())
-        // This endpoint reads an in-memory snapshot only; it never starts a
-        // second usbmux operation, so an unavailable phone cannot make the UI
-        // wait for another expensive device scan.
-        if (unique.length === 0) {
-          try {
-            const diagnostic = await getDeviceDiscoveryDiagnostic()
-            if (mountedRef.current && scanGeneration === scanGenerationRef.current) setDiscoveryDiagnostic(diagnostic)
-          } catch {
-            // Diagnostics are supplementary. A failed read must not turn a
-            // successful empty scan into a user-visible scan failure.
-          }
+        if (snapshot.snapshot_revision < highestSnapshotRevisionRef.current) {
+          staleRevision = true
         } else {
-          setDiscoveryDiagnostic(null)
+          highestSnapshotRevisionRef.current = snapshot.snapshot_revision
+          const result = snapshot.devices
+          for (const device of result) {
+            const key = device.udid.toLowerCase()
+            highestDeviceRevisionsRef.current.set(
+              key,
+              Math.max(highestDeviceRevisionsRef.current.get(key) ?? 0, device.revision ?? 0),
+            )
+          }
+
+          // A successful scan is authoritative: only currently discovered
+          // routes may appear, and disabling Wi-Fi hides network routes.
+          const visible = includeWifi ? result : result.filter((device) => device.connection_type !== 'wifi')
+          const unique = visible.filter(
+            (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
+          )
+          setDevices(unique)
+          setScanError(null)
+          setLastSuccessfulScanAt(Date.now())
+          if (unique.length === 0) {
+            try {
+              const diagnostic = await getDeviceDiscoveryDiagnostic()
+              if (mountedRef.current && scanGeneration === scanGenerationRef.current) setDiscoveryDiagnostic(diagnostic)
+            } catch {
+              // Diagnostics are supplementary. A failed read must not turn a
+              // successful empty scan into a user-visible scan failure.
+            }
+          } else {
+            setDiscoveryDiagnostic(null)
+          }
         }
       } catch (error) {
         if (!mountedRef.current || scanGeneration !== scanGenerationRef.current) return
@@ -66,6 +89,14 @@ export function useDevices(includeWifi = false) {
       } finally {
         if (scanInFlightRef.current === scan) scanInFlightRef.current = null
         if (mountedRef.current && scanGeneration === scanGenerationRef.current) setLoading(false)
+      }
+      if (
+        staleRevision &&
+        pendingForegroundRefreshRef.current === null &&
+        mountedRef.current &&
+        scanGeneration === scanGenerationRef.current
+      ) {
+        await refresh(false, highestSnapshotRevisionRef.current)
       }
     })()
 
