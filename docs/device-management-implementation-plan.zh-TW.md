@@ -15,8 +15,9 @@
 - [x] **P1-A**：`GET /api/devices` 與 `_scan_devices()` 不再 probe 或關閉 Direct runtime；RSD watcher 關閉時可投影回一般 Wi-Fi，實際 Direct I/O 失敗才清理該設備 runtime。
 - [x] **P1-B**：移除跨設備清理；pair／connect／disconnect／remove／clear-address 使用引用計數 keyed lock，同 UDID 序列化、不同設備可並行，auto endpoint 先以 endpoint key 防止重複探測，辨識後進入 UDID lock。
 - [x] **P1-C**：加入 `DeviceRevisionLedger`、`GET /api/devices/snapshot`、command revision、同 snapshot 投影、前端 stale revision 拒絕與單一 pending foreground refresh。
+- [x] **P2-A**：加入 immutable `DeviceAggregate`、純函式 `route_policy` 與 shadow `DeviceRegistry`；配對、Direct connect／disconnect command 同步旁路狀態，差異與 policy effect 只記錄不執行，HTTP GET 不發布 Registry event。
 
-目前驗證基線：後端 81 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過。產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`，SHA-256 為 `f48b608eb6c0a52793e6fb228224997dc23300c00d568dc5211bdd2a95d1f060`。
+目前驗證基線：後端 92 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過。產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`，SHA-256 為 `abdfaedc9ca016c3235e8f9cf9cd1d8ebbcd1ff9ba48c84d02d5e27c0575fdbd`。
 
 ---
 

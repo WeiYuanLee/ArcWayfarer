@@ -3,6 +3,7 @@ import unittest
 
 from core.device_ports import DiscoverySnapshot, DiscoverySourceResult
 from core.device_service import DeviceManagementService
+from core.device_registry import shadow_device_registry
 from models.schemas import DeviceInfo
 from tests.fakes.device_ports import ControlledDiscoveryPort
 
@@ -19,6 +20,23 @@ def _device(udid: str, connection_type: str) -> DeviceInfo:
 
 
 class DeviceManagementContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_public_reads_do_not_publish_shadow_registry_events(self) -> None:
+        port = ControlledDiscoveryPort([
+            DiscoverySnapshot(
+                devices=(_device("PHONE-A", "usb"),),
+                sources={"usb": DiscoverySourceResult("success")},
+            )
+        ])
+        service = DeviceManagementService(port)
+        port.release.set()
+
+        before = shadow_device_registry.snapshot()
+        await service.projected_snapshot()
+        after = shadow_device_registry.snapshot()
+
+        self.assertEqual(after.applied_event_count, before.applied_event_count)
+        self.assertEqual(after.pending_effects, before.pending_effects)
+
     async def test_concurrent_public_reads_share_one_discovery(self) -> None:
         port = ControlledDiscoveryPort([
             DiscoverySnapshot(

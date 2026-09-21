@@ -25,6 +25,8 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
+from core.device_aggregate import AuthorizationState, DirectRuntimeState, UserIntent
+from core.device_registry import shadow_device_registry
 from core.device_revision import device_revision_ledger
 from core.device_service import DeviceManagementService
 from core.keyed_async_lock import device_command_locks
@@ -356,7 +358,13 @@ async def enable_direct_pairing(udid: str) -> None:
             await ensure_mounted(lockdown)
         pairing_store.save(udid, lockdown.pair_record)
         pairing_store.save_version(udid, lockdown.product_version)
-        device_revision_ledger.bump(udid)
+        revision = device_revision_ledger.bump(udid)
+        shadow_device_registry.record_authorization(
+            udid,
+            AuthorizationState.PAIRED,
+            revision=revision,
+            legacy_route=None,
+        )
         _device_management_service.invalidate()
 
 
@@ -622,13 +630,33 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
     async with device_command_locks.hold(f"device:{udid}"):
         device = await _connect_direct_impl(udid, ip, fallback_bonjour, port)
         revision = device_revision_ledger.bump(device.udid)
+        shadow_device_registry.record_authorization(
+            device.udid,
+            AuthorizationState.PAIRED,
+            revision=revision,
+            legacy_route=None,
+        )
+        shadow_device_registry.record_direct_runtime(
+            device.udid,
+            DirectRuntimeState.READY,
+            intent=UserIntent.DIRECT,
+            revision=revision,
+            legacy_route="wireless_direct",
+        )
         _device_management_service.invalidate()
         return device.model_copy(update={"revision": revision, "selected_route": "wireless_direct"})
 
 
 async def disconnect_direct(udid: str) -> None:
     await _clear_direct_runtime(udid)
-    device_revision_ledger.bump(udid)
+    revision = device_revision_ledger.bump(udid)
+    shadow_device_registry.record_direct_runtime(
+        udid,
+        DirectRuntimeState.DISCONNECTED,
+        intent=UserIntent.AUTO,
+        revision=revision,
+        legacy_route=None,
+    )
     _device_management_service.invalidate()
 
 
