@@ -144,7 +144,8 @@ select_route(device):
 | `discovery/usb_scanner` `system_wifi_scanner` `direct_endpoint_scanner` | 只回報觀測，產出 immutable snapshot | **禁止**呼叫任何關閉 / 斷線 / clear |
 | `device_registry` | 保存每台 DeviceAggregate 與 revision，接收 discovery snapshot、command、session event | 唯一狀態真相來源 |
 | `route_policy` | 純函式，輸入 aggregate 輸出 selected_route | 無 I/O、無副作用 |
-| `transport_controller` | **唯一**能建立 / 關閉 tunnel 的地方 | 只由明確 command、Registry policy effect、session 失敗事件或 application shutdown 觸發；HTTP GET 不得觸發 |
+| `transport_controller` | **唯一**能授權建立 / 關閉 tunnel 的 command boundary | 只由明確 command、Registry policy effect、session 失敗事件或 application shutdown 觸發；HTTP GET 不得觸發 |
+| `direct_transport_adapter` | 執行底層 tunnel open／close 並保存 runtime handle | 不含 route policy；只能由 controller 管理的 command path 呼叫 |
 | `pairing_manager` | 憑證建立 / 驗證 / 刷新 / 刪除 | 配對紀錄 ≠ 已連線 |
 | `device_session` | 持有明確 `bound_route` | 不再反向 import manager 查全域 |
 

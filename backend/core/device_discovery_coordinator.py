@@ -17,10 +17,12 @@ class DeviceDiscoveryCoordinator:
         registry: DeviceRegistry,
         *,
         interval_seconds: float = 5.0,
+        on_published: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._discover = discover
         self._registry = registry
         self._interval_seconds = interval_seconds
+        self._on_published = on_published
         self._task: asyncio.Task[None] | None = None
         self._ready = asyncio.Event()
         self._refresh_lock = asyncio.Lock()
@@ -52,6 +54,8 @@ class DeviceDiscoveryCoordinator:
         async with self._refresh_lock:
             snapshot = await self._discover()
             self._registry.publish_discovery(snapshot)
+            if self._on_published is not None:
+                await self._on_published()
             self._ready.set()
             return snapshot
 

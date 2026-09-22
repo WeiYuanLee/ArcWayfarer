@@ -1,4 +1,4 @@
-"""Immutable state model used by the shadow device registry."""
+"""Immutable state model owned by the device registry."""
 
 from dataclasses import dataclass, field
 from enum import Enum

@@ -17,8 +17,9 @@
 - [x] **P1-C**：加入 `DeviceRevisionLedger`、`GET /api/devices/snapshot`、command revision、同 snapshot 投影、前端 stale revision 拒絕與單一 pending foreground refresh。
 - [x] **P2-A**：加入 immutable `DeviceAggregate`、純函式 `route_policy` 與 shadow `DeviceRegistry`；配對、Direct connect／disconnect command 同步旁路狀態，差異與 policy effect 只記錄不執行，HTTP GET 不發布 Registry event。
 - [x] **P2-B**：背景 `DeviceDiscoveryCoordinator` 發布 observation；snapshot、`get_device()` 與舊清單預設改讀 Registry，主動刷新使用獨立 POST command；加入 session pinning event、source failure 保留、D9 未知 tunneld route 過濾並移除 `_system_routes`。`DEVICE_REGISTRY_READS=legacy|registry` 暫留至 P3。
+- [x] **P3-A**：加入 `TransportController` 與 `DirectTransportAdapter`；connect／disconnect、USB idle takeover、Direct I/O failure、配對移除及 shutdown cleanup 全部通過 Controller，以 `(udid, revision, effect_type)` 去重並拒絕 stale effect。Discovery／GET／Policy 不持有破壞性能力。
 
-目前驗證基線：後端 100 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P2-B 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（SHA-256：`c7724b24fd93121bf37557f9afc982811adf3ec21f00cf46a15b419516f92f71`）。
+目前驗證基線：後端 108 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P3-A 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（SHA-256：`7bab42f17a82188d6e48494b0cbc00edcbc5f863335c9c554f293513d714ec87`）。
 
 ---
 
@@ -253,7 +254,7 @@ GET /api/devices/snapshot
 
 **新增：** `backend/core/transport_controller.py`
 
-唯一允許的破壞性操作：
+Controller 是唯一允許發起下列破壞性操作的 command boundary；adapter 只執行底層 tunnel open／close，不包含 route policy：
 
 - connect Direct
 - disconnect Direct

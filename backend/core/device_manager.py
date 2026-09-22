@@ -26,12 +26,14 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
-from core.device_aggregate import AuthorizationState, DirectRuntimeState, UserIntent
+from core.device_aggregate import AuthorizationState, DirectRuntimeState
 from core.device_discovery_coordinator import DeviceDiscoveryCoordinator
 from core.device_registry import device_registry
 from core.device_revision import device_revision_ledger
 from core.device_service import DeviceManagementService
+from core.direct_transport_adapter import DirectTransportAdapter
 from core.keyed_async_lock import device_command_locks
+from core.transport_controller import TransportController
 from core.wireless_rsd import WiFiRsdTunnel
 from models.schemas import DeviceConnectionType, DeviceInfo
 
@@ -41,10 +43,8 @@ IOS_17 = Version("17.0")
 DEVICE_LIST_TIMEOUT_SECONDS = 5.0
 DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
 
-_direct_addresses: dict[str, str] = {}
+_direct_transport_adapter = DirectTransportAdapter(lambda **kwargs: WiFiRsdTunnel(**kwargs))
 _direct_usb_present: set[str] = set()
-_direct_rsd_tunnels: dict[str, WiFiRsdTunnel] = {}
-_direct_rsd_devices: dict[str, DeviceInfo] = {}
 
 
 @dataclass(frozen=True)
@@ -90,10 +90,21 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
     )
 
 
-# The legacy scanner remains the discovery adapter during P2. Registry owns
-# production reads; P3 will move transport lifecycle behind its controller.
+# The legacy scanner remains the discovery adapter until P4. Registry owns
+# production reads, and the controller owns every destructive Direct action.
 _device_management_service = DeviceManagementService(CallbackDiscoveryPort(_legacy_discovery_snapshot))
-_device_discovery_coordinator = DeviceDiscoveryCoordinator(_legacy_discovery_snapshot, device_registry)
+transport_controller = TransportController(
+    _direct_transport_adapter,
+    device_registry,
+    device_revision_ledger,
+    device_command_locks,
+    _device_management_service.invalidate,
+)
+_device_discovery_coordinator = DeviceDiscoveryCoordinator(
+    _legacy_discovery_snapshot,
+    device_registry,
+    on_published=transport_controller.apply_policy_effects,
+)
 
 
 def _registry_reads_enabled() -> bool:
@@ -110,6 +121,10 @@ async def start_device_discovery() -> None:
 
 async def stop_device_discovery() -> None:
     await _device_discovery_coordinator.stop()
+
+
+async def shutdown_device_transports() -> None:
+    await transport_controller.shutdown()
 
 
 async def refresh_device_discovery() -> None:
@@ -262,20 +277,23 @@ async def _scan_devices() -> list[DeviceInfo]:
     # Build the selected-route projection without changing transport state.
     # USB wins while idle, and a healthy explicitly selected Direct route wins
     # over ordinary Wi-Fi.  Discovery must never close either runtime.
-    for key in dict.fromkeys([*_direct_addresses, *_direct_rsd_devices]):
-        ip = _direct_addresses.get(key)
+    for key in dict.fromkeys([
+        *_direct_transport_adapter.addresses,
+        *_direct_transport_adapter.rsd_devices,
+    ]):
+        ip = _direct_transport_adapter.addresses.get(key)
         previous = next((item for item in devices if item.udid.lower() == key), None)
         if previous is not None and previous.status == "ready" and previous.connection_type == "usb":
             continue
 
-        if key in _direct_rsd_devices:
-            tunnel = _direct_rsd_tunnels.get(key)
+        if key in _direct_transport_adapter.rsd_devices:
+            tunnel = _direct_transport_adapter.rsd_tunnels.get(key)
             # The tunnel watcher is authoritative for RSD lifecycle.  A closed
             # tunnel stops being selected, but cleanup is left to a command or
             # session failure handler instead of this read path.
             if tunnel is None or tunnel.rsd is None:
                 continue
-            direct = _direct_rsd_devices[key]
+            direct = _direct_transport_adapter.rsd_devices[key]
         else:
             # A Direct TCP address is only stored after an explicit successful
             # connection.  Re-probing it from a GET made a transient timeout
@@ -406,14 +424,16 @@ async def has_blocking_session(udid: str) -> bool:
         return False
 
     key = udid.lower()
-    tunnel = _direct_rsd_tunnels.get(key)
+    tunnel = _direct_transport_adapter.rsd_tunnels.get(key)
     if tunnel is None or tunnel.rsd is not None:
         return True
 
     from core import device_session
 
     await device_session.close_session(udid)
-    await disconnect_direct(udid)
+    current = device_registry.get(udid)
+    if current is None or current.direct_runtime != DirectRuntimeState.DISCONNECTED:
+        await transport_controller.cleanup_failed_direct(udid)
     logger.info("Released stale Wireless Direct session for %s before reconnect", udid)
     return False
 
@@ -421,15 +441,14 @@ async def has_blocking_session(udid: str) -> bool:
 async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
     if not pairing_store.exists(udid):
         raise ValueError("請先用 USB 在裝置管理設定無線授權。")
-    if await has_blocking_session(udid):
-        raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
-
-    # Replacing this target's runtime is part of one connect command, so do
-    # not publish an intermediate disconnect revision.
-    await _clear_direct_runtime(udid)
-    tunnel = WiFiRsdTunnel(serial=udid, ip=ip, autopair=False, fallback_bonjour=fallback_bonjour, port=port)
+    tunnel = None
     try:
-        rsd = await asyncio.wait_for(tunnel.aopen(), timeout=25)
+        tunnel, rsd = await _direct_transport_adapter.open_rsd(
+            udid,
+            ip=ip,
+            fallback_bonjour=fallback_bonjour,
+            port=port,
+        )
         if rsd.udid.lower() != udid.lower():
             raise ValueError("無線 RSD 通道連到不同的手機。")
         async with DvtProvider(rsd) as dvt:
@@ -452,21 +471,23 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
         if actual_ip and not actual_ip.startswith("127."):
             try:
                 pairing_store.save_address(udid, actual_ip)
-                _direct_addresses[udid.lower()] = actual_ip
+                _direct_transport_adapter.install_address(udid, actual_ip)
             except Exception as e:
                 logger.warning("Failed to save direct address %s for %s: %s", actual_ip, udid, e)
-        _direct_rsd_tunnels[udid.lower()] = tunnel
-        _direct_rsd_devices[udid.lower()] = device
+        _direct_transport_adapter.install_rsd(udid, tunnel, device)
         _device_management_service.invalidate()
         return device
     except ValueError:
-        await tunnel.aclose()
+        if tunnel is not None:
+            await _direct_transport_adapter.close_candidate(tunnel)
         raise
     except Exception as exc:
-        await tunnel.aclose()
+        if tunnel is not None:
+            await _direct_transport_adapter.close_candidate(tunnel)
         raise ValueError(f"無線 RSD 連線失敗：{type(exc).__name__}。請確認同一 Wi-Fi、手機已解鎖，然後重試。") from exc
     except BaseException:
-        await tunnel.aclose()
+        if tunnel is not None:
+            await _direct_transport_adapter.close_candidate(tunnel)
         raise
 
 
@@ -558,9 +579,6 @@ async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
 
 
 async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    if await has_blocking_session(udid):
-        raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
-
     saved_version = pairing_store.load_version(udid)
     is_ios17 = (saved_version and Version(saved_version) >= IOS_17) or (
         saved_version is None and udid.lower() in {identifier.lower() for identifier in iter_remote_paired_identifiers()}
@@ -625,7 +643,7 @@ async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjou
         except Exception as exc:
             raise ValueError("TCP 已連線，但手機的定位服務尚未就緒。請重新接上 USB 並更新無線授權。") from exc
         pairing_store.save_address(udid, address)
-        _direct_addresses[udid.lower()] = address
+        _direct_transport_adapter.install_address(udid, address)
         _device_management_service.invalidate()
         return device
 
@@ -644,65 +662,30 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
         async with device_command_locks.hold(f"endpoint:{ip}:{port}"):
             matched_udid = await _resolve_direct_target_udid(ip, port)
         return await connect_direct(matched_udid, ip, fallback_bonjour, port)
-    async with device_command_locks.hold(f"device:{udid}"):
-        device = await _connect_direct_impl(udid, ip, fallback_bonjour, port)
-        revision = device_revision_ledger.bump(device.udid)
-        device_registry.record_authorization(
-            device.udid,
-            AuthorizationState.PAIRED,
-            revision=revision,
-            legacy_route=None,
-        )
-        device_registry.record_direct_runtime(
-            device.udid,
-            DirectRuntimeState.READY,
-            intent=UserIntent.DIRECT,
-            revision=revision,
-            legacy_route="wireless_direct",
-            device=device,
-        )
-        _device_management_service.invalidate()
-        return device.model_copy(update={"revision": revision, "selected_route": "wireless_direct"})
+    if await has_blocking_session(udid):
+        raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
+    return await transport_controller.connect_direct(
+        udid,
+        lambda: _connect_direct_impl(udid, ip, fallback_bonjour, port),
+    )
 
 
 async def disconnect_direct(udid: str) -> None:
-    await _clear_direct_runtime(udid)
-    revision = device_revision_ledger.bump(udid)
-    device_registry.record_direct_runtime(
+    await transport_controller.disconnect_direct(udid)
+
+
+async def remove_direct_pairing(udid: str) -> int:
+    return await transport_controller.disconnect_and_remove_pairing(
         udid,
-        DirectRuntimeState.DISCONNECTED,
-        intent=UserIntent.AUTO,
-        revision=revision,
-        legacy_route=None,
+        lambda: pairing_store.remove(udid),
     )
-    _device_management_service.invalidate()
-
-
-def record_direct_pairing_removed(udid: str) -> int:
-    revision = device_revision_ledger.bump(udid)
-    device_registry.record_authorization(
-        udid,
-        AuthorizationState.UNPAIRED,
-        revision=revision,
-    )
-    return revision
-
-
-async def _clear_direct_runtime(udid: str) -> None:
-    """Release an active Direct route without deleting its saved authorization."""
-    key = udid.lower()
-    _direct_addresses.pop(key, None)
-    _direct_rsd_devices.pop(key, None)
-    tunnel = _direct_rsd_tunnels.pop(key, None)
-    if tunnel is not None:
-        await tunnel.aclose()
 
 
 _discovered_direct_endpoints: dict[str, dict] = {}
 
 
 def direct_address(udid: str) -> str | None:
-    return _direct_addresses.get(udid.lower())
+    return _direct_transport_adapter.addresses.get(udid.lower())
 
 
 def _normalize_mac(mac: str) -> str:
@@ -1104,8 +1087,8 @@ async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
     # Keep using it while healthy, even if ordinary Wi-Fi discovery also sees
     # the phone on the same network.  If its watcher has confirmed closure,
     # fall through to a system route without making this read clean it up.
-    if key in _direct_rsd_tunnels:
-        rsd = _direct_rsd_tunnels[key].rsd
+    if key in _direct_transport_adapter.rsd_tunnels:
+        rsd = _direct_transport_adapter.rsd_tunnels[key].rsd
         if rsd is not None:
             return rsd
     rsd = await get_tunneld_device_by_udid(udid)

@@ -69,7 +69,7 @@ class DeviceSession:
     async def _release_failed_direct_runtime(self, exc: Exception) -> None:
         """Clear only this session's Direct runtime after confirmed I/O loss."""
         if self.bound_route == "wireless_direct" and isinstance(exc, _DEAD_CONNECTION_ERRORS):
-            await device_manager.disconnect_direct(self.udid)
+            await device_manager.transport_controller.cleanup_failed_direct(self.udid)
 
     async def close(self) -> None:
         if self._ls_cm is not None:
@@ -196,6 +196,7 @@ async def close_session(udid: str) -> None:
     if session is not None:
         await session.close()
         _publish_session(udid, SessionState.IDLE, None, compare_legacy=False)
+        await device_manager.transport_controller.apply_policy_effects()
 
 
 def has_session(udid: str) -> bool:

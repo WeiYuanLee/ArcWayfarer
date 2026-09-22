@@ -574,7 +574,7 @@ Tier 1 (0 ~ 699)     : 地圖內部渲染 (Tiles: 0, RouteLine: 410, Arrow: 420,
 | `localStorage` | `arcwayfarer.lang` | 語言 | 永久 |
 | `~/.arcwayfarer/*.json` | - | 收藏/歷史/路線 | 永久（後端管理） |
 
-### 8.3 設備管理狀態（目標）
+### 8.3 設備管理狀態（遷移中，P3-A 已完成）
 
 | 維度 | 值 | 寫入來源 |
 |---|---|---|
@@ -605,9 +605,9 @@ Tier 1 (0 ~ 699)     : 地圖內部渲染 (Tiles: 0, RouteLine: 410, Arrow: 420,
 | `POST /api/.../pause` | `{ udid }` | `{ status }` | 所有模式通用 |
 | `POST /api/.../resume` | `{ udid }` | `{ status }` | 所有模式通用 |
 
-### 9.2 設備管理 API 目標合約
+### 9.2 設備管理 API 合約
 
-P1／P2 遷移完成後，設備快照必須同時提供 snapshot revision、各 discovery source 的 `success | failed` 狀態，以及每台設備自己的 revision 與唯一 `selected_route`。Direct connect／disconnect command 必須回傳操作後的設備 revision；前端不得以較舊快照覆蓋它。
+設備快照同時提供 snapshot revision、各 discovery source 的 `success | failed` 狀態，以及每台設備自己的 revision 與唯一 `selected_route`。Direct connect／disconnect command 必須回傳操作後的設備 revision；前端不得以較舊快照覆蓋它。
 
 遷移期間可暫時保留現有陣列回應，但新舊回應必須由同一 registry snapshot 產生，禁止維護兩套路由真相。
 
@@ -662,6 +662,6 @@ P1／P2 遷移完成後，設備快照必須同時提供 snapshot revision、各
 | 循環路線邏輯 | — | `core/route_loop.py` |
 | 模擬引擎 | — | `core/simulation_engine.py` |
 | 裝置連線 | `hooks/useDevices.ts`, `components/common/DeviceManagerModal.tsx` | `core/device_session.py`, `core/device_manager.py`（遷移中） |
-| 設備管理目標設計 | `services/api.ts` | `core/device_registry.py`, `core/route_policy.py`, `core/transport_controller.py`（目標） |
+| 設備管理狀態與路由 | `services/api.ts` | `core/device_registry.py`, `core/route_policy.py`, `core/transport_controller.py`, `core/direct_transport_adapter.py` |
 | API 型別定義 | `services/api.ts` | `models/schemas.py` |
 | 設定常數 | — | `config.py` |

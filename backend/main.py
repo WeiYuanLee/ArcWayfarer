@@ -25,6 +25,7 @@ async def lifespan(_app: FastAPI):
         yield
     finally:
         await device_manager.stop_device_discovery()
+        await device_manager.shutdown_device_transports()
 
 
 app = FastAPI(title="ArcWayfarer Backend", lifespan=lifespan)

@@ -15,7 +15,11 @@ class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
             bound_route="wireless_direct",
         )
 
-        with patch.object(device_session.device_manager, "disconnect_direct", AsyncMock()) as disconnect:
+        with patch.object(
+            device_session.device_manager.transport_controller,
+            "cleanup_failed_direct",
+            AsyncMock(),
+        ) as disconnect:
             with self.assertRaises(ConnectionError):
                 await session.set(25.0, 121.0)
 
@@ -30,7 +34,11 @@ class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
             bound_route="wifi",
         )
 
-        with patch.object(device_session.device_manager, "disconnect_direct", AsyncMock()) as disconnect:
+        with patch.object(
+            device_session.device_manager.transport_controller,
+            "cleanup_failed_direct",
+            AsyncMock(),
+        ) as disconnect:
             with self.assertRaises(ConnectionError):
                 await session.set(25.0, 121.0)
 

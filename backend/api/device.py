@@ -83,23 +83,19 @@ async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request
 @router.post("/devices/{udid}/wireless-direct/disconnect")
 async def disconnect_wireless_direct(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    async with device_command_locks.hold(f"device:{udid}"):
-        if device_session.has_session(udid):
-            raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
-        await device_manager.disconnect_direct(udid)
-        return {"status": "disconnected", "revision": device_revision_ledger.revision_for(udid)}
+    if device_session.has_session(udid):
+        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再切換連線方式。")
+    await device_manager.disconnect_direct(udid)
+    return {"status": "disconnected", "revision": device_revision_ledger.revision_for(udid)}
 
 
 @router.post("/devices/{udid}/wireless-direct/remove-pairing")
 async def remove_wireless_direct_pairing(udid: str, request: Request) -> dict:
     _require_desktop(request)
-    async with device_command_locks.hold(f"device:{udid}"):
-        if device_session.has_session(udid):
-            raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
-        await device_manager.disconnect_direct(udid)
-        pairing_store.remove(udid)
-        revision = device_manager.record_direct_pairing_removed(udid)
-        return {"status": "removed", "revision": revision}
+    if device_session.has_session(udid):
+        raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
+    revision = await device_manager.remove_direct_pairing(udid)
+    return {"status": "removed", "revision": revision}
 
 
 @router.post("/devices/{udid}/wireless-direct/clear-address")

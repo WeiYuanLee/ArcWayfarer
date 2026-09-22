@@ -90,12 +90,12 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         direct = _device(udid, "wireless_direct")
         tunnel = type("Tunnel", (), {"rsd": object()})()
         with (
-            patch.object(device_manager, "_direct_rsd_devices", {udid.lower(): direct}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): tunnel}),
-            patch.object(device_manager, "_direct_addresses", {udid.lower(): "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_devices", {udid.lower(): direct}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): tunnel}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {udid.lower(): "192.168.1.20"}),
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
-            patch.object(device_manager, "_clear_direct_runtime", AsyncMock()) as clear,
+            patch.object(device_manager._direct_transport_adapter, "clear_runtime", AsyncMock()) as clear,
         ):
             device_manager._device_management_service.invalidate()
             found = await device_manager.get_device(udid)

@@ -55,17 +55,17 @@ class PairingStoreTests(unittest.TestCase):
 
 class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        device_manager._direct_addresses.clear()
+        device_manager._direct_transport_adapter.addresses.clear()
         device_manager._direct_usb_present.clear()
-        device_manager._direct_rsd_devices.clear()
-        device_manager._direct_rsd_tunnels.clear()
+        device_manager._direct_transport_adapter.rsd_devices.clear()
+        device_manager._direct_transport_adapter.rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
 
     async def asyncTearDown(self) -> None:
-        device_manager._direct_addresses.clear()
+        device_manager._direct_transport_adapter.addresses.clear()
         device_manager._direct_usb_present.clear()
-        device_manager._direct_rsd_devices.clear()
-        device_manager._direct_rsd_tunnels.clear()
+        device_manager._direct_transport_adapter.rsd_devices.clear()
+        device_manager._direct_transport_adapter.rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
 
     async def test_usb_refreshes_existing_remote_pairing_before_saving(self) -> None:
@@ -147,7 +147,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=ConnectionError("stale key")),
             ),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
-            patch.object(device_manager, "_direct_rsd_tunnels", {old_udid.lower(): SimpleNamespace(rsd=object())}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {old_udid.lower(): SimpleNamespace(rsd=object())}),
             patch.object(device_manager, "_has_active_session", return_value=False),
             patch.object(device_manager, "disconnect_direct", AsyncMock()) as disconnect,
             patch.object(pairing_store, "list_udids", return_value=[]),
@@ -239,7 +239,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         with (
-            patch.object(device_manager, "_direct_addresses", {}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {}),
             patch.object(device_manager, "_describe_direct", AsyncMock(return_value=device)) as tcp_describe,
             patch.object(device_manager, "browse_mobdev2", AsyncMock()) as tcp_discovery,
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock(return_value=Lockdown())),
@@ -249,7 +249,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(device_manager.direct_address("a1b2c3d4"), "192.168.1.20")
 
         with (
-            patch.object(device_manager, "_direct_addresses", {}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {}),
             patch.object(device_manager, "browse_mobdev2", AsyncMock(return_value=[])),
             patch.object(device_manager, "_describe_direct", AsyncMock(return_value=device)),
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock(return_value=Lockdown())),
@@ -284,9 +284,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         with (
-            patch.object(device_manager, "_direct_addresses", {}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {}),
-            patch.object(device_manager, "_direct_rsd_devices", {}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_devices", {}),
             patch.object(device_manager, "_describe_direct", AsyncMock(return_value=device)) as tcp_describe,
             patch.object(device_manager, "browse_mobdev2", AsyncMock(return_value=[])) as tcp_discovery,
             patch.object(device_manager, "WiFiRsdTunnel", Tunnel),
@@ -304,7 +304,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertIs(await device_manager.get_rsd(udid), rsd)
             await device_manager.disconnect_direct(udid)
             self.assertIsNone(device_manager.direct_address(udid))
-            self.assertIsNone(device_manager._direct_rsd_tunnels.get(udid.lower()))
+            self.assertIsNone(device_manager._direct_transport_adapter.rsd_tunnels.get(udid.lower()))
 
     async def test_ios17_direct_accepts_ip_and_falls_back_when_ip_fails(self) -> None:
         udid = "A1B2C3D4"
@@ -335,9 +335,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         with (
-            patch.object(device_manager, "_direct_addresses", {}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {}),
-            patch.object(device_manager, "_direct_rsd_devices", {}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_devices", {}),
             patch.object(device_manager, "WiFiRsdTunnel", Tunnel),
             patch.object(device_manager, "DvtProvider", return_value=Channel()),
             patch.object(device_manager, "LocationSimulation", return_value=Channel()),
@@ -411,7 +411,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             connection_type = "Network"
 
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {"a1b2c3d4": "192.168.1.20"}),
             patch.object(device_manager, "_direct_usb_present", set()),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[MuxDevice()])) as mux_list,
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock(return_value=lockdown)) as tcp,
@@ -500,7 +500,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_direct_route_works_without_usbmux(self) -> None:
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {"a1b2c3d4": "192.168.1.20"}),
             patch.object(device_manager, "_direct_usb_present", set()),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(side_effect=OSError("AMDS unavailable"))) as mux_list,
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock(return_value=object())) as tcp,
@@ -511,7 +511,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_usb_snapshot_keeps_physical_route_priority(self) -> None:
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {"a1b2c3d4": "192.168.1.20"}),
             patch.object(device_manager, "_direct_usb_present", {"a1b2c3d4"}),
             patch.object(device_manager, "create_using_usbmux", AsyncMock(return_value=object())) as usbmux,
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock()) as tcp,
@@ -526,7 +526,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         usb_rsd = object()
         with (
             patch.object(device_manager, "_direct_usb_present", {udid.lower()}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=None)}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=None)}),
             patch.object(device_manager, "get_tunneld_device_by_udid", AsyncMock(return_value=usb_rsd)) as tunneld,
         ):
             self.assertIs(await device_manager.get_rsd(udid), usb_rsd)
@@ -538,9 +538,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         closed_tunnel = SimpleNamespace(rsd=None)
         with (
             patch.object(device_manager, "_has_active_session", return_value=True),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): closed_tunnel}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): closed_tunnel}),
             patch.object(device_session, "close_session", AsyncMock()) as close_session,
-            patch.object(device_manager, "disconnect_direct", AsyncMock()) as disconnect,
+            patch.object(device_manager.transport_controller, "cleanup_failed_direct", AsyncMock()) as disconnect,
         ):
             self.assertFalse(await device_manager.has_blocking_session(udid))
         close_session.assert_awaited_once_with(udid)
@@ -550,7 +550,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         udid = "A1B2C3D4"
         with (
             patch.object(device_manager, "_has_active_session", return_value=True),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=object())}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=object())}),
             patch.object(device_session, "close_session", AsyncMock()) as close_session,
         ):
             self.assertTrue(await device_manager.has_blocking_session(udid))
@@ -594,12 +594,12 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             connection_type = "USB"
 
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {"a1b2c3d4": "192.168.1.20"}),
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[MuxDevice()])),
             patch.object(device_manager, "_describe_device", AsyncMock(return_value=usb)),
             patch.object(device_manager, "_describe_direct", AsyncMock(return_value=direct)),
-            patch.object(device_manager, "_clear_direct_runtime", AsyncMock()) as clear,
+            patch.object(device_manager._direct_transport_adapter, "clear_runtime", AsyncMock()) as clear,
             patch.object(pairing_store, "list_udids", return_value=["a1b2c3d4"]),
         ):
             rows = await device_manager._scan_devices()
@@ -616,7 +616,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             connection_type = "Network"
 
         with (
-            patch.object(device_manager, "_direct_addresses", {"a1b2c3d4": "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {"a1b2c3d4": "192.168.1.20"}),
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[MuxDevice()])),
             patch.object(device_manager, "_describe_device", AsyncMock(return_value=wifi)),
@@ -626,7 +626,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             rows = await device_manager._scan_devices()
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].connection_type, "wireless_direct")
-            self.assertEqual(device_manager._direct_addresses["a1b2c3d4"], "192.168.1.20")
+            self.assertEqual(device_manager._direct_transport_adapter.addresses["a1b2c3d4"], "192.168.1.20")
             describe.assert_not_awaited()
 
     async def test_closed_direct_route_falls_back_without_query_cleanup(self) -> None:
@@ -643,9 +643,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             connection_type = "Network"
 
         with (
-            patch.object(device_manager, "_direct_addresses", {udid.lower(): "192.168.1.20"}),
-            patch.object(device_manager, "_direct_rsd_devices", {udid.lower(): wifi.model_copy(update={"connection_type": "wireless_direct"})}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): tunnel}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {udid.lower(): "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_devices", {udid.lower(): wifi.model_copy(update={"connection_type": "wireless_direct"})}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): tunnel}),
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value={udid})),
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[MuxDevice()])),
             patch.object(device_manager, "_describe_device", AsyncMock(return_value=wifi)),
@@ -656,9 +656,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].connection_type, "wifi")
             self.assertEqual(rows[0].status, "ready")
-            self.assertIn(udid.lower(), device_manager._direct_addresses)
-            self.assertIn(udid.lower(), device_manager._direct_rsd_devices)
-            self.assertIn(udid.lower(), device_manager._direct_rsd_tunnels)
+            self.assertIn(udid.lower(), device_manager._direct_transport_adapter.addresses)
+            self.assertIn(udid.lower(), device_manager._direct_transport_adapter.rsd_devices)
+            self.assertIn(udid.lower(), device_manager._direct_transport_adapter.rsd_tunnels)
         tunnel.aclose.assert_not_awaited()
 
     async def test_get_device_uses_fresh_system_wifi_snapshot_before_direct(self) -> None:
@@ -670,9 +670,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         tunnel = SimpleNamespace(rsd=None, aclose=AsyncMock())
         with (
             patch.object(device_manager, "_direct_usb_present", set()),
-            patch.object(device_manager, "_direct_addresses", {udid.lower(): "192.168.1.20"}),
-            patch.object(device_manager, "_direct_rsd_devices", {udid.lower(): wifi.model_copy(update={"connection_type": "wireless_direct"})}),
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): tunnel}),
+            patch.object(device_manager._direct_transport_adapter, "addresses", {udid.lower(): "192.168.1.20"}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_devices", {udid.lower(): wifi.model_copy(update={"connection_type": "wireless_direct"})}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): tunnel}),
             patch.object(device_manager, "list_devices", AsyncMock(return_value=[wifi])) as discover,
         ):
             found = await device_manager.get_device(udid)
@@ -685,7 +685,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         system_rsd = object()
         direct_rsd = object()
         with (
-            patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=direct_rsd)}),
+            patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=direct_rsd)}),
             patch.object(device_manager, "get_tunneld_device_by_udid", AsyncMock(return_value=system_rsd)) as tunneld,
         ):
             self.assertIs(await device_manager.get_rsd(udid), direct_rsd)
@@ -696,9 +696,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         udid = "00008101-001239E11EB9003A"
         for mux_type, expected_type in (("USB", "usb"), ("Network", "wifi")):
             with self.subTest(mux_type=mux_type):
-                device_manager._direct_addresses.clear()
-                device_manager._direct_rsd_devices.clear()
-                device_manager._direct_rsd_tunnels.clear()
+                device_manager._direct_transport_adapter.addresses.clear()
+                device_manager._direct_transport_adapter.rsd_devices.clear()
+                device_manager._direct_transport_adapter.rsd_tunnels.clear()
                 online = DeviceInfo(
                     udid=udid, name="Lence", ios_version="26.6.2", transport="rsd",
                     connection_type=expected_type, status="ready", direct_paired=True,
@@ -718,8 +718,8 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
                 self.assertEqual(first[0].connection_type, expected_type)
                 self.assertEqual(disconnected, [])
-                self.assertNotIn(udid.lower(), device_manager._direct_addresses)
-                self.assertNotIn(udid.lower(), device_manager._direct_rsd_tunnels)
+                self.assertNotIn(udid.lower(), device_manager._direct_transport_adapter.addresses)
+                self.assertNotIn(udid.lower(), device_manager._direct_transport_adapter.rsd_tunnels)
 
     async def test_multi_device_probing_skips_active_navigation_session(self) -> None:
         udid_a = "PHONE_A_NAVIGATING"
@@ -944,9 +944,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         # Clean state
-        device_manager._direct_rsd_tunnels.pop(udid.lower(), None)
-        device_manager._direct_rsd_devices.pop(udid.lower(), None)
-        device_manager._direct_addresses.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.rsd_tunnels.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.rsd_devices.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.addresses.pop(udid.lower(), None)
 
         with (
             patch.object(device_manager, "_has_active_session", return_value=False),
@@ -971,9 +971,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(args[1], b"fe80::1234%en0")
 
             # Verify tunnel and device are successfully registered in device_manager dicts
-            self.assertIn(udid.lower(), device_manager._direct_rsd_tunnels)
-            self.assertIn(udid.lower(), device_manager._direct_rsd_devices)
-            self.assertFalse(device_manager._direct_rsd_tunnels[udid.lower()].closed)
+            self.assertIn(udid.lower(), device_manager._direct_transport_adapter.rsd_tunnels)
+            self.assertIn(udid.lower(), device_manager._direct_transport_adapter.rsd_devices)
+            self.assertFalse(device_manager._direct_transport_adapter.rsd_tunnels[udid.lower()].closed)
 
     async def test_ipv6_reconnect_from_saved_address_preserves_scope(self) -> None:
         """驗證從 .address 載入帶 scope 的 IPv6 位址後能成功復連，且不會遺失 scope。"""
@@ -1004,9 +1004,9 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         # Clean state
-        device_manager._direct_rsd_tunnels.pop(udid.lower(), None)
-        device_manager._direct_rsd_devices.pop(udid.lower(), None)
-        device_manager._direct_addresses.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.rsd_tunnels.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.rsd_devices.pop(udid.lower(), None)
+        device_manager._direct_transport_adapter.addresses.pop(udid.lower(), None)
 
         with (
             patch.object(device_manager, "_has_active_session", return_value=False),
