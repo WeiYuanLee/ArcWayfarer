@@ -44,7 +44,7 @@ export function useDevices(includeWifi = false) {
     scan = (async () => {
       let staleRevision = false
       try {
-        const snapshot = await getDeviceSnapshot({ includeWifi })
+        const snapshot = await getDeviceSnapshot({ includeWifi, rescan: !background })
         if (!mountedRef.current || scanGeneration !== scanGenerationRef.current) return
         if (snapshot.snapshot_revision < highestSnapshotRevisionRef.current) {
           staleRevision = true

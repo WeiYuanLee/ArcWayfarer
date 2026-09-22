@@ -57,7 +57,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         device_manager._direct_addresses.clear()
         device_manager._direct_usb_present.clear()
-        device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
@@ -65,7 +64,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         device_manager._direct_addresses.clear()
         device_manager._direct_usb_present.clear()
-        device_manager._system_routes.clear()
         device_manager._direct_rsd_devices.clear()
         device_manager._direct_rsd_tunnels.clear()
         device_manager._discovered_direct_endpoints.clear()
@@ -629,7 +627,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].connection_type, "wireless_direct")
             self.assertEqual(device_manager._direct_addresses["a1b2c3d4"], "192.168.1.20")
-            self.assertNotIn("a1b2c3d4", device_manager._system_routes)
             describe.assert_not_awaited()
 
     async def test_closed_direct_route_falls_back_without_query_cleanup(self) -> None:
@@ -688,7 +685,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         system_rsd = object()
         direct_rsd = object()
         with (
-            patch.object(device_manager, "_system_routes", {udid.lower()}),
             patch.object(device_manager, "_direct_rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=direct_rsd)}),
             patch.object(device_manager, "get_tunneld_device_by_udid", AsyncMock(return_value=system_rsd)) as tunneld,
         ):
@@ -703,7 +699,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 device_manager._direct_addresses.clear()
                 device_manager._direct_rsd_devices.clear()
                 device_manager._direct_rsd_tunnels.clear()
-                device_manager._system_routes.clear()
                 online = DeviceInfo(
                     udid=udid, name="Lence", ios_version="26.6.2", transport="rsd",
                     connection_type=expected_type, status="ready", direct_paired=True,

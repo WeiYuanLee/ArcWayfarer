@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import logging
+import os
 import platform
 import re
 import socket
@@ -11,7 +12,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from packaging.version import Version
 from pymobiledevice3.bonjour import browse_mobdev2, browse_remotepairing
-from pymobiledevice3.exceptions import AlreadyMountedError, RemotePairingCompletedError, TunneldConnectionError
+from pymobiledevice3.exceptions import AlreadyMountedError, RemotePairingCompletedError
 from pymobiledevice3.lockdown import LockdownClient, create_using_usbmux
 from pymobiledevice3.remote import tunnel_service
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
@@ -26,7 +27,8 @@ from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
 from core.device_aggregate import AuthorizationState, DirectRuntimeState, UserIntent
-from core.device_registry import shadow_device_registry
+from core.device_discovery_coordinator import DeviceDiscoveryCoordinator
+from core.device_registry import device_registry
 from core.device_revision import device_revision_ledger
 from core.device_service import DeviceManagementService
 from core.keyed_async_lock import device_command_locks
@@ -41,7 +43,6 @@ DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
 
 _direct_addresses: dict[str, str] = {}
 _direct_usb_present: set[str] = set()
-_system_routes: set[str] = set()
 _direct_rsd_tunnels: dict[str, WiFiRsdTunnel] = {}
 _direct_rsd_devices: dict[str, DeviceInfo] = {}
 
@@ -60,6 +61,7 @@ class DeviceDiscoveryDiagnostic:
 
 
 _last_usb_discovery_diagnostic: DeviceDiscoveryDiagnostic | None = None
+_last_tunnel_discovery_error: str | None = None
 
 
 async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
@@ -72,11 +74,15 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
         "failed" if _last_usb_discovery_diagnostic is not None else "success",
         _last_usb_discovery_diagnostic.message if _last_usb_discovery_diagnostic is not None else None,
     )
+    wifi_source = DiscoverySourceResult(
+        "failed" if _last_tunnel_discovery_error is not None else "success",
+        _last_tunnel_discovery_error,
+    )
     return DiscoverySnapshot(
         devices=tuple(devices),
         sources={
             "usb": usb_source,
-            "system_wifi": DiscoverySourceResult("success"),
+            "system_wifi": wifi_source,
             "direct_endpoints": DiscoverySourceResult("not_requested"),
         },
         snapshot_revision=revision.snapshot_revision,
@@ -84,10 +90,38 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
     )
 
 
-# P0/P1 keep the legacy scanner as the production adapter.  Callers now use a
-# public service boundary, so later Registry work can replace the adapter
-# without changing API handlers or tests.
+# The legacy scanner remains the discovery adapter during P2. Registry owns
+# production reads; P3 will move transport lifecycle behind its controller.
 _device_management_service = DeviceManagementService(CallbackDiscoveryPort(_legacy_discovery_snapshot))
+_device_discovery_coordinator = DeviceDiscoveryCoordinator(_legacy_discovery_snapshot, device_registry)
+
+
+def _registry_reads_enabled() -> bool:
+    mode = os.environ.get("DEVICE_REGISTRY_READS", "registry").strip().lower()
+    if mode not in {"legacy", "registry"}:
+        logger.warning("Unknown DEVICE_REGISTRY_READS=%r; using registry", mode)
+        return True
+    return mode == "registry"
+
+
+async def start_device_discovery() -> None:
+    await _device_discovery_coordinator.start()
+
+
+async def stop_device_discovery() -> None:
+    await _device_discovery_coordinator.stop()
+
+
+async def refresh_device_discovery() -> None:
+    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+        await _device_discovery_coordinator.refresh_once()
+        return
+    _device_management_service.invalidate()
+
+
+async def _wait_for_registry() -> None:
+    if _device_discovery_coordinator.started:
+        await _device_discovery_coordinator.wait_ready()
 
 
 def _pymobiledevice3_version() -> str:
@@ -123,10 +157,16 @@ def get_usb_discovery_diagnostic() -> dict[str, str] | None:
 
 
 async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
+    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+        await _wait_for_registry()
+        return list(device_registry.projected_snapshot(include_wifi=include_wifi).devices)
     return await _device_management_service.list_devices(include_wifi=include_wifi)
 
 
 async def get_device_snapshot(include_wifi: bool = True) -> DiscoverySnapshot:
+    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+        await _wait_for_registry()
+        return device_registry.projected_snapshot(include_wifi=include_wifi)
     return await _device_management_service.projected_snapshot(include_wifi=include_wifi)
 
 
@@ -143,7 +183,7 @@ def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType | None
 
 
 async def _scan_devices() -> list[DeviceInfo]:
-    global _last_usb_discovery_diagnostic, _direct_usb_present, _system_routes
+    global _last_tunnel_discovery_error, _last_usb_discovery_diagnostic, _direct_usb_present
     devices: list[DeviceInfo] = []
     seen_udids: set[str] = set()
 
@@ -151,6 +191,7 @@ async def _scan_devices() -> list[DeviceInfo]:
     # for every tunnel it finds; a periodic scan would therefore leave extra
     # iOS 17 developer-service connections alive and can interfere with the
     # single RSD connection that owns location simulation.
+    _last_tunnel_discovery_error = None
     tunnel_udids = await _list_tunnel_udids()
 
     try:
@@ -214,26 +255,9 @@ async def _scan_devices() -> list[DeviceInfo]:
                     )
                 )
 
-    # Tunneld can also report devices that are not currently listed by usbmux.
-    # Its HTTP listing has no device metadata, so expose a safe minimal row;
-    # the real RSD is opened later, only when an operation requires it.
-    for udid in tunnel_udids:
-        if udid.lower() not in seen_udids:
-            seen_udids.add(udid.lower())
-            devices.append(
-                DeviceInfo(
-                    udid=udid,
-                    name=udid,
-                    ios_version="unknown",
-                    transport="rsd",
-                    # A tunneld route with no matching physical USB usbmux row
-                    # is the system's network route. App-owned Direct tunnels
-                    # are tracked separately below and can never reach here.
-                    connection_type="wifi",
-                    status="ready",
-                    direct_paired=pairing_store.exists(udid),
-                )
-            )
+    # A tunneld-only identifier does not reveal whether its physical source is
+    # USB or system Wi-Fi. Keep it as source health evidence only; publishing a
+    # selectable row here would invent a route and violate D2/D9.
 
     # Build the selected-route projection without changing transport state.
     # USB wins while idle, and a healthy explicitly selected Direct route wins
@@ -281,13 +305,6 @@ async def _scan_devices() -> list[DeviceInfo]:
                 )
         devices = [item for item in devices if item.udid.lower() != key]
         devices.append(direct)
-
-    # This set describes the route that is actually visible and selectable
-    # after explicit Direct ownership has been resolved.
-    _system_routes = {
-        item.udid.lower() for item in devices
-        if item.status == "ready" and item.connection_type != "wireless_direct"
-    }
 
     return devices
 
@@ -359,7 +376,7 @@ async def enable_direct_pairing(udid: str) -> None:
         pairing_store.save(udid, lockdown.pair_record)
         pairing_store.save_version(udid, lockdown.product_version)
         revision = device_revision_ledger.bump(udid)
-        shadow_device_registry.record_authorization(
+        device_registry.record_authorization(
             udid,
             AuthorizationState.PAIRED,
             revision=revision,
@@ -630,18 +647,19 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
     async with device_command_locks.hold(f"device:{udid}"):
         device = await _connect_direct_impl(udid, ip, fallback_bonjour, port)
         revision = device_revision_ledger.bump(device.udid)
-        shadow_device_registry.record_authorization(
+        device_registry.record_authorization(
             device.udid,
             AuthorizationState.PAIRED,
             revision=revision,
             legacy_route=None,
         )
-        shadow_device_registry.record_direct_runtime(
+        device_registry.record_direct_runtime(
             device.udid,
             DirectRuntimeState.READY,
             intent=UserIntent.DIRECT,
             revision=revision,
             legacy_route="wireless_direct",
+            device=device,
         )
         _device_management_service.invalidate()
         return device.model_copy(update={"revision": revision, "selected_route": "wireless_direct"})
@@ -650,7 +668,7 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
 async def disconnect_direct(udid: str) -> None:
     await _clear_direct_runtime(udid)
     revision = device_revision_ledger.bump(udid)
-    shadow_device_registry.record_direct_runtime(
+    device_registry.record_direct_runtime(
         udid,
         DirectRuntimeState.DISCONNECTED,
         intent=UserIntent.AUTO,
@@ -658,6 +676,16 @@ async def disconnect_direct(udid: str) -> None:
         legacy_route=None,
     )
     _device_management_service.invalidate()
+
+
+def record_direct_pairing_removed(udid: str) -> int:
+    revision = device_revision_ledger.bump(udid)
+    device_registry.record_authorization(
+        udid,
+        AuthorizationState.UNPAIRED,
+        revision=revision,
+    )
+    return revision
 
 
 async def _clear_direct_runtime(udid: str) -> None:
@@ -989,11 +1017,11 @@ async def list_direct_endpoints() -> list[dict]:
 
 async def _list_tunnel_udids() -> set[str]:
     """Read tunneld's HTTP listing without opening any RSD connections."""
+    global _last_tunnel_discovery_error
     try:
         tunnels = await asyncio.wait_for(asyncio.to_thread(_list_tunnels), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
-    except (TunneldConnectionError, TimeoutError, OSError):
-        return set()
-    except Exception:
+    except Exception as exc:
+        _last_tunnel_discovery_error = f"{type(exc).__name__}: {' '.join(str(exc).split())[:300]}"
         return set()
     return {str(udid) for udid in tunnels if udid}
 
@@ -1080,8 +1108,6 @@ async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
         rsd = _direct_rsd_tunnels[key].rsd
         if rsd is not None:
             return rsd
-        if key not in _system_routes:
-            raise RuntimeError("無線 RSD 連線已中斷，請在裝置管理重新連線。")
     rsd = await get_tunneld_device_by_udid(udid)
     if rsd is None:
         raise RuntimeError(

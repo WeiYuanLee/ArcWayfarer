@@ -1,8 +1,7 @@
 """Public contracts for the device-management migration.
 
-The legacy manager still supplies the production data during P0/P1.  These
-ports give tests and later registry code a stable boundary that does not
-require access to the manager's module-level dictionaries.
+The legacy scanner remains an adapter during the staged migration. These
+ports keep discovery and Registry tests independent from manager globals.
 """
 
 from dataclasses import dataclass, field

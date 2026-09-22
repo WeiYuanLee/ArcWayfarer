@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from models.schemas import DeviceConnectionType
+from models.schemas import DeviceInfo
 
 
 class Availability(str, Enum):
@@ -65,3 +66,6 @@ class DeviceAggregate:
     selected_route: DeviceConnectionType | None = None
     session: DeviceSessionState = field(default_factory=DeviceSessionState)
     revision: int = 0
+    usb_device: DeviceInfo | None = None
+    wifi_device: DeviceInfo | None = None
+    direct_device: DeviceInfo | None = None

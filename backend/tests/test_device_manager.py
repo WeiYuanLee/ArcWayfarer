@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from core import device_manager
+from core.device_ports import DiscoverySnapshot
 from models.schemas import DeviceInfo
 
 
@@ -59,6 +60,30 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await second)[0].udid, "shared")
             self.assertEqual(scan.await_count, 1)
 
+    async def test_registry_read_flag_switches_public_snapshot_and_list(self) -> None:
+        registry_device = _device("registry", "usb")
+        legacy_device = _device("legacy", "usb")
+        registry_snapshot = DiscoverySnapshot(devices=(registry_device,), snapshot_revision=2)
+        legacy_snapshot = DiscoverySnapshot(devices=(legacy_device,), snapshot_revision=1)
+        coordinator = type("Coordinator", (), {
+            "started": True,
+            "wait_ready": AsyncMock(),
+        })()
+
+        with (
+            patch.object(device_manager, "_device_discovery_coordinator", coordinator),
+            patch.object(device_manager.device_registry, "projected_snapshot", return_value=registry_snapshot),
+            patch.object(device_manager._device_management_service, "projected_snapshot", AsyncMock(return_value=legacy_snapshot)),
+            patch.object(device_manager._device_management_service, "list_devices", AsyncMock(return_value=[legacy_device])),
+        ):
+            with patch.dict(device_manager.os.environ, {"DEVICE_REGISTRY_READS": "registry"}):
+                self.assertEqual((await device_manager.get_device_snapshot()).devices[0].udid, "registry")
+                self.assertEqual((await device_manager.list_devices())[0].udid, "registry")
+                self.assertEqual((await device_manager.get_device("REGISTRY")).udid, "registry")
+            with patch.dict(device_manager.os.environ, {"DEVICE_REGISTRY_READS": "legacy"}):
+                self.assertEqual((await device_manager.get_device_snapshot()).devices[0].udid, "legacy")
+                self.assertEqual((await device_manager.list_devices())[0].udid, "legacy")
+
     async def test_get_device_read_does_not_close_direct_runtime(self) -> None:
         """D7: public device reads cannot release a transport."""
         udid = "A1B2C3D4"
@@ -109,16 +134,14 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([device.udid for device in devices], ["usb"])
 
-    async def test_tunneld_only_device_is_classified_as_wifi(self) -> None:
+    async def test_tunneld_only_device_without_physical_route_is_not_rendered(self) -> None:
         with (
             patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value={"wifi-rsd"})),
         ):
             devices = await device_manager._scan_devices()
 
-        self.assertEqual(len(devices), 1)
-        self.assertEqual(devices[0].connection_type, "wifi")
-        self.assertEqual(devices[0].status, "ready")
+        self.assertEqual(devices, [])
 
     async def test_unrecognized_mux_transport_is_not_rendered(self) -> None:
         with (
@@ -141,6 +164,17 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(diagnostic["code"], "usb_discovery_failed")
         self.assertEqual(diagnostic["error_type"], "OSError")
         self.assertIn("AMDevice service unavailable", diagnostic["message"])
+
+    async def test_tunneld_failure_is_reported_as_failed_source(self) -> None:
+        with (
+            patch.object(device_manager, "_list_tunnels", side_effect=OSError("tunneld unavailable")),
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[])),
+        ):
+            snapshot = await device_manager._legacy_discovery_snapshot()
+
+        self.assertEqual(snapshot.devices, ())
+        self.assertEqual(snapshot.sources["system_wifi"].status, "failed")
+        self.assertIn("OSError", snapshot.sources["system_wifi"].detail)
 
     async def test_describe_failure_falls_back_to_rsd_when_tunnel_exists(self) -> None:
         with (

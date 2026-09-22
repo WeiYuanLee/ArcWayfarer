@@ -8,6 +8,7 @@ from pymobiledevice3.exceptions import DeviceNotFoundError
 
 from core import device_manager, device_session, pairing_store
 from core.device_revision import device_revision_ledger
+from core.device_ports import DiscoverySnapshot
 from core.keyed_async_lock import device_command_locks
 from models.schemas import DeviceInfo
 
@@ -29,6 +30,17 @@ class DeviceSnapshotResponse(BaseModel):
     snapshot_revision: int
     sources: dict[str, DiscoverySourceResponse]
     devices: list[DeviceInfo]
+
+
+def _snapshot_response(snapshot: DiscoverySnapshot) -> DeviceSnapshotResponse:
+    return DeviceSnapshotResponse(
+        snapshot_revision=snapshot.snapshot_revision,
+        sources={
+            name: DiscoverySourceResponse(status=value.status, detail=value.detail)
+            for name, value in snapshot.sources.items()
+        },
+        devices=list(snapshot.devices),
+    )
 
 
 def _require_desktop(request: Request) -> None:
@@ -86,7 +98,8 @@ async def remove_wireless_direct_pairing(udid: str, request: Request) -> dict:
             raise HTTPException(status_code=409, detail="請先停止並還原目前的定位，再移除授權。")
         await device_manager.disconnect_direct(udid)
         pairing_store.remove(udid)
-        return {"status": "removed", "revision": device_revision_ledger.revision_for(udid)}
+        revision = device_manager.record_direct_pairing_removed(udid)
+        return {"status": "removed", "revision": revision}
 
 
 @router.post("/devices/{udid}/wireless-direct/clear-address")
@@ -114,14 +127,14 @@ async def get_devices(include_wifi: bool = Query(default=False)) -> list[DeviceI
 async def get_devices_snapshot(include_wifi: bool = Query(default=False)) -> DeviceSnapshotResponse:
     """Return one revisioned observation; this query never changes a transport."""
     snapshot = await device_manager.get_device_snapshot(include_wifi=include_wifi)
-    return DeviceSnapshotResponse(
-        snapshot_revision=snapshot.snapshot_revision,
-        sources={
-            name: DiscoverySourceResponse(status=value.status, detail=value.detail)
-            for name, value in snapshot.sources.items()
-        },
-        devices=list(snapshot.devices),
-    )
+    return _snapshot_response(snapshot)
+
+
+@router.post("/devices/snapshot/refresh")
+async def refresh_devices_snapshot(include_wifi: bool = Query(default=False)) -> DeviceSnapshotResponse:
+    """Explicitly request one observation, then return the Registry projection."""
+    await device_manager.refresh_device_discovery()
+    return _snapshot_response(await device_manager.get_device_snapshot(include_wifi=include_wifi))
 
 
 @router.get("/devices/diagnostics")

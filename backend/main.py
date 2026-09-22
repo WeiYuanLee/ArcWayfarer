@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api import device, favorites, history, location, map, mobile, multi_stop, navigate, random_walk, route_loop, websocket
 from config import API_HOST, API_PORT, ensure_app_data_dir
-from core import events
+from core import device_manager, events
 from services.mobile_auth import valid_session
 from services.mobile_web import mobile_web_dir, mobile_web_ready
 
@@ -20,7 +20,11 @@ async def lifespan(_app: FastAPI):
     events.on_state_change = websocket.broadcast_state
     events.on_restored = websocket.broadcast_restored
     events.on_flower_progress = websocket.broadcast_flower_progress
-    yield
+    await device_manager.start_device_discovery()
+    try:
+        yield
+    finally:
+        await device_manager.stop_device_discovery()
 
 
 app = FastAPI(title="ArcWayfarer Backend", lifespan=lifespan)

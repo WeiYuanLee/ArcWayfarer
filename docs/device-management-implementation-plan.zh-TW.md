@@ -8,7 +8,7 @@
 
 ---
 
-## 實作進度（2026-09-21）
+## 實作進度（2026-09-22）
 
 - [x] **P0-A**：加入 `DeviceDiscoveryPort`、immutable `DiscoverySnapshot`、公開 `DeviceManagementService` 與可控制完成順序的 fake。
 - [x] **P0-B（第一批）**：加入 query safety、source failure、single-flight、多設備失敗隔離、Direct I/O failure 等回歸案例；revision 競爭案例隨 P1-C 完成。
@@ -16,8 +16,9 @@
 - [x] **P1-B**：移除跨設備清理；pair／connect／disconnect／remove／clear-address 使用引用計數 keyed lock，同 UDID 序列化、不同設備可並行，auto endpoint 先以 endpoint key 防止重複探測，辨識後進入 UDID lock。
 - [x] **P1-C**：加入 `DeviceRevisionLedger`、`GET /api/devices/snapshot`、command revision、同 snapshot 投影、前端 stale revision 拒絕與單一 pending foreground refresh。
 - [x] **P2-A**：加入 immutable `DeviceAggregate`、純函式 `route_policy` 與 shadow `DeviceRegistry`；配對、Direct connect／disconnect command 同步旁路狀態，差異與 policy effect 只記錄不執行，HTTP GET 不發布 Registry event。
+- [x] **P2-B**：背景 `DeviceDiscoveryCoordinator` 發布 observation；snapshot、`get_device()` 與舊清單預設改讀 Registry，主動刷新使用獨立 POST command；加入 session pinning event、source failure 保留、D9 未知 tunneld route 過濾並移除 `_system_routes`。`DEVICE_REGISTRY_READS=legacy|registry` 暫留至 P3。
 
-目前驗證基線：後端 92 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠；macOS x64 local build、ad-hoc 簽署與 Electron startup smoke test 已通過。產物為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`，SHA-256 為 `abdfaedc9ca016c3235e8f9cf9cd1d8ebbcd1ff9ba48c84d02d5e27c0575fdbd`。
+目前驗證基線：後端 100 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P2-B 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（SHA-256：`c7724b24fd93121bf37557f9afc982811adf3ec21f00cf46a15b419516f92f71`）。
 
 ---
 

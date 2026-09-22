@@ -140,7 +140,7 @@ describe('useDevices', () => {
     })
 
     expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(1)
-    expect(mockedGetDeviceSnapshot).toHaveBeenCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenCalledWith({ includeWifi: false, rescan: true })
   })
 
   it('rescans a USB-only device list once when the window becomes visible again', async () => {
@@ -159,7 +159,7 @@ describe('useDevices', () => {
     await flushRequests()
 
     expect(mockedGetDeviceSnapshot).toHaveBeenCalledTimes(2)
-    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false, rescan: false })
   })
 
   it('loads a non-blocking support diagnostic only when discovery finds no devices', async () => {
@@ -209,6 +209,6 @@ describe('useDevices', () => {
     })
 
     expect(result.current.devices).toEqual([device])
-    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false })
+    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false, rescan: true })
   })
 })

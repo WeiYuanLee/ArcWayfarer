@@ -8,6 +8,9 @@ from pymobiledevice3.services.dvt.instruments.location_simulation import Locatio
 
 from config import MOUNT_TIMEOUT_SECONDS
 from core import device_manager
+from core.device_aggregate import SessionState
+from core.device_registry import device_registry
+from core.device_revision import device_revision_ledger
 from models.schemas import DeviceConnectionType
 
 logger = logging.getLogger(__name__)
@@ -47,6 +50,7 @@ class DeviceSession:
                 await asyncio.wait_for(self._backend.set(lat, lng), timeout=10.0)
             except Exception as exc:
                 _sessions.pop(self.udid, None)
+                _publish_session(self.udid, SessionState.FAILED, self.bound_route)
                 await self.close()
                 await self._release_failed_direct_runtime(exc)
                 raise
@@ -57,6 +61,7 @@ class DeviceSession:
                 await asyncio.wait_for(self._backend.clear(), timeout=10.0)
             except Exception as exc:
                 _sessions.pop(self.udid, None)
+                _publish_session(self.udid, SessionState.FAILED, self.bound_route)
                 await self.close()
                 await self._release_failed_direct_runtime(exc)
                 raise
@@ -83,6 +88,24 @@ class DeviceSession:
 
 _sessions: dict[str, DeviceSession] = {}
 _session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _publish_session(
+    udid: str,
+    state: SessionState,
+    bound_route: DeviceConnectionType | None,
+    *,
+    compare_legacy: bool = True,
+) -> None:
+    revision = device_revision_ledger.bump(udid)
+    device_registry.record_session(
+        udid,
+        state,
+        bound_route=bound_route,
+        revision=revision,
+        legacy_route=bound_route,
+        compare_legacy=compare_legacy,
+    )
 
 
 class LockdownSimulateLocationWrapper:
@@ -164,6 +187,7 @@ async def get_session(udid: str) -> DeviceSession:
             )
 
         _sessions[udid] = session
+        _publish_session(udid, SessionState.ACTIVE, session.bound_route)
         return session
 
 
@@ -171,6 +195,7 @@ async def close_session(udid: str) -> None:
     session = _sessions.pop(udid, None)
     if session is not None:
         await session.close()
+        _publish_session(udid, SessionState.IDLE, None, compare_legacy=False)
 
 
 def has_session(udid: str) -> bool:

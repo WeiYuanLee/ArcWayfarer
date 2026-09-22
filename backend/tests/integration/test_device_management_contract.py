@@ -3,7 +3,7 @@ import unittest
 
 from core.device_ports import DiscoverySnapshot, DiscoverySourceResult
 from core.device_service import DeviceManagementService
-from core.device_registry import shadow_device_registry
+from core.device_registry import device_registry
 from models.schemas import DeviceInfo
 from tests.fakes.device_ports import ControlledDiscoveryPort
 
@@ -30,9 +30,9 @@ class DeviceManagementContractTests(unittest.IsolatedAsyncioTestCase):
         service = DeviceManagementService(port)
         port.release.set()
 
-        before = shadow_device_registry.snapshot()
+        before = device_registry.snapshot()
         await service.projected_snapshot()
-        after = shadow_device_registry.snapshot()
+        after = device_registry.snapshot()
 
         self.assertEqual(after.applied_event_count, before.applied_event_count)
         self.assertEqual(after.pending_effects, before.pending_effects)

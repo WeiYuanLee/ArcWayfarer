@@ -188,13 +188,17 @@ export async function listDevices({ includeWifi = false }: { includeWifi?: boole
   }
 }
 
-export async function getDeviceSnapshot({ includeWifi = false }: { includeWifi?: boolean } = {}): Promise<DeviceSnapshot> {
+export async function getDeviceSnapshot(
+  { includeWifi = false, rescan = false }: { includeWifi?: boolean; rescan?: boolean } = {},
+): Promise<DeviceSnapshot> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000)
   try {
     const query = includeWifi ? '?include_wifi=true' : ''
-    const res = await fetch(`${API_BASE_URL}/api/devices/snapshot${query}`, {
+    const path = rescan ? '/api/devices/snapshot/refresh' : '/api/devices/snapshot'
+    const res = await fetch(`${API_BASE_URL}${path}${query}`, {
       headers: authHeaders(),
+      method: rescan ? 'POST' : 'GET',
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`Failed to scan devices (${res.status})`)
