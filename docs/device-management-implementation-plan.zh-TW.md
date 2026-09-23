@@ -20,8 +20,9 @@
 - [x] **P3-A**：加入 `TransportController` 與 `DirectTransportAdapter`；connect／disconnect、USB idle takeover、Direct I/O failure、配對移除及 shutdown cleanup 全部通過 Controller，以 `(udid, revision, effect_type)` 去重並拒絕 stale effect。Discovery／GET／Policy 不持有破壞性能力。
 - [x] **P3-B**：`DeviceSession` 固定保存 `bound_route` 與 transport identity，session start／stop／failure 發布 Registry event；route-specific Lockdown／RSD 查詢禁止 active session 靜默換線，舊 handle 的晚到錯誤不能清理新 runtime，部分建立失敗會完整釋放 DVT context。以 runtime injection 移除 `device_manager ↔ device_session` 循環依賴，並移除 `DEVICE_REGISTRY_READS` 雙模式開關。
 - [x] **P4-A**：拆出 USB、system Wi-Fi、Direct endpoint discovery，USB／Wi-Fi／Direct TCP／Direct RSD transport adapter 與 `PairingManager`；USB presence、診斷、tunneld source result、endpoint cache 及配對檔案不再由 `device_manager.py` 保存。舊 `direct_transport_adapter.py` 僅保留 compatibility import。
+- [x] **P4-B**：`DeviceManagerModal.tsx` 縮為 modal shell；清單、端點探索、連線狀態、快速復連與命令 controller 已拆成獨立模組。controller 保留 command revision refresh，視圖測試固定三種傳輸 badge 與最近兩筆復連行為。
 
-目前驗證基線：後端 120 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P4-A 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`9df790c8ca1c8cfd7ee47b4266ac1de60e9707359da240c845d0fc2b8b87ef2d`）。
+目前驗證基線：後端 120 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
 
 ---
 
@@ -73,7 +74,7 @@ flowchart TD
 | P3-A | 收斂 tunnel lifecycle 到 Controller | 高 | L |
 | P3-B | Session 綁定 route、移除循環依賴 | 高 | L |
 | P4-A | 拆 discovery／pairing adapters，移除舊全域 | 中 | L |
-| P4-B | 拆 DeviceManagerModal 並補元件測試 | 中 | M |
+| P4-B（已完成） | 拆 DeviceManagerModal 並補元件測試 | 中 | M |
 
 ---
 
@@ -351,6 +352,13 @@ useDeviceManagerController.ts   # command + revision orchestration
 - 快速復連最多兩筆且同 UDID 更新不重複。
 - 連線失敗回到端點清單且不修改其他設備。
 - 掃描失敗保留最後成功 snapshot 並顯示 stale diagnostic。
+
+**實作結果（已完成）：**
+
+- modal shell 只保留 routing 與改名 dialog，由原本 939 行縮為約 90 行。
+- `useDeviceManagerController` 集中 connect、pair、toggle、endpoint scan、快速復連與 command revision refresh。
+- endpoint 掃描失敗保留最後成功清單；Direct 連線失敗只更新目前 flow，不會操作其他設備。
+- 新增 controller 與 view 行為測試；搭配既有 `useDevices.test.ts`、`api.test.ts`，覆蓋成功 revision、失敗隔離、唯一 transport badge、兩筆歷史、同 UDID 去重與 stale snapshot。
 
 ---
 

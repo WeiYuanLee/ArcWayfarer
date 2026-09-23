@@ -183,7 +183,7 @@ select_route(device):
 
 - **加入 revision。** connect 回傳的 revision 高於掃描 revision 時，丟棄過期掃描結果，根治 stale scan 覆蓋。
 - **foreground refresh 補跑。** 遇 in-flight 時標記 `pendingForegroundRefresh`，舊掃描結束後強制補跑一次，而非直接回傳舊 promise。
-- **DeviceManagerModal 拆分 + 測試。** 目前 939 行、零元件測試（`frontend/src/components/common/DeviceManagerModal.tsx`），按視圖拆小並補 Vitest/RTL。
+- **DeviceManagerModal 已拆分並建立測試護欄。** `DeviceManagerModal.tsx` 從 939 行降為約 90 行；清單、Wireless Direct 探索、連線流程、快速復連與命令 controller 各自獨立。Vitest/RTL 覆蓋傳輸 badge、兩筆快速復連、連線成功 revision 與單一目標失敗隔離；stale snapshot 仍由 `useDevices.test.ts` 驗證。
 
 ---
 
@@ -206,7 +206,7 @@ flowchart LR
 | **P2** | 導入 `DeviceRegistry` + `route_policy` 純函式，與現有全域**並存**；先讓 policy 接管 selected_route 計算 | route policy table test 全綠；對外 API 輸出不變 |
 | **P3（已完成）** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 持有 `bound_route` 與 transport identity，斷開對 manager 的反向依賴 | 單一入口管理 Direct transport；active I/O 固定 route；循環依賴消失 |
 | **P4-A（已完成）** | 拆 `discovery/`、route adapters 與 `pairing_manager`，移除 manager 的舊 discovery／pairing 狀態 | manager facade 不保存 scanner／pairing state；adapter 契約與完整回歸測試全綠 |
-| **P4-B** | 拆前端 Device Manager modal 與 controller | 元件測試覆蓋連線、錯誤、快速復連與 stale snapshot |
+| **P4-B（已完成）** | 拆前端 Device Manager modal 與 controller | 元件測試覆蓋連線、錯誤、快速復連與 stale snapshot |
 
 **護欄：** 每階段獨立 PR、獨立可回退。任何一階段若讓行為測試轉紅，先停、先修，不進下一階段。P0 的行為測試是整個重寫的安全網——沒有它，全面重寫就是在最脆弱的子系統上蒙眼開刀。
 
