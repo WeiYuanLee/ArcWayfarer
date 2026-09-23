@@ -55,6 +55,21 @@ jobs:
         working-directory: frontend
         run: npx tsc --noEmit
 
+      - name: Parse Windows acceptance script
+        shell: pwsh
+        run: |
+          $Tokens = $null
+          $Errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/windows-device-acceptance.ps1),
+            [ref]$Tokens,
+            [ref]$Errors
+          ) | Out-Null
+          if ($Errors.Count -gt 0) {
+            $Errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+
   package:
     name: Package ${{ matrix.os }} ${{ matrix.arch }}
     needs: tests

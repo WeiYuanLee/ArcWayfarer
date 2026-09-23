@@ -10,6 +10,7 @@ from core import device_manager, device_session, pairing_store
 from core.device_revision import device_revision_ledger
 from core.device_ports import DiscoverySnapshot
 from core.keyed_async_lock import device_command_locks
+from core.support_diagnostics import runtime_diagnostic
 from models.schemas import DeviceInfo
 
 router = APIRouter(prefix="/api")
@@ -135,8 +136,11 @@ async def refresh_devices_snapshot(include_wifi: bool = Query(default=False)) ->
 
 @router.get("/devices/diagnostics")
 async def get_device_diagnostics() -> dict:
-    """Return the latest USB discovery failure without triggering a rescan."""
-    return {"usb_discovery": device_manager.get_usb_discovery_diagnostic()}
+    """Return support-safe runtime facts without triggering a rescan."""
+    return {
+        "usb_discovery": device_manager.get_usb_discovery_diagnostic(),
+        "runtime": runtime_diagnostic(),
+    }
 
 
 @router.post("/devices/{udid}/amfi/reveal-developer-mode")

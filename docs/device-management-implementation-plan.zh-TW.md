@@ -23,9 +23,10 @@
 - [x] **P4-B**：`DeviceManagerModal.tsx` 縮為 modal shell；清單、端點探索、連線狀態、快速復連與命令 controller 已拆成獨立模組。controller 保留 command revision refresh，視圖測試固定三種傳輸 badge 與最近兩筆復連行為。
 - [x] **V1-A**：加入 production source 架構邊界測試，阻止 discovery／GET 重新取得 transport command 或 close 能力，並防止已移除的七組全域狀態與 `DEVICE_REGISTRY_READS` 回歸。
 - [x] **V1-B**：macOS arm64／x64、Windows x64 原生封裝 workflow 全綠；Windows 封裝後 backend `/health` smoke test 通過，三平台 artifact 與 SHA-256 manifest 保留 7 天。
+- [x] **V2-A**：提供不需本機 build 的 Windows artifact 下載流程，以及唯讀、去識別化的多階段驗收擷取工具；報告保留 route、revision、動態 port 與 runtime/TLS 版本，不保存完整 UDID、IP 或私鑰。
 - [ ] **V2**：依最終驗收矩陣完成 Windows 與 iOS 實機測試。
 
-目前驗證基線：V1-A 後端 123 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
+目前驗證基線：V2-A 後端 124 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
 
 V1 跨平台驗收：[GitHub Actions run 35826086172](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35826086172) 全綠。短期 artifacts：Windows x64 約 201 MB、macOS arm64 約 211 MB、macOS x64 約 218 MB；每個 artifact 均包含安裝包與對應 SHA-256 manifest。
 

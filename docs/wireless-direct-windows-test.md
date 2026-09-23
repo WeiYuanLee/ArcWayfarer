@@ -2,7 +2,35 @@
 
 這是開發分支的驗證流程；目前尚無 Windows 拔線定位的實機成功紀錄。請用自己的 iPhone 與同一部 Windows 電腦完成配對，不要從 Mac 複製 RemotePairing 私鑰。
 
-## 取得並建置
+## 取得已封裝的 Windows 測試版（建議）
+
+不需要在 Windows 本機建置。以瀏覽器開啟 [V1 跨平台驗證 run](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35826086172)，在頁面最下方 **Artifacts** 下載 `validation-windows-x64`。ZIP 內含 Windows 安裝程式與 `SHA256SUMS-windows-x64.txt`；artifact 保留至 workflow 執行後 7 天。
+
+若 C 槽空間不足，請下載、解壓及安裝至 D 槽。安裝器暫存空間也可在同一個 PowerShell 視窗暫時移至 D 槽：
+
+```powershell
+New-Item -ItemType Directory -Force D:\ArcWayfarerTemp
+$env:TEMP = 'D:\ArcWayfarerTemp'
+$env:TMP = 'D:\ArcWayfarerTemp'
+Start-Process 'D:\下載位置\ArcWayfarer安裝程式.exe' -Wait
+```
+
+此 artifact 已在 Windows x64 runner 完成封裝，且內嵌 backend 啟動及 `/health` smoke test 已通過。仍需以下實機步驟驗證 Apple 驅動、iPhone 授權與網路切換。
+
+## 取得驗收擷取工具
+
+ArcWayfarer 開啟後，下載唯讀驗收工具至 D 槽：
+
+```powershell
+New-Item -ItemType Directory -Force D:\ArcWayfarerTest
+Invoke-WebRequest 'https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/feat/windows-wireless-direct-spike/scripts/windows-device-acceptance.ps1' -OutFile 'D:\ArcWayfarerTest\windows-device-acceptance.ps1'
+cd D:\ArcWayfarerTest
+powershell -ExecutionPolicy Bypass -File .\windows-device-acceptance.ps1 -Label preflight
+```
+
+工具只呼叫 GET API，不會配對、連線、斷線或操作定位。輸出的完整 UDID 與 IP 會換成不可逆短雜湊；報告仍會保留 route、revision、動態 port、IPv4／IPv6、OpenSSL、Python 與 pymobiledevice3 版本。
+
+## 從原始碼自行建置（選用）
 
 在 Windows PowerShell 執行：
 
@@ -23,6 +51,17 @@ powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
 4. 點選端點連線，確認顯示的 UDID 是原手機。設定一個容易辨識的測試位置，親眼確認手機地圖移動，再按停止並親眼確認位置還原。
 5. 完全關閉並重啟 ArcWayfarer，不接 USB 重複連線、設定與還原。
 6. 若可行，再測手機鎖定、IP 變更、Wi-Fi 暫時中斷。每次記錄介面狀態及是否真正還原定位。
+
+在主要狀態各執行一次擷取，產生可比較的去識別 JSON：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\ArcWayfarerTest\windows-device-acceptance.ps1 -Label usb
+powershell -ExecutionPolicy Bypass -File D:\ArcWayfarerTest\windows-device-acceptance.ps1 -Label wifi
+powershell -ExecutionPolicy Bypass -File D:\ArcWayfarerTest\windows-device-acceptance.ps1 -Label direct-old-network
+powershell -ExecutionPolicy Bypass -File D:\ArcWayfarerTest\windows-device-acceptance.ps1 -Label direct-new-network
+```
+
+結果預設存入目前目錄的 `arcwayfarer-v2-report`，包含各階段 capture 與一份人工勾選表。
 
 ## 設備狀態驗收
 
