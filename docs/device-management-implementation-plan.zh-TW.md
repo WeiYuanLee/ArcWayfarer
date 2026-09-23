@@ -19,8 +19,9 @@
 - [x] **P2-B**：背景 `DeviceDiscoveryCoordinator` 發布 observation；snapshot、`get_device()` 與舊清單改讀 Registry，主動刷新使用獨立 POST command；加入 session pinning event、source failure 保留、D9 未知 tunneld route 過濾並移除 `_system_routes`。
 - [x] **P3-A**：加入 `TransportController` 與 `DirectTransportAdapter`；connect／disconnect、USB idle takeover、Direct I/O failure、配對移除及 shutdown cleanup 全部通過 Controller，以 `(udid, revision, effect_type)` 去重並拒絕 stale effect。Discovery／GET／Policy 不持有破壞性能力。
 - [x] **P3-B**：`DeviceSession` 固定保存 `bound_route` 與 transport identity，session start／stop／failure 發布 Registry event；route-specific Lockdown／RSD 查詢禁止 active session 靜默換線，舊 handle 的晚到錯誤不能清理新 runtime，部分建立失敗會完整釋放 DVT context。以 runtime injection 移除 `device_manager ↔ device_session` 循環依賴，並移除 `DEVICE_REGISTRY_READS` 雙模式開關。
+- [x] **P4-A**：拆出 USB、system Wi-Fi、Direct endpoint discovery，USB／Wi-Fi／Direct TCP／Direct RSD transport adapter 與 `PairingManager`；USB presence、診斷、tunneld source result、endpoint cache 及配對檔案不再由 `device_manager.py` 保存。舊 `direct_transport_adapter.py` 僅保留 compatibility import。
 
-目前驗證基線：後端 116 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P3-B 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`f36a7383a5650593e8149a59965b969001cc2f65d0d58eaaaeb5591a8ec7c892`）。
+目前驗證基線：後端 120 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P4-A 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`9df790c8ca1c8cfd7ee47b4266ac1de60e9707359da240c845d0fc2b8b87ef2d`）。
 
 ---
 
@@ -321,6 +322,14 @@ backend/core/pairing_manager.py
 ```
 
 完成後移除舊的 9 個模組級狀態與 `device_manager.py` 中已被接管的責任。可保留薄 facade 維持 import compatibility，但 facade 不保存狀態。
+
+**完成證據（2026-09-23）：**
+
+- `device_manager.py` 從 P4-A 前的 1,132 行降為約 700 行；舊的 USB presence、USB diagnostic、tunneld error 與 Direct endpoint cache 已移到 discovery adapters。
+- USB source failure 保留最後成功 presence，並以 `failed` source result 發布；成功空結果才清除 presence。
+- Direct endpoint scanner 自有每輪 cache，Windows RemotePairing、macOS DNS-SD、IPv6 scope 與動態 SRV port 行為維持原契約。
+- `PairingManager` 統一配對紀錄與 USB 授權刷新；authorization 仍不代表 active route。
+- USB、system Wi-Fi、Direct TCP、Direct RSD 各有 adapter；舊 import path 只轉出 `DirectRsdAdapter`，不再擁有 runtime state。
 
 ### P4-B：前端 Device Manager
 

@@ -157,7 +157,7 @@ select_route(device):
 - `TransportController` 是 Direct runtime 建立、清理、USB takeover 與 shutdown 的 command boundary。
 - `DeviceSessionStore` 擁有 active session handle；Registry 保存可序列化的 session 狀態、`bound_route` 與 transport identity。
 - `device_session` 透過啟動時注入的 runtime port 呼叫 manager facade，兩個核心模組不再互相 import。
-- discovery 的舊 scanner facade 仍待 P4 拆成 USB、system Wi-Fi 與 Direct endpoint adapters。
+- P4-A 已將 USB、system Wi-Fi、Direct endpoint discovery、四種 route adapter 與 pairing lifecycle 拆成獨立模組；`device_manager` 保留公開 facade 與 command 協調。
 
 ---
 
@@ -205,7 +205,8 @@ flowchart LR
 | **P1** | 止血三刀，改動最小：① 掃描不再 clear/disconnect（移除 `:224`、`:236-241` 的清除）② 移除跨裝置清理（`:495-497`）③ 前端 revision + pendingForegroundRefresh | P0 的止血相關測試轉綠，其餘行為不變 |
 | **P2** | 導入 `DeviceRegistry` + `route_policy` 純函式，與現有全域**並存**；先讓 policy 接管 selected_route 計算 | route policy table test 全綠；對外 API 輸出不變 |
 | **P3（已完成）** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 持有 `bound_route` 與 transport identity，斷開對 manager 的反向依賴 | 單一入口管理 Direct transport；active I/O 固定 route；循環依賴消失 |
-| **P4** | 拆 `discovery/`、`pairing_manager`，移除 9 個全域與死狀態 `_system_routes`；拆前端 modal | 舊全域刪除後全測試綠 |
+| **P4-A（已完成）** | 拆 `discovery/`、route adapters 與 `pairing_manager`，移除 manager 的舊 discovery／pairing 狀態 | manager facade 不保存 scanner／pairing state；adapter 契約與完整回歸測試全綠 |
+| **P4-B** | 拆前端 Device Manager modal 與 controller | 元件測試覆蓋連線、錯誤、快速復連與 stale snapshot |
 
 **護欄：** 每階段獨立 PR、獨立可回退。任何一階段若讓行為測試轉紅，先停、先修，不進下一階段。P0 的行為測試是整個重寫的安全網——沒有它，全面重寫就是在最脆弱的子系統上蒙眼開刀。
 

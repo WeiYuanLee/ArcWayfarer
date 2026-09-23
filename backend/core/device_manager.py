@@ -1,17 +1,9 @@
 import asyncio
-import ipaddress
 import logging
-import platform
-import re
-import socket
-import subprocess
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from importlib.metadata import PackageNotFoundError, version
 
 from packaging.version import Version
-from pymobiledevice3.bonjour import browse_mobdev2, browse_remotepairing
-from pymobiledevice3.exceptions import AlreadyMountedError, RemotePairingCompletedError
+from pymobiledevice3.bonjour import browse_mobdev2
+from pymobiledevice3.exceptions import AlreadyMountedError
 from pymobiledevice3.lockdown import LockdownClient, create_using_usbmux
 from pymobiledevice3.remote import tunnel_service
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
@@ -22,7 +14,9 @@ from pymobiledevice3.services.mobile_image_mounter import auto_mount
 from pymobiledevice3.tunneld.api import _list_tunnels, get_tunneld_device_by_udid
 from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 
-from core import pairing_store
+from core.discovery import direct_endpoint_scanner
+from core.discovery.system_wifi_scanner import system_wifi_scanner
+from core.discovery.usb_scanner import usb_scanner
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
 from core.device_aggregate import AuthorizationState, DirectRuntimeState, SessionState
@@ -32,8 +26,12 @@ from core.device_revision import device_revision_ledger
 from core.device_session_state import publish_session_state
 from core.device_session_store import device_session_store
 from core.device_service import DeviceManagementService
-from core.direct_transport_adapter import DirectTransportAdapter
+from core.transport.direct_rsd_adapter import DirectRsdAdapter
+from core.transport.direct_tcp_adapter import DirectTcpAdapter
+from core.transport.system_wifi_adapter import SystemWifiTransportAdapter
+from core.transport.usb_adapter import UsbTransportAdapter
 from core.keyed_async_lock import device_command_locks
+from core.pairing_manager import pairing_manager
 from core.transport_controller import TransportController
 from core.wireless_rsd import WiFiRsdTunnel
 from models.schemas import DeviceConnectionType, DeviceInfo
@@ -44,25 +42,20 @@ IOS_17 = Version("17.0")
 DEVICE_LIST_TIMEOUT_SECONDS = 5.0
 DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
 
-_direct_transport_adapter = DirectTransportAdapter(lambda **kwargs: WiFiRsdTunnel(**kwargs))
-_direct_usb_present: set[str] = set()
-
-
-@dataclass(frozen=True)
-class DeviceDiscoveryDiagnostic:
-    """A support-safe snapshot of the most recent USB discovery failure."""
-
-    code: str
-    occurred_at: str
-    error_type: str
-    message: str
-    python_version: str
-    platform: str
-    pymobiledevice3_version: str
-
-
-_last_usb_discovery_diagnostic: DeviceDiscoveryDiagnostic | None = None
-_last_tunnel_discovery_error: str | None = None
+_direct_transport_adapter = DirectRsdAdapter(lambda **kwargs: WiFiRsdTunnel(**kwargs))
+_direct_tcp_adapter = DirectTcpAdapter(
+    pairing_manager,
+    lambda **kwargs: create_direct_lockdown(**kwargs),
+)
+_usb_transport_adapter = UsbTransportAdapter(
+    usb_scanner,
+    lambda **kwargs: create_using_usbmux(**kwargs),
+    lambda udid: get_tunneld_device_by_udid(udid),
+)
+_system_wifi_transport_adapter = SystemWifiTransportAdapter(
+    lambda **kwargs: create_using_usbmux(**kwargs),
+    lambda udid: get_tunneld_device_by_udid(udid),
+)
 
 
 async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
@@ -71,19 +64,16 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
     # flight must have a newer revision than this eventual response.
     revision = device_revision_ledger.capture()
     devices = await _scan_devices()
-    usb_source = DiscoverySourceResult(
-        "failed" if _last_usb_discovery_diagnostic is not None else "success",
-        _last_usb_discovery_diagnostic.message if _last_usb_discovery_diagnostic is not None else None,
-    )
-    wifi_source = DiscoverySourceResult(
-        "failed" if _last_tunnel_discovery_error is not None else "success",
-        _last_tunnel_discovery_error,
-    )
+    usb_diagnostic = get_usb_discovery_diagnostic()
     return DiscoverySnapshot(
         devices=tuple(devices),
         sources={
-            "usb": usb_source,
-            "system_wifi": wifi_source,
+            "usb": (
+                DiscoverySourceResult("failed", usb_diagnostic["message"])
+                if usb_diagnostic is not None
+                else DiscoverySourceResult("success")
+            ),
+            "system_wifi": system_wifi_scanner.last_result,
             "direct_endpoints": DiscoverySourceResult("not_requested"),
         },
         snapshot_revision=revision.snapshot_revision,
@@ -91,8 +81,8 @@ async def _legacy_discovery_snapshot() -> DiscoverySnapshot:
     )
 
 
-# The legacy scanner remains the discovery adapter until P4. Registry owns
-# production reads, and the controller owns every destructive Direct action.
+# The facade composes dedicated discovery adapters. Registry owns production
+# reads, and the controller owns every destructive Direct action.
 _device_management_service = DeviceManagementService(CallbackDiscoveryPort(_legacy_discovery_snapshot))
 transport_controller = TransportController(
     _direct_transport_adapter,
@@ -132,36 +122,9 @@ async def _wait_for_registry() -> None:
         await _device_discovery_coordinator.wait_ready()
 
 
-def _pymobiledevice3_version() -> str:
-    try:
-        return version("pymobiledevice3")
-    except PackageNotFoundError:
-        return "unknown"
-
-
-def _record_usb_discovery_failure(exc: Exception) -> None:
-    """Keep a bounded, non-sensitive diagnostic users can copy for support."""
-    global _last_usb_discovery_diagnostic
-
-    # Do not include UDIDs or arbitrary unbounded exception output in a value
-    # that is exposed to the UI. The full traceback remains in the local log.
-    message = " ".join(str(exc).split())[:500] or "No error message was provided."
-    _last_usb_discovery_diagnostic = DeviceDiscoveryDiagnostic(
-        code="usb_discovery_failed",
-        occurred_at=datetime.now(timezone.utc).isoformat(),
-        error_type=exc.__class__.__name__,
-        message=message,
-        python_version=platform.python_version(),
-        platform=f"{platform.system()} {platform.release()} ({platform.machine()})",
-        pymobiledevice3_version=_pymobiledevice3_version(),
-    )
-
-
 def get_usb_discovery_diagnostic() -> dict[str, str] | None:
     """Return the latest USB discovery failure without starting another scan."""
-    if _last_usb_discovery_diagnostic is None:
-        return None
-    return asdict(_last_usb_discovery_diagnostic)
+    return usb_scanner.diagnostic()
 
 
 async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
@@ -179,19 +142,10 @@ async def get_device_snapshot(include_wifi: bool = True) -> DiscoverySnapshot:
 
 
 def _connection_type_from_mux(mux_device: object) -> DeviceConnectionType | None:
-    """Translate usbmux's physical connection names into API values."""
-    connection_type = str(getattr(mux_device, "connection_type", "")).upper()
-    if connection_type == "USB":
-        return "usb"
-    if connection_type in {"NETWORK", "WIFI", "WI-FI"}:
-        # usbmux calls an iPhone paired with "Connect over Wi-Fi" a Network
-        # device. It is the Wi-Fi connection surfaced to this application.
-        return "wifi"
-    return None
+    return usb_scanner.connection_type(mux_device)
 
 
 async def _scan_devices() -> list[DeviceInfo]:
-    global _last_tunnel_discovery_error, _last_usb_discovery_diagnostic, _direct_usb_present
     devices: list[DeviceInfo] = []
     seen_udids: set[str] = set()
 
@@ -199,27 +153,13 @@ async def _scan_devices() -> list[DeviceInfo]:
     # for every tunnel it finds; a periodic scan would therefore leave extra
     # iOS 17 developer-service connections alive and can interfere with the
     # single RSD connection that owns location simulation.
-    _last_tunnel_discovery_error = None
     tunnel_udids = await _list_tunnel_udids()
-
-    try:
-        mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
-    except Exception as exc:  # noqa: BLE001 - surfaced through the diagnostics endpoint
-        _record_usb_discovery_failure(exc)
-        logger.exception("USB device discovery failed; returning tunnel-only results")
-        mux_devices = []
-    else:
-        # A successful usbmux call is definitive: do not show an obsolete
-        # support warning after the cable/service has recovered.
-        _last_usb_discovery_diagnostic = None
+    mux_devices, usb_result = await usb_scanner.scan(usbmux_list_devices, timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+    if usb_result.status == "failed":
+        logger.error("USB device discovery failed; returning tunnel-only results: %s", usb_result.detail)
 
     # Sort USB connections before Network connections so USB is preferred if both exist.
     mux_devices = sorted(mux_devices, key=lambda d: 0 if _connection_type_from_mux(d) == "usb" else 1)
-    _direct_usb_present = {
-        device.serial.lower() for device in mux_devices
-        if device.serial and _connection_type_from_mux(device) == "usb"
-    }
-
     for mux_device in mux_devices:
         udid = mux_device.serial
         if not udid or udid.lower() in seen_udids:
@@ -246,7 +186,7 @@ async def _scan_devices() -> list[DeviceInfo]:
                         transport="rsd",
                         connection_type=connection_type,
                         status="ready",
-                        direct_paired=pairing_store.exists(udid),
+                        direct_paired=pairing_manager.exists(udid),
                     )
                 )
             else:
@@ -259,7 +199,7 @@ async def _scan_devices() -> list[DeviceInfo]:
                         connection_type=connection_type,
                         status="error",
                         detail=str(e),
-                        direct_paired=pairing_store.exists(udid),
+                        direct_paired=pairing_manager.exists(udid),
                     )
                 )
 
@@ -306,7 +246,7 @@ async def _scan_devices() -> list[DeviceInfo]:
                 direct = DeviceInfo(
                     udid=key,
                     name=key,
-                    ios_version=pairing_store.load_version(key) or "unknown",
+                    ios_version=pairing_manager.load_version(key) or "unknown",
                     transport="lockdown",
                     connection_type="wireless_direct",
                     ip_address=ip,
@@ -321,79 +261,29 @@ async def _scan_devices() -> list[DeviceInfo]:
 
 
 async def _describe_direct(udid: str, ip: str) -> DeviceInfo:
-    async with await _connect_direct_tcp(udid, ip) as lockdown:
-        return DeviceInfo(
-            udid=lockdown.udid,
-            name=lockdown.all_values.get("DeviceName", lockdown.udid),
-            ios_version=lockdown.product_version,
-            transport="lockdown",
-            connection_type="wireless_direct",
-            ip_address=ip,
-            direct_paired=True,
-            status="ready",
-            detail="Direct TCP 定位通道已就緒。",
-        )
+    return await _direct_tcp_adapter.describe(udid, ip)
 
 
 async def _connect_direct_tcp(udid: str, ip: str) -> LockdownClient:
-    record = pairing_store.load(udid)
-    if record is None:
-        raise ValueError("這台手機尚未在此電腦完成無線授權。")
-    lockdown = await create_direct_lockdown(hostname=ip, udid=udid, pair_record=record)
-    if not lockdown.paired or lockdown.udid.lower() != udid.lower():
-        await lockdown.close()
-        raise ValueError("無線連線的手機與已授權裝置不符，或授權已失效。")
-    return lockdown
+    return await _direct_tcp_adapter.connect(udid, ip)
 
 
 async def enable_direct_pairing(udid: str) -> None:
-    async with await create_using_usbmux(serial=udid, connection_type="USB", autopair=False) as lockdown:
-        if not lockdown.paired or lockdown.pair_record is None or lockdown.udid.lower() != udid.lower():
-            raise ValueError("請用 USB 接上手機、解鎖並選擇信任此電腦。")
-        modern = Version(lockdown.product_version) >= IOS_17
-        if modern:
-            # A RemotePairing file can still exist after the phone has rejected
-            # its key. This happens, for example, after the phone restarts its
-            # wireless pairing service while moving between networks. Merely
-            # checking the filename then leaves the user permanently stuck.
-            # Revalidate over the already trusted USB channel every time this
-            # action is requested; autopair refreshes an invalid key in place.
-            try:
-                service = await RemotePairingLockdownService.create(lockdown)
-                try:
-                    try:
-                        await service.connect(autopair=True)
-                    except RemotePairingCompletedError:
-                        # Pair setup closes the channel; reopen it to verify the
-                        # record before exposing Wireless Direct as enabled.
-                        await service.close()
-                        service = await RemotePairingLockdownService.create(lockdown)
-                        await service.connect(autopair=False)
-                finally:
-                    await service.close()
-            except Exception as exc:
-                raise ValueError("無法透過 USB 完成無線 RSD 授權。請解鎖手機、確認已信任此電腦後重試。") from exc
-            if udid.lower() not in {identifier.lower() for identifier in iter_remote_paired_identifiers()}:
-                raise ValueError("USB 無線 RSD 授權未產生可用的配對紀錄。請重新連接手機後重試。")
-        if not await lockdown.get_enable_wifi_connections():
-            await lockdown.set_enable_wifi_connections(True)
-            if not await lockdown.get_enable_wifi_connections():
-                raise RuntimeError("手機未啟用無線連線，請保持 USB 連接後重試。")
-        # iOS 16's image mounter may close its service connection over Wi-Fi.
-        # Prepare the Developer Disk Image while USB is available, then use
-        # the already-mounted developer service over direct TCP.
-        if not modern:
-            await ensure_mounted(lockdown)
-        pairing_store.save(udid, lockdown.pair_record)
-        pairing_store.save_version(udid, lockdown.product_version)
-        revision = device_revision_ledger.bump(udid)
-        device_registry.record_authorization(
-            udid,
-            AuthorizationState.PAIRED,
-            revision=revision,
-            legacy_route=None,
-        )
-        _device_management_service.invalidate()
+    await pairing_manager.enable(
+        udid,
+        create_usb_lockdown=create_using_usbmux,
+        create_remote_service=RemotePairingLockdownService.create,
+        remote_identifiers=iter_remote_paired_identifiers,
+        ensure_mounted=ensure_mounted,
+    )
+    revision = device_revision_ledger.bump(udid)
+    device_registry.record_authorization(
+        udid,
+        AuthorizationState.PAIRED,
+        revision=revision,
+        legacy_route=None,
+    )
+    _device_management_service.invalidate()
 
 
 def _has_active_session(udid: str) -> bool:
@@ -430,7 +320,7 @@ async def has_blocking_session(udid: str) -> bool:
 
 
 async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    if not pairing_store.exists(udid):
+    if not pairing_manager.exists(udid):
         raise ValueError("請先用 USB 在裝置管理設定無線授權。")
     tunnel = None
     try:
@@ -458,10 +348,10 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
             status="ready",
             detail="無線 RSD 定位通道已就緒。",
         )
-        pairing_store.save_version(udid, rsd.product_version)
+        pairing_manager.save_version(udid, rsd.product_version)
         if actual_ip and not actual_ip.startswith("127."):
             try:
-                pairing_store.save_address(udid, actual_ip)
+                pairing_manager.save_address(udid, actual_ip)
                 _direct_transport_adapter.install_address(udid, actual_ip)
             except Exception as e:
                 logger.warning("Failed to save direct address %s for %s: %s", actual_ip, udid, e)
@@ -489,7 +379,7 @@ async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
     # 1. Non-destructively probe iOS 17+ paired devices. A healthy session
     # protects ongoing navigation, so endpoint matching skips that device.
     ios17_cands = list(iter_remote_paired_identifiers())
-    ios17_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
+    ios17_cands.sort(key=lambda c: 0 if pairing_manager.load_address(c) == ip else 1)
 
     async def probe_remote_pairing(cand: str):
         # Endpoint selection only verifies an existing authorization.
@@ -537,8 +427,8 @@ async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
 
     # 2. Non-destructively probe iOS 16 paired devices.
     if not matched_udid:
-        ios16_cands = pairing_store.list_udids()
-        ios16_cands.sort(key=lambda c: 0 if pairing_store.load_address(c) == ip else 1)
+        ios16_cands = pairing_manager.list_udids()
+        ios16_cands.sort(key=lambda c: 0 if pairing_manager.load_address(c) == ip else 1)
         for cand in ios16_cands:
             if await has_blocking_session(cand):
                 logger.info("iOS 16 candidate %s has an active session, skipping probe", cand)
@@ -570,7 +460,7 @@ async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
 
 
 async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
-    saved_version = pairing_store.load_version(udid)
+    saved_version = pairing_manager.load_version(udid)
     is_ios17 = (saved_version and Version(saved_version) >= IOS_17) or (
         saved_version is None and udid.lower() in {identifier.lower() for identifier in iter_remote_paired_identifiers()}
     )
@@ -593,7 +483,7 @@ async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjou
     if ip and not fallback_bonjour:
         candidate_addresses = [ip]
     else:
-        cached = pairing_store.load_address(udid)
+        cached = pairing_manager.load_address(udid)
         candidate_addresses: list[str] = []
         if ip:
             candidate_addresses.append(ip)
@@ -610,8 +500,9 @@ async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjou
                 if "." in ip_str and not ip_str.startswith("127.") and ip_str not in candidate_addresses:
                     candidate_addresses.append(ip_str)
 
-        # Also add addresses from _discovered_direct_endpoints
-        for ep_info in _discovered_direct_endpoints.values():
+        # Endpoint observations are candidates only; this command explicitly
+        # chooses whether to probe them and cannot mutate scanner state.
+        for ep_info in direct_endpoint_scanner.cached_endpoints():
             ep_ip = ep_info.get("ip")
             if ep_ip and ep_ip not in candidate_addresses:
                 candidate_addresses.append(ep_ip)
@@ -633,7 +524,7 @@ async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjou
                 await service.close()
         except Exception as exc:
             raise ValueError("TCP 已連線，但手機的定位服務尚未就緒。請重新接上 USB 並更新無線授權。") from exc
-        pairing_store.save_address(udid, address)
+        pairing_manager.save_address(udid, address)
         _direct_transport_adapter.install_address(udid, address)
         _device_management_service.invalidate()
         return device
@@ -668,336 +559,21 @@ async def disconnect_direct(udid: str) -> None:
 async def remove_direct_pairing(udid: str) -> int:
     return await transport_controller.disconnect_and_remove_pairing(
         udid,
-        lambda: pairing_store.remove(udid),
+        lambda: pairing_manager.remove(udid),
     )
-
-
-_discovered_direct_endpoints: dict[str, dict] = {}
 
 
 def direct_address(udid: str) -> str | None:
     return _direct_transport_adapter.addresses.get(udid.lower())
 
 
-def _normalize_mac(mac: str) -> str:
-    parts = mac.lower().replace("-", ":").split(":")
-    return ":".join(f"{int(p, 16):02x}" for p in parts if p)
-
-
-def _get_arp_map_sync() -> dict[str, str]:
-    arp_mac_to_ip: dict[str, str] = {}
-    try:
-        # Windows prints `IP  aa-bb-cc-dd-ee-ff  dynamic`; macOS prints
-        # `name (IP) at aa:bb:cc:dd:ee:ff`. ARP only supplements mDNS.
-        windows = platform.system() == "Windows"
-        out = subprocess.check_output(["arp", "-a" if windows else "-an"], text=True, stderr=subprocess.DEVNULL, timeout=1.5)
-        for line in out.splitlines():
-            m = (re.search(r"^\s*([\d.]+)\s+([0-9a-fA-F-]{17})\s+", line)
-                 if windows else re.search(r"\(([\d\.]+)\)\s+at\s+([0-9a-fA-F:]+)", line))
-            if m:
-                arp_mac_to_ip[_normalize_mac(m.group(2))] = m.group(1)
-    except Exception:
-        pass
-    return arp_mac_to_ip
-
-
-async def _get_arp_map_async() -> dict[str, str]:
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(_get_arp_map_sync), timeout=2.0)
-    except Exception:
-        return {}
-
-
-def _resolve_host_ips_sync(host: str) -> list[str]:
-    try:
-        return [
-            ai[4][0]
-            for ai in socket.getaddrinfo(host, None, socket.AF_INET)
-            if not ai[4][0].startswith("127.")
-        ]
-    except Exception:
-        return []
-
-
-async def _resolve_host_ips_async(host: str) -> list[str]:
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(_resolve_host_ips_sync, host), timeout=1.0)
-    except Exception:
-        return []
-
-
-def _ping_tcp_sync(ip: str, port: int = 49152) -> bool:
-    try:
-        with socket.create_connection((ip, port), timeout=0.25):
-            return True
-    except Exception:
-        return False
-
-
-async def _ping_tcp_async(ip: str, port: int = 49152) -> bool:
-    try:
-        return await asyncio.wait_for(asyncio.to_thread(_ping_tcp_sync, ip, port), timeout=0.5)
-    except Exception:
-        return False
-
-
-async def _browse_dns_sd_services(service_type: str, duration: float = 1.0) -> list[str]:
-    instances: list[str] = []
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "dns-sd", "-B", service_type, "local",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        end_time = asyncio.get_event_loop().time() + duration
-        while True:
-            rem = end_time - asyncio.get_event_loop().time()
-            if rem <= 0:
-                break
-            try:
-                line = await asyncio.wait_for(proc.stdout.readline(), timeout=rem)
-                if not line:
-                    break
-                text = line.decode(errors="ignore")
-                parts = text.strip().split()
-                if len(parts) >= 7 and parts[1] == "Add":
-                    name = " ".join(parts[6:])
-                    if name not in instances:
-                        instances.append(name)
-            except asyncio.TimeoutError:
-                break
-        try:
-            proc.kill()
-            await proc.wait()
-        except Exception:
-            pass
-    except Exception:
-        pass
-    return instances
-
-
-async def _resolve_dns_sd_instance(instance: str, service_type: str, duration: float = 0.8) -> tuple[str | None, int]:
-    host = None
-    port = 49152
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "dns-sd", "-L", instance, service_type, "local",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        end_time = asyncio.get_event_loop().time() + duration
-        while True:
-            rem = end_time - asyncio.get_event_loop().time()
-            if rem <= 0:
-                break
-            try:
-                line = await asyncio.wait_for(proc.stdout.readline(), timeout=rem)
-                if not line:
-                    break
-                text = line.decode(errors="ignore")
-                m = re.search(r"can be reached at ([^:]+):(\d+)", text)
-                if m:
-                    host = m.group(1).rstrip(".")
-                    port = int(m.group(2))
-                    break
-            except asyncio.TimeoutError:
-                break
-        try:
-            proc.kill()
-            await proc.wait()
-        except Exception:
-            pass
-    except Exception:
-        pass
-    return host, port
-
-
 async def list_direct_endpoints() -> list[dict]:
-    # Build a fresh snapshot for this scan round to prevent ghost endpoints
-    scan_endpoints: dict[str, dict] = {}
-    arp_map = await _get_arp_map_async()
-
-    # pymobiledevice3 11.3.1 already has a DNS-SD browser that retains the
-    # advertised port and the interface scope for IPv6 link-local addresses.
-    # Windows has no system `dns-sd` command, so use that browser directly.
-    if platform.system() == "Windows":
-        try:
-            services = await asyncio.wait_for(browse_remotepairing(timeout=1.0), timeout=1.5)
-            paired = {identifier.lower(): identifier for identifier in iter_remote_paired_identifiers()}
-            for service in services:
-                instance = re.split(r"\._remotepairing\._tcp\.local\.?$", service.instance, flags=re.IGNORECASE)[0]
-                verified_udid = paired.get(instance.lower())
-                for address in service.addresses:
-                    ip = address.full_ip
-                    if ":" in ip and "%" in ip:
-                        host, scope = ip.rsplit("%", 1)
-                        if not scope.isdecimal():
-                            try:
-                                # Windows sockets normally use a numeric IPv6
-                                # interface index, while mDNS may return a name.
-                                ip = f"{host}%{socket.if_nametoindex(scope)}"
-                            except OSError:
-                                logger.debug("Could not map IPv6 interface %s to an index", scope)
-                    if ip.startswith("127."):
-                        continue
-                    port = service.port
-                    endpoint = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
-                    scan_endpoints[endpoint] = {
-                        "udid": verified_udid,
-                        "ip": ip,
-                        "port": port,
-                        "endpoint": endpoint,
-                        "source": "remotepairing",
-                        "status": "history" if ip.startswith("169.254.") else "online",
-                        "last_connected": None,
-                        "device_name": service.host.removesuffix(".local") if service.host else None,
-                        "ios_version": "unknown",
-                    }
-        except Exception as exc:
-            logger.debug("RemotePairing mDNS browse failed: %s", exc)
-
-    # 1. Native macOS dns-sd discovery
-    if platform.system() == "Darwin":
-        try:
-            rp_insts = await _browse_dns_sd_services("_remotepairing._tcp", duration=1.0)
-
-            # Known paired identifiers to strictly verify DNS-SD instance names
-            rp_paired_identifiers = {i.lower(): i for i in iter_remote_paired_identifiers()}
-            known_udids = {u.lower(): u for u in pairing_store.list_udids()}
-
-            # Resolve remotepairing services
-            for inst in rp_insts:
-                host, port = await _resolve_dns_sd_instance(inst, "_remotepairing._tcp")
-                if host:
-                    dev_name = host.replace(".local", "")
-                    ips = await _resolve_host_ips_async(host)
-                    verified_udid = rp_paired_identifiers.get(inst.lower()) or known_udids.get(inst.lower())
-                    for ip in ips:
-                        # RemotePairing publishes its current listener port in
-                        # the SRV record. It can change when the phone leaves a
-                        # hotspot and joins another Wi-Fi network, so carrying
-                        # the old/default 49152 here makes the new IP unusable.
-                        ep_str = f"{ip}:{port}"
-                        is_link_local = ip.startswith("169.254.")
-                        scan_endpoints[ep_str] = {
-                            "udid": verified_udid,
-                            "ip": ip,
-                            "port": port,
-                            "endpoint": ep_str,
-                            "source": "remotepairing",
-                            "status": "history" if is_link_local else "online",
-                            "last_connected": None,
-                            "device_name": dev_name,
-                            "ios_version": "unknown",
-                        }
-
-        except Exception as e:
-            logger.debug("Native dns-sd browse failed: %s", e)
-
-    # 2. pymobiledevice3 browse_mobdev2
-    try:
-        services = await asyncio.wait_for(browse_mobdev2(timeout=1.0), timeout=1.5)
-        for service in services:
-            dev_name = service.host.replace(".local", "") if getattr(service, "host", None) else None
-            txt_props = getattr(service, "properties", {}) or {}
-            identifier = txt_props.get("identifier")
-            saved_version = pairing_store.load_version(identifier) if identifier else None
-            # mobdev2 advertises ordinary lockdown Wi-Fi, not an iOS 17+
-            # RemotePairing listener. Only expose it for a known, authorized
-            # pre-iOS-17 phone; otherwise it becomes a false green :49152 row.
-            if not identifier or not saved_version or Version(saved_version) >= IOS_17:
-                continue
-            service_port = int(getattr(service, "port", 62078) or 62078)
-            for address in getattr(service, "addresses", []):
-                try:
-                    ip_str = getattr(address, "ip", None) or str(address)
-                    if "." in ip_str and not ip_str.startswith("127."):
-                        ep_str = f"{ip_str}:{service_port}"
-                        is_link_local = ip_str.startswith("169.254.")
-                        if ep_str not in scan_endpoints:
-                            scan_endpoints[ep_str] = {
-                                "udid": identifier,
-                                "ip": ip_str,
-                                "port": service_port,
-                                "endpoint": ep_str,
-                                "source": "mobdev2",
-                                "status": "history" if is_link_local else "online",
-                                "last_connected": None,
-                                "device_name": dev_name,
-                                "ios_version": "unknown",
-                            }
-                        else:
-                            if dev_name and not scan_endpoints[ep_str].get("device_name"):
-                                scan_endpoints[ep_str]["device_name"] = dev_name
-                            if identifier and not scan_endpoints[ep_str].get("udid"):
-                                scan_endpoints[ep_str]["udid"] = identifier
-                except Exception:
-                    continue
-    except Exception as e:
-        logger.debug("browse_mobdev2 failed: %s", e)
-
-    # 3. Assemble results from fresh scan
-    endpoints: list[dict] = list(scan_endpoints.values())
-    seen_endpoints = set(scan_endpoints.keys())
-
-    # 4. Pairing store historical records
-    for udid in pairing_store.list_udids():
-        addr = pairing_store.load_address(udid)
-        ver = pairing_store.load_version(udid)
-        if addr:
-            mtime_iso = None
-            try:
-                addr_path = pairing_store._path(udid).with_suffix(".address")
-                if addr_path.is_file():
-                    dt = datetime.fromtimestamp(addr_path.stat().st_mtime, tz=timezone.utc)
-                    mtime_iso = dt.isoformat()
-            except Exception:
-                pass
-            ep_str = f"{addr}:49152"
-            if ep_str not in seen_endpoints:
-                is_link_local = addr.startswith("169.254.")
-                reachable = is_link_local or await _ping_tcp_async(addr, 49152)
-                if not reachable:
-                    continue
-
-                seen_endpoints.add(ep_str)
-                endpoints.append({
-                    "udid": udid,
-                    "ip": addr,
-                    "port": 49152,
-                    "endpoint": ep_str,
-                    "source": "paired",
-                    "status": "history",
-                    "last_connected": mtime_iso,
-                    "device_name": None,
-                    "ios_version": ver or "unknown",
-                })
-            else:
-                for ep in endpoints:
-                    if ep["endpoint"] == ep_str:
-                        if not ep.get("last_connected") and mtime_iso:
-                            ep["last_connected"] = mtime_iso
-                        if ver and ep.get("ios_version") == "unknown":
-                            ep["ios_version"] = ver
-
-    # Update global cache with fresh snapshot
-    _discovered_direct_endpoints.clear()
-    _discovered_direct_endpoints.update(scan_endpoints)
-
-    # Sort: "online" (green) first, then "history" (orange)
-    endpoints.sort(key=lambda x: (0 if x.get("status") == "online" else 1, x.get("endpoint", "")))
-    return endpoints
+    return await direct_endpoint_scanner.list_direct_endpoints()
 
 
 async def _list_tunnel_udids() -> set[str]:
     """Read tunneld's HTTP listing without opening any RSD connections."""
-    global _last_tunnel_discovery_error
-    try:
-        tunnels = await asyncio.wait_for(asyncio.to_thread(_list_tunnels), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
-    except Exception as exc:
-        _last_tunnel_discovery_error = f"{type(exc).__name__}: {' '.join(str(exc).split())[:300]}"
-        return set()
-    return {str(udid) for udid in tunnels if udid}
+    return await system_wifi_scanner.scan(_list_tunnels, timeout=DEVICE_LIST_TIMEOUT_SECONDS)
 
 
 async def _describe_device(
@@ -1017,7 +593,7 @@ async def _describe_device(
             transport="lockdown",
             connection_type=connection_type,
             status="ready",
-            direct_paired=pairing_store.exists(udid),
+            direct_paired=pairing_manager.exists(udid),
         )
 
     if not tunnel_udids or udid.lower() not in {known_udid.lower() for known_udid in tunnel_udids}:
@@ -1028,7 +604,7 @@ async def _describe_device(
             transport="rsd",
             connection_type=connection_type,
             status="tunnel_required",
-            direct_paired=pairing_store.exists(udid),
+            direct_paired=pairing_manager.exists(udid),
             detail="Run 'sudo python3 -m pymobiledevice3 remote tunneld' and reconnect the device.",
         )
 
@@ -1039,7 +615,7 @@ async def _describe_device(
         transport="rsd",
         connection_type=connection_type,
         status="ready",
-        direct_paired=pairing_store.exists(udid),
+        direct_paired=pairing_manager.exists(udid),
     )
 
 
@@ -1059,16 +635,16 @@ async def get_lockdown(
 ) -> LockdownClient:
     key = udid.lower()
     if route == "usb":
-        return await create_using_usbmux(serial=udid, connection_type="USB")
+        return await _usb_transport_adapter.lockdown(udid)
     if route == "wifi":
-        return await create_using_usbmux(serial=udid, connection_type="Network")
+        return await _system_wifi_transport_adapter.lockdown(udid)
     if route == "wireless_direct":
         ip = direct_address(udid)
         if ip is None:
             raise RuntimeError("The bound Wireless Direct lockdown runtime is no longer available.")
         return await _connect_direct_tcp(udid, ip)
-    if key in _direct_usb_present:
-        return await create_using_usbmux(serial=udid, connection_type="USB")
+    if usb_scanner.is_present(key):
+        return await _usb_transport_adapter.lockdown(udid)
     ip = direct_address(udid)
     if ip is not None:
         # Only an explicit successful Direct connection populates this
@@ -1090,21 +666,13 @@ async def get_rsd(
         return tunnel.rsd
 
     if route == "usb":
-        if key not in _direct_usb_present:
-            raise RuntimeError("The bound USB RSD runtime is no longer available.")
-        rsd = await get_tunneld_device_by_udid(udid)
-        if rsd is None:
-            raise RuntimeError("The bound USB RSD runtime is no longer available.")
-        return rsd
+        return await _usb_transport_adapter.rsd(udid)
 
     if route == "wifi":
-        rsd = await get_tunneld_device_by_udid(udid)
-        if rsd is None:
-            raise RuntimeError("The bound system Wi-Fi RSD runtime is no longer available.")
-        return rsd
+        return await _system_wifi_transport_adapter.rsd(udid)
 
     # Physical USB has the highest idle priority.
-    if key in _direct_usb_present:
+    if usb_scanner.is_present(key):
         rsd = await get_tunneld_device_by_udid(udid)
         if rsd is not None:
             return rsd

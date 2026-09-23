@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from core import device_manager
+from core import device_manager, pairing_store
 from core.device_ports import DiscoverySnapshot
 from models.schemas import DeviceInfo
 
@@ -29,8 +29,8 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         # A finished snapshot is deliberately retained for callers that joined
         # a scan; invalidate through the public service boundary between tests.
         device_manager._device_management_service.invalidate()
-        device_manager._last_usb_discovery_diagnostic = None
-        stored_records = patch.object(device_manager.pairing_store, "list_udids", return_value=[])
+        device_manager.usb_scanner.reset()
+        stored_records = patch.object(pairing_store, "list_udids", return_value=[])
         stored_records.start()
         self.addCleanup(stored_records.stop)
 

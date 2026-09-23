@@ -422,7 +422,7 @@ simulation_engine.start(loop=True) 會無限循環
 
 ### 5.5 設備管理 — 目標模組邊界
 
-> 本節是已接受的目標架構。遷移期間舊 `device_manager.py` 與新模組會依 strangler 路線短暫並存；不得因此放寬下列邊界。
+> P4-A 已完成後端 adapter 拆分。`device_manager.py` 是相容 facade 與 command 協調層；狀態由下列模組擁有。
 
 | 模組 | 唯一責任 | 禁止事項 |
 |---|---|---|
@@ -432,6 +432,8 @@ simulation_engine.start(loop=True) 會無限循環
 | `transport_controller.py` | 建立、切換與關閉 transport | 只接受 command、Registry policy effect、session failure 或 shutdown；不得由 GET 或 scanner 直接呼叫 |
 | `pairing_manager.py` | 建立、驗證、刷新及刪除配對能力 | 不得把已配對視為已連線 |
 | `device_session.py` | 維護定位 session、`bound_route` 與 transport identity | 只能透過注入的 runtime port 取得指定 route；不得反向 import manager |
+
+實際 route adapter 位於 `core/transport/usb_adapter.py`、`system_wifi_adapter.py`、`direct_tcp_adapter.py` 與 `direct_rsd_adapter.py`。Discovery adapter 位於 `core/discovery/`；配對紀錄與 USB 授權刷新由 `core/pairing_manager.py` 管理。舊 `core/direct_transport_adapter.py` 只提供相容 import。
 
 設備內部狀態必須分開保存 `availability`、`direct_runtime`、`authorization`、`user_intent`、`selected_route`、`session` 與 `revision`。USB、系統 Wi-Fi 與 Direct 候選端點可同時被觀測到；active Direct 的 runtime 健康只能由 Transport Controller 或實際 session I/O 更新。對外清單只能顯示 policy 算出的單一 `selected_route`。
 

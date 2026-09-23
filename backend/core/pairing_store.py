@@ -4,6 +4,7 @@ import os
 import plistlib
 import re
 import tempfile
+from datetime import datetime, timezone
 from ipaddress import ip_address
 from pathlib import Path
 
@@ -98,6 +99,13 @@ def load_address(udid: str) -> str | None:
         ip_obj = ip_address(clean_ip)
         return f"{ip_obj}%{scope}" if scope else str(ip_obj)
     except (FileNotFoundError, ValueError):
+        return None
+
+
+def address_modified_at(udid: str) -> str | None:
+    try:
+        return datetime.fromtimestamp(_path(udid).with_suffix(".address").stat().st_mtime, tz=timezone.utc).isoformat()
+    except OSError:
         return None
 
 
