@@ -8,9 +8,19 @@ from fastapi.staticfiles import StaticFiles
 
 from api import device, favorites, history, location, map, mobile, multi_stop, navigate, random_walk, route_loop, websocket
 from config import API_HOST, API_PORT, ensure_app_data_dir
-from core import device_manager, events
+from core import device_manager, device_session, events
 from services.mobile_auth import valid_session
 from services.mobile_web import mobile_web_dir, mobile_web_ready
+
+
+device_session.configure_session_runtime(device_session.DeviceSessionRuntime(
+    get_device=device_manager.get_device,
+    get_lockdown=device_manager.get_lockdown,
+    get_rsd=device_manager.get_rsd,
+    ensure_mounted=device_manager.ensure_mounted,
+    cleanup_failed_direct=device_manager.transport_controller.cleanup_failed_direct,
+    apply_policy_effects=device_manager.transport_controller.apply_policy_effects,
+))
 
 
 @asynccontextmanager

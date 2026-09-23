@@ -11,6 +11,7 @@ from pymobiledevice3.exceptions import RemotePairingCompletedError
 
 from api.device import _require_desktop
 from core import device_manager, device_session, pairing_store
+from core.device_aggregate import DirectRuntimeState
 from core.direct_lockdown import DirectTcpLockdownClient
 from models.schemas import DeviceInfo
 
@@ -417,7 +418,11 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager, "_connect_direct_tcp", AsyncMock(return_value=lockdown)) as tcp,
             patch.object(device_manager, "create_using_usbmux", AsyncMock()) as usbmux,
         ):
-            wrapper = device_session.LockdownSimulateLocationWrapper("A1B2C3D4")
+            wrapper = device_session.LockdownSimulateLocationWrapper(
+                "A1B2C3D4",
+                "wireless_direct",
+                device_manager.get_lockdown,
+            )
             await wrapper.set(25.0, 121.0)
             await wrapper.clear()
             self.assertEqual(tcp.await_count, 2)
@@ -457,9 +462,12 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             async def start_lockdown_developer_service(self, _name):
                 return Service()
 
-        with patch.object(device_manager, "get_lockdown", AsyncMock(return_value=Lockdown())):
+        get_lockdown = AsyncMock(return_value=Lockdown())
+        with patch.object(device_manager, "get_lockdown", get_lockdown):
             with self.assertRaises(ConnectionError):
-                await device_session.LockdownSimulateLocationWrapper("A1B2C3D4").set(25.0, 121.0)
+                await device_session.LockdownSimulateLocationWrapper(
+                    "A1B2C3D4", "wireless_direct", get_lockdown
+                ).set(25.0, 121.0)
 
         self.assertTrue(service_closed)
         self.assertTrue(lockdown_closed)
@@ -471,9 +479,12 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         lockdown.__aenter__.return_value = lockdown
         lockdown.start_lockdown_developer_service.return_value = service
 
-        with patch.object(device_manager, "get_lockdown", AsyncMock(return_value=lockdown)):
+        get_lockdown = AsyncMock(return_value=lockdown)
+        with patch.object(device_manager, "get_lockdown", get_lockdown):
             with self.assertRaises(asyncio.CancelledError):
-                await device_session.LockdownSimulateLocationWrapper("A1B2C3D4").clear()
+                await device_session.LockdownSimulateLocationWrapper(
+                    "A1B2C3D4", "wireless_direct", get_lockdown
+                ).clear()
 
         service.__aexit__.assert_awaited_once()
         lockdown.__aexit__.assert_awaited_once()
@@ -536,14 +547,20 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         """網路換 IP 後，只清理已確認斷線的 session，讓同一 UDID 可重新探測。"""
         udid = "A1B2C3D4"
         closed_tunnel = SimpleNamespace(rsd=None)
+        stale_session = SimpleNamespace(close=AsyncMock())
         with (
             patch.object(device_manager, "_has_active_session", return_value=True),
             patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): closed_tunnel}),
-            patch.object(device_session, "close_session", AsyncMock()) as close_session,
+            patch.object(device_manager.device_session_store, "pop", return_value=stale_session),
+            patch.object(
+                device_manager.device_registry,
+                "get",
+                return_value=SimpleNamespace(direct_runtime=DirectRuntimeState.READY),
+            ),
             patch.object(device_manager.transport_controller, "cleanup_failed_direct", AsyncMock()) as disconnect,
         ):
             self.assertFalse(await device_manager.has_blocking_session(udid))
-        close_session.assert_awaited_once_with(udid)
+        stale_session.close.assert_awaited_once_with()
         disconnect.assert_awaited_once_with(udid)
 
     async def test_live_wireless_session_still_blocks_transport_switch(self) -> None:
@@ -551,10 +568,10 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(device_manager, "_has_active_session", return_value=True),
             patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {udid.lower(): SimpleNamespace(rsd=object())}),
-            patch.object(device_session, "close_session", AsyncMock()) as close_session,
+            patch.object(device_manager.device_session_store, "pop") as pop_session,
         ):
             self.assertTrue(await device_manager.has_blocking_session(udid))
-        close_session.assert_not_awaited()
+        pop_session.assert_not_called()
 
     async def test_selected_direct_device_is_returned_when_scan_has_no_system_route(self) -> None:
         direct = DeviceInfo(udid="A1B2C3D4", name="Phone", ios_version="16.7", transport="lockdown", connection_type="wireless_direct", status="ready")

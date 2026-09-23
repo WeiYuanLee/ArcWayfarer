@@ -20,7 +20,7 @@
 
 ## 1. 現況病根診斷（已對照原始碼查證）
 
-以下每一條都已對重構前基線 commit `c805349` 的 `backend/core/device_manager.py`（1022 行）、`device_session.py`、`frontend/src/hooks/useDevices.ts`、`backend/tests/test_wireless_direct.py` 逐行核對。已完成項目與目前測試基線以[實作計畫](device-management-implementation-plan.zh-TW.md#實作進度2026-09-22)為準。
+以下每一條都已對重構前基線 commit `c805349` 的 `backend/core/device_manager.py`（1022 行）、`device_session.py`、`frontend/src/hooks/useDevices.ts`、`backend/tests/test_wireless_direct.py` 逐行核對。已完成項目與目前測試基線以[實作計畫](device-management-implementation-plan.zh-TW.md#實作進度2026-09-23)為準。
 
 ### 1.1 確認成立的缺陷
 
@@ -119,6 +119,8 @@ DeviceAggregate
 └── revision: int         # 每次變更遞增，供前端丟棄過期快照
 ```
 
+P3-B 起，`session` 另保存建立連線時的 `transport_identity`。`bound_route` 固定政策上的 route，identity 用來分辨同 route 的新舊底層 handle；舊 handle 的晚到失敗不得移除新 handle 或清理新 runtime。
+
 對外 API 仍只暴露單一 `selected_route`（USB / Wi-Fi / Wireless Direct），但它是**算出來的結果**，不再拿它代表所有底層可用連線。
 
 ### 3.2 route_policy — 純函式決策
@@ -147,7 +149,15 @@ select_route(device):
 | `transport_controller` | **唯一**能授權建立 / 關閉 tunnel 的 command boundary | 只由明確 command、Registry policy effect、session 失敗事件或 application shutdown 觸發；HTTP GET 不得觸發 |
 | `direct_transport_adapter` | 執行底層 tunnel open／close 並保存 runtime handle | 不含 route policy；只能由 controller 管理的 command path 呼叫 |
 | `pairing_manager` | 憑證建立 / 驗證 / 刷新 / 刪除 | 配對紀錄 ≠ 已連線 |
-| `device_session` | 持有明確 `bound_route` | 不再反向 import manager 查全域 |
+| `device_session` | 持有明確 `bound_route` 與 transport identity，發布 session event | 以注入 runtime port 取得 route-specific transport；不反向 import manager |
+
+### 3.4 P3 完成後的實際邊界（2026-09-23）
+
+- Production public reads 固定由 `DeviceRegistry` 投影；過渡用的 `DEVICE_REGISTRY_READS` 已移除。
+- `TransportController` 是 Direct runtime 建立、清理、USB takeover 與 shutdown 的 command boundary。
+- `DeviceSessionStore` 擁有 active session handle；Registry 保存可序列化的 session 狀態、`bound_route` 與 transport identity。
+- `device_session` 透過啟動時注入的 runtime port 呼叫 manager facade，兩個核心模組不再互相 import。
+- discovery 的舊 scanner facade 仍待 P4 拆成 USB、system Wi-Fi 與 Direct endpoint adapters。
 
 ---
 
@@ -194,7 +204,7 @@ flowchart LR
 | **P0** | 把 §4 不變量寫進 ARCHITECTURE.md + ADR；建立**不碰內部全域**的行為測試（含多裝置隔離、競爭、網路抖動、session pinning） | 在修正分支證明新測試對父 commit 會失敗；測試與最小修正一同合併，合併結果全綠 |
 | **P1** | 止血三刀，改動最小：① 掃描不再 clear/disconnect（移除 `:224`、`:236-241` 的清除）② 移除跨裝置清理（`:495-497`）③ 前端 revision + pendingForegroundRefresh | P0 的止血相關測試轉綠，其餘行為不變 |
 | **P2** | 導入 `DeviceRegistry` + `route_policy` 純函式，與現有全域**並存**；先讓 policy 接管 selected_route 計算 | route policy table test 全綠；對外 API 輸出不變 |
-| **P3** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 改持 `bound_route`、斷開對 manager 的反向依賴 | 只剩單一入口能改 transport；循環依賴消失 |
+| **P3（已完成）** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 持有 `bound_route` 與 transport identity，斷開對 manager 的反向依賴 | 單一入口管理 Direct transport；active I/O 固定 route；循環依賴消失 |
 | **P4** | 拆 `discovery/`、`pairing_manager`，移除 9 個全域與死狀態 `_system_routes`；拆前端 modal | 舊全域刪除後全測試綠 |
 
 **護欄：** 每階段獨立 PR、獨立可回退。任何一階段若讓行為測試轉紅，先停、先修，不進下一階段。P0 的行為測試是整個重寫的安全網——沒有它，全面重寫就是在最脆弱的子系統上蒙眼開刀。

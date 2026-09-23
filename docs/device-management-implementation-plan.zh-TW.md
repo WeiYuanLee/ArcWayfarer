@@ -8,7 +8,7 @@
 
 ---
 
-## 實作進度（2026-09-22）
+## 實作進度（2026-09-23）
 
 - [x] **P0-A**：加入 `DeviceDiscoveryPort`、immutable `DiscoverySnapshot`、公開 `DeviceManagementService` 與可控制完成順序的 fake。
 - [x] **P0-B（第一批）**：加入 query safety、source failure、single-flight、多設備失敗隔離、Direct I/O failure 等回歸案例；revision 競爭案例隨 P1-C 完成。
@@ -16,10 +16,11 @@
 - [x] **P1-B**：移除跨設備清理；pair／connect／disconnect／remove／clear-address 使用引用計數 keyed lock，同 UDID 序列化、不同設備可並行，auto endpoint 先以 endpoint key 防止重複探測，辨識後進入 UDID lock。
 - [x] **P1-C**：加入 `DeviceRevisionLedger`、`GET /api/devices/snapshot`、command revision、同 snapshot 投影、前端 stale revision 拒絕與單一 pending foreground refresh。
 - [x] **P2-A**：加入 immutable `DeviceAggregate`、純函式 `route_policy` 與 shadow `DeviceRegistry`；配對、Direct connect／disconnect command 同步旁路狀態，差異與 policy effect 只記錄不執行，HTTP GET 不發布 Registry event。
-- [x] **P2-B**：背景 `DeviceDiscoveryCoordinator` 發布 observation；snapshot、`get_device()` 與舊清單預設改讀 Registry，主動刷新使用獨立 POST command；加入 session pinning event、source failure 保留、D9 未知 tunneld route 過濾並移除 `_system_routes`。`DEVICE_REGISTRY_READS=legacy|registry` 暫留至 P3。
+- [x] **P2-B**：背景 `DeviceDiscoveryCoordinator` 發布 observation；snapshot、`get_device()` 與舊清單改讀 Registry，主動刷新使用獨立 POST command；加入 session pinning event、source failure 保留、D9 未知 tunneld route 過濾並移除 `_system_routes`。
 - [x] **P3-A**：加入 `TransportController` 與 `DirectTransportAdapter`；connect／disconnect、USB idle takeover、Direct I/O failure、配對移除及 shutdown cleanup 全部通過 Controller，以 `(udid, revision, effect_type)` 去重並拒絕 stale effect。Discovery／GET／Policy 不持有破壞性能力。
+- [x] **P3-B**：`DeviceSession` 固定保存 `bound_route` 與 transport identity，session start／stop／failure 發布 Registry event；route-specific Lockdown／RSD 查詢禁止 active session 靜默換線，舊 handle 的晚到錯誤不能清理新 runtime，部分建立失敗會完整釋放 DVT context。以 runtime injection 移除 `device_manager ↔ device_session` 循環依賴，並移除 `DEVICE_REGISTRY_READS` 雙模式開關。
 
-目前驗證基線：後端 108 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P3-A 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（SHA-256：`7bab42f17a82188d6e48494b0cbc00edcbc5f863335c9c554f293513d714ec87`）。
+目前驗證基線：後端 116 項測試全綠；前端 107 項測試與 TypeScript 型別檢查全綠。P3-B 的 macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`f36a7383a5650593e8149a59965b969001cc2f65d0d58eaaaeb5591a8ec7c892`）。
 
 ---
 
@@ -238,7 +239,7 @@ GET /api/devices/snapshot
 3. 舊 `/api/devices` 從 Registry snapshot 投影。
 4. 移除 `_system_routes` 與重複 route 推論。
 
-**回退：** feature flag `DEVICE_REGISTRY_READS=legacy|registry` 僅保留到 P3 完成；不得成為永久雙模式。
+**回退：** P2 期間曾使用 `DEVICE_REGISTRY_READS=legacy|registry` 作為短期回退；P3 完成後已依約移除，後續回退以 commit 為單位，不恢復永久雙模式。
 
 **驗收：**
 
@@ -291,6 +292,14 @@ Discovery scanner 只發布 observation；Policy 只回傳 effect 描述；Contr
 - 導航、瞬移、搖桿、路線循環、多點、隨機漫步全部通過 session pinning 測試。
 - USB／Wi-Fi／Direct 各自失敗時不誤報「已還原定位」。
 - Session 結束後 USB takeover 只發生一次。
+
+**完成證據（2026-09-23）：**
+
+- `DeviceSessionStore.pop(expected=...)` 保證舊 handle 的晚到錯誤不能移除新 session；Direct cleanup 只作用於仍為 current 的失敗 session。
+- `get_lockdown()`／`get_rsd()` 接受明確 route，Wi-Fi session 不會選到 Direct runtime，Direct session 也不會退回 tunneld。
+- 所有定位模式仍共用 `device_session.set_location()`，因此使用相同的 session binding；USB、Wi-Fi、Direct 失敗與 restore 行為由後端完整測試覆蓋。
+- Registry 的 active → idle policy effect 與 Controller revision 去重測試確認 USB takeover 每一 revision 最多執行一次。
+- Production 啟動後固定由 Registry 提供 public read model；舊 service 僅保留為 P4 前的 discovery adapter 與未啟動 coordinator 的測試 seam。
 
 ---
 

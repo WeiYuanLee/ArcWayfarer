@@ -1,7 +1,6 @@
 import asyncio
 import ipaddress
 import logging
-import os
 import platform
 import re
 import socket
@@ -26,10 +25,12 @@ from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 from core import pairing_store
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
-from core.device_aggregate import AuthorizationState, DirectRuntimeState
+from core.device_aggregate import AuthorizationState, DirectRuntimeState, SessionState
 from core.device_discovery_coordinator import DeviceDiscoveryCoordinator
 from core.device_registry import device_registry
 from core.device_revision import device_revision_ledger
+from core.device_session_state import publish_session_state
+from core.device_session_store import device_session_store
 from core.device_service import DeviceManagementService
 from core.direct_transport_adapter import DirectTransportAdapter
 from core.keyed_async_lock import device_command_locks
@@ -107,14 +108,6 @@ _device_discovery_coordinator = DeviceDiscoveryCoordinator(
 )
 
 
-def _registry_reads_enabled() -> bool:
-    mode = os.environ.get("DEVICE_REGISTRY_READS", "registry").strip().lower()
-    if mode not in {"legacy", "registry"}:
-        logger.warning("Unknown DEVICE_REGISTRY_READS=%r; using registry", mode)
-        return True
-    return mode == "registry"
-
-
 async def start_device_discovery() -> None:
     await _device_discovery_coordinator.start()
 
@@ -128,7 +121,7 @@ async def shutdown_device_transports() -> None:
 
 
 async def refresh_device_discovery() -> None:
-    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+    if _device_discovery_coordinator.started:
         await _device_discovery_coordinator.refresh_once()
         return
     _device_management_service.invalidate()
@@ -172,14 +165,14 @@ def get_usb_discovery_diagnostic() -> dict[str, str] | None:
 
 
 async def list_devices(include_wifi: bool = True) -> list[DeviceInfo]:
-    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+    if _device_discovery_coordinator.started:
         await _wait_for_registry()
         return list(device_registry.projected_snapshot(include_wifi=include_wifi).devices)
     return await _device_management_service.list_devices(include_wifi=include_wifi)
 
 
 async def get_device_snapshot(include_wifi: bool = True) -> DiscoverySnapshot:
-    if _registry_reads_enabled() and _device_discovery_coordinator.started:
+    if _device_discovery_coordinator.started:
         await _wait_for_registry()
         return device_registry.projected_snapshot(include_wifi=include_wifi)
     return await _device_management_service.projected_snapshot(include_wifi=include_wifi)
@@ -404,11 +397,7 @@ async def enable_direct_pairing(udid: str) -> None:
 
 
 def _has_active_session(udid: str) -> bool:
-    try:
-        from core import device_session
-        return device_session.has_session(udid)
-    except Exception:
-        return False
+    return device_session_store.has(udid)
 
 
 async def has_blocking_session(udid: str) -> bool:
@@ -428,9 +417,11 @@ async def has_blocking_session(udid: str) -> bool:
     if tunnel is None or tunnel.rsd is not None:
         return True
 
-    from core import device_session
-
-    await device_session.close_session(udid)
+    session = device_session_store.pop(udid)
+    if session is not None:
+        await session.close()
+        publish_session_state(udid, SessionState.IDLE, None, compare_legacy=False)
+        await transport_controller.apply_policy_effects()
     current = device_registry.get(udid)
     if current is None or current.direct_runtime != DirectRuntimeState.DISCONNECTED:
         await transport_controller.cleanup_failed_direct(udid)
@@ -1062,8 +1053,20 @@ async def get_device(udid: str) -> DeviceInfo:
     raise ValueError(f"Device not found: {udid}")
 
 
-async def get_lockdown(udid: str) -> LockdownClient:
+async def get_lockdown(
+    udid: str,
+    route: DeviceConnectionType | None = None,
+) -> LockdownClient:
     key = udid.lower()
+    if route == "usb":
+        return await create_using_usbmux(serial=udid, connection_type="USB")
+    if route == "wifi":
+        return await create_using_usbmux(serial=udid, connection_type="Network")
+    if route == "wireless_direct":
+        ip = direct_address(udid)
+        if ip is None:
+            raise RuntimeError("The bound Wireless Direct lockdown runtime is no longer available.")
+        return await _connect_direct_tcp(udid, ip)
     if key in _direct_usb_present:
         return await create_using_usbmux(serial=udid, connection_type="USB")
     ip = direct_address(udid)
@@ -1074,8 +1077,31 @@ async def get_lockdown(udid: str) -> LockdownClient:
     return await create_using_usbmux(serial=udid)
 
 
-async def get_rsd(udid: str) -> RemoteServiceDiscoveryService:
+async def get_rsd(
+    udid: str,
+    route: DeviceConnectionType | None = None,
+) -> RemoteServiceDiscoveryService:
     key = udid.lower()
+
+    if route == "wireless_direct":
+        tunnel = _direct_transport_adapter.rsd_tunnels.get(key)
+        if tunnel is None or tunnel.rsd is None:
+            raise RuntimeError("The bound Wireless Direct RSD runtime is no longer available.")
+        return tunnel.rsd
+
+    if route == "usb":
+        if key not in _direct_usb_present:
+            raise RuntimeError("The bound USB RSD runtime is no longer available.")
+        rsd = await get_tunneld_device_by_udid(udid)
+        if rsd is None:
+            raise RuntimeError("The bound USB RSD runtime is no longer available.")
+        return rsd
+
+    if route == "wifi":
+        rsd = await get_tunneld_device_by_udid(udid)
+        if rsd is None:
+            raise RuntimeError("The bound system Wi-Fi RSD runtime is no longer available.")
+        return rsd
 
     # Physical USB has the highest idle priority.
     if key in _direct_usb_present:

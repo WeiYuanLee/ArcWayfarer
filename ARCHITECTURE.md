@@ -417,6 +417,8 @@ simulation_engine.start(loop=True) 會無限循環
 - iOS 16 以下使用 Lockdown DtSimulateLocation
 - 自動 3 次重試，失敗時拆掉 session 重建
 - 每個 udid 有獨立的 `asyncio.Lock` 保護並發
+- Session 建立後固定保存 `bound_route` 與 transport identity；重試期間不得因 discovery 結果靜默換線
+- 舊 transport handle 的晚到錯誤不得移除或清理同 UDID 的新 session
 
 ### 5.5 設備管理 — 目標模組邊界
 
@@ -429,7 +431,7 @@ simulation_engine.start(loop=True) 會無限循環
 | `route_policy.py` | 以純函式計算唯一 `selected_route` | 不得 I/O 或修改 registry |
 | `transport_controller.py` | 建立、切換與關閉 transport | 只接受 command、Registry policy effect、session failure 或 shutdown；不得由 GET 或 scanner 直接呼叫 |
 | `pairing_manager.py` | 建立、驗證、刷新及刪除配對能力 | 不得把已配對視為已連線 |
-| `device_session.py` | 維護定位 session 及其 `bound_route` | 不得反向查詢並改寫 manager 全域狀態 |
+| `device_session.py` | 維護定位 session、`bound_route` 與 transport identity | 只能透過注入的 runtime port 取得指定 route；不得反向 import manager |
 
 設備內部狀態必須分開保存 `availability`、`direct_runtime`、`authorization`、`user_intent`、`selected_route`、`session` 與 `revision`。USB、系統 Wi-Fi 與 Direct 候選端點可同時被觀測到；active Direct 的 runtime 健康只能由 Transport Controller 或實際 session I/O 更新。對外清單只能顯示 policy 算出的單一 `selected_route`。
 
@@ -574,7 +576,7 @@ Tier 1 (0 ~ 699)     : 地圖內部渲染 (Tiles: 0, RouteLine: 410, Arrow: 420,
 | `localStorage` | `arcwayfarer.lang` | 語言 | 永久 |
 | `~/.arcwayfarer/*.json` | - | 收藏/歷史/路線 | 永久（後端管理） |
 
-### 8.3 設備管理狀態（遷移中，P3-A 已完成）
+### 8.3 設備管理狀態（遷移中，P3 已完成）
 
 | 維度 | 值 | 寫入來源 |
 |---|---|---|
@@ -583,7 +585,7 @@ Tier 1 (0 ~ 699)     : 地圖內部渲染 (Tiles: 0, RouteLine: 410, Arrow: 420,
 | `authorization` | `unpaired \| paired \| stale` | pairing manager |
 | `user_intent` | `auto \| direct` | 使用者 command |
 | `selected_route` | `none \| usb \| wifi \| wireless_direct` | route policy |
-| `session` | `idle \| active \| stopping \| failed` + `bound_route` | session events |
+| `session` | `idle \| active \| stopping \| failed` + `bound_route` + transport identity | session events |
 | `revision` | 單調遞增整數 | registry 每次狀態變更 |
 
 前端只能套用不早於目前 revision 的設備快照。foreground refresh 若遇到 in-flight scan，必須在舊請求完成後補跑一次，不能把舊 promise 當成連線後的新狀態。

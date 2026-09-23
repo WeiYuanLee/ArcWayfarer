@@ -60,7 +60,7 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await second)[0].udid, "shared")
             self.assertEqual(scan.await_count, 1)
 
-    async def test_registry_read_flag_switches_public_snapshot_and_list(self) -> None:
+    async def test_started_coordinator_makes_registry_the_public_read_model(self) -> None:
         registry_device = _device("registry", "usb")
         legacy_device = _device("legacy", "usb")
         registry_snapshot = DiscoverySnapshot(devices=(registry_device,), snapshot_revision=2)
@@ -76,13 +76,9 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager._device_management_service, "projected_snapshot", AsyncMock(return_value=legacy_snapshot)),
             patch.object(device_manager._device_management_service, "list_devices", AsyncMock(return_value=[legacy_device])),
         ):
-            with patch.dict(device_manager.os.environ, {"DEVICE_REGISTRY_READS": "registry"}):
-                self.assertEqual((await device_manager.get_device_snapshot()).devices[0].udid, "registry")
-                self.assertEqual((await device_manager.list_devices())[0].udid, "registry")
-                self.assertEqual((await device_manager.get_device("REGISTRY")).udid, "registry")
-            with patch.dict(device_manager.os.environ, {"DEVICE_REGISTRY_READS": "legacy"}):
-                self.assertEqual((await device_manager.get_device_snapshot()).devices[0].udid, "legacy")
-                self.assertEqual((await device_manager.list_devices())[0].udid, "legacy")
+            self.assertEqual((await device_manager.get_device_snapshot()).devices[0].udid, "registry")
+            self.assertEqual((await device_manager.list_devices())[0].udid, "registry")
+            self.assertEqual((await device_manager.get_device("REGISTRY")).udid, "registry")
 
     async def test_get_device_read_does_not_close_direct_runtime(self) -> None:
         """D7: public device reads cannot release a transport."""

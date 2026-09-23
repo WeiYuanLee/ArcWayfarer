@@ -79,6 +79,14 @@ class RoutePolicyTests(unittest.TestCase):
                 aggregate(usb=True, session=SessionState.STOPPING, bound_route="wifi"),
                 "wifi",
             ),
+            (
+                aggregate(wifi=True, session=SessionState.FAILED, bound_route="usb"),
+                "wifi",
+            ),
+            (
+                aggregate(session=SessionState.FAILED, bound_route="wifi"),
+                None,
+            ),
         ]
         for device, expected in cases:
             with self.subTest(device=device):

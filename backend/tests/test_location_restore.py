@@ -3,44 +3,58 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from core import device_session, events, simulation_engine, teleport
+from core.device_session_store import device_session_store
 
 
 class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_direct_io_failure_releases_only_its_runtime(self) -> None:
         backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("network changed"))})()
+        disconnect = AsyncMock()
         session = device_session.DeviceSession(
             "device-direct",
             transport="rsd",
             backend=backend,
             bound_route="wireless_direct",
+            cleanup_failed_direct=disconnect,
         )
+        device_session_store.register(session)
 
-        with patch.object(
-            device_session.device_manager.transport_controller,
-            "cleanup_failed_direct",
-            AsyncMock(),
-        ) as disconnect:
-            with self.assertRaises(ConnectionError):
-                await session.set(25.0, 121.0)
+        with self.assertRaises(ConnectionError):
+            await session.set(25.0, 121.0)
 
         disconnect.assert_awaited_once_with("device-direct")
 
     async def test_system_wifi_io_failure_does_not_enable_or_clear_direct(self) -> None:
         backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("wifi lost"))})()
+        disconnect = AsyncMock()
         session = device_session.DeviceSession(
             "device-wifi",
             transport="rsd",
             backend=backend,
             bound_route="wifi",
+            cleanup_failed_direct=disconnect,
         )
+        device_session_store.register(session)
 
-        with patch.object(
-            device_session.device_manager.transport_controller,
-            "cleanup_failed_direct",
-            AsyncMock(),
-        ) as disconnect:
-            with self.assertRaises(ConnectionError):
-                await session.set(25.0, 121.0)
+        with self.assertRaises(ConnectionError):
+            await session.set(25.0, 121.0)
+
+        disconnect.assert_not_awaited()
+
+    async def test_usb_io_failure_does_not_enable_or_clear_direct(self) -> None:
+        backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("usb lost"))})()
+        disconnect = AsyncMock()
+        session = device_session.DeviceSession(
+            "device-usb",
+            transport="lockdown",
+            backend=backend,
+            bound_route="usb",
+            cleanup_failed_direct=disconnect,
+        )
+        device_session_store.register(session)
+
+        with self.assertRaises(ConnectionError):
+            await session.set(25.0, 121.0)
 
         disconnect.assert_not_awaited()
 

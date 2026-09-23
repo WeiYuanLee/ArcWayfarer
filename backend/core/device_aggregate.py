@@ -54,6 +54,7 @@ class DeviceAvailability:
 class DeviceSessionState:
     state: SessionState = SessionState.IDLE
     bound_route: DeviceConnectionType | None = None
+    transport_identity: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,17 +1,19 @@
 import asyncio
 import logging
 import struct
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
 
 from pymobiledevice3.exceptions import ConnectionTerminatedError
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
 
 from config import MOUNT_TIMEOUT_SECONDS
-from core import device_manager
 from core.device_aggregate import SessionState
-from core.device_registry import device_registry
-from core.device_revision import device_revision_ledger
-from models.schemas import DeviceConnectionType
+from core.device_session_state import publish_session_state
+from core.device_session_store import device_session_store
+from models.schemas import DeviceConnectionType, DeviceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,30 @@ CLEAR_DELIVERY_SETTLE_SECONDS = 1.0
 CLEAR_DELIVERY_ATTEMPTS = 1
 
 
+@dataclass(frozen=True)
+class DeviceSessionRuntime:
+    get_device: Callable[[str], Awaitable[DeviceInfo]]
+    get_lockdown: Callable[[str, DeviceConnectionType], Awaitable[Any]]
+    get_rsd: Callable[[str, DeviceConnectionType], Awaitable[Any]]
+    ensure_mounted: Callable[[Any], Awaitable[None]]
+    cleanup_failed_direct: Callable[[str], Awaitable[int]]
+    apply_policy_effects: Callable[[], Awaitable[None]]
+
+
+_runtime: DeviceSessionRuntime | None = None
+
+
+def configure_session_runtime(runtime: DeviceSessionRuntime) -> None:
+    global _runtime
+    _runtime = runtime
+
+
+def _require_runtime() -> DeviceSessionRuntime:
+    if _runtime is None:
+        raise RuntimeError("Device session runtime has not been configured.")
+    return _runtime
+
+
 class DeviceSession:
     """A persistent location-simulation connection for one device.
 
@@ -33,13 +59,26 @@ class DeviceSession:
     is open, so every mode reuses the same session instead of opening/closing per call.
     """
 
-    def __init__(self, udid, transport, backend, bound_route: DeviceConnectionType, dvt_cm=None, ls_cm=None):
+    def __init__(
+        self,
+        udid,
+        transport,
+        backend,
+        bound_route: DeviceConnectionType,
+        *,
+        transport_identity: str | None = None,
+        cleanup_failed_direct: Callable[[str], Awaitable[int]] | None = None,
+        dvt_cm=None,
+        ls_cm=None,
+    ):
         self.udid = udid
         self.transport = transport
         # Preserve the route that created this session. Discovery may observe
         # other routes later, but it must not silently move active I/O.
         self.bound_route = bound_route
+        self.transport_identity = transport_identity or f"{transport}:{bound_route}:{id(backend)}"
         self._backend = backend
+        self._cleanup_failed_direct = cleanup_failed_direct
         self._dvt_cm = dvt_cm
         self._ls_cm = ls_cm
         self._lock = asyncio.Lock()
@@ -49,10 +88,7 @@ class DeviceSession:
             try:
                 await asyncio.wait_for(self._backend.set(lat, lng), timeout=10.0)
             except Exception as exc:
-                _sessions.pop(self.udid, None)
-                _publish_session(self.udid, SessionState.FAILED, self.bound_route)
-                await self.close()
-                await self._release_failed_direct_runtime(exc)
+                await self._handle_failure(exc)
                 raise
 
     async def clear(self) -> None:
@@ -60,16 +96,28 @@ class DeviceSession:
             try:
                 await asyncio.wait_for(self._backend.clear(), timeout=10.0)
             except Exception as exc:
-                _sessions.pop(self.udid, None)
-                _publish_session(self.udid, SessionState.FAILED, self.bound_route)
-                await self.close()
-                await self._release_failed_direct_runtime(exc)
+                await self._handle_failure(exc)
                 raise
+
+    async def _handle_failure(self, exc: Exception) -> None:
+        """Publish failure only while this is still the registered handle."""
+        current = device_session_store.pop(self.udid, expected=self)
+        await self.close()
+        if current is None:
+            return
+        publish_session_state(
+            self.udid,
+            SessionState.FAILED,
+            self.bound_route,
+            transport_identity=self.transport_identity,
+        )
+        await self._release_failed_direct_runtime(exc)
 
     async def _release_failed_direct_runtime(self, exc: Exception) -> None:
         """Clear only this session's Direct runtime after confirmed I/O loss."""
         if self.bound_route == "wireless_direct" and isinstance(exc, _DEAD_CONNECTION_ERRORS):
-            await device_manager.transport_controller.cleanup_failed_direct(self.udid)
+            cleanup = self._cleanup_failed_direct or _require_runtime().cleanup_failed_direct
+            await cleanup(self.udid)
 
     async def close(self) -> None:
         if self._ls_cm is not None:
@@ -86,36 +134,22 @@ class DeviceSession:
             self._dvt_cm = None
 
 
-_sessions: dict[str, DeviceSession] = {}
-_session_locks: dict[str, asyncio.Lock] = {}
-
-
-def _publish_session(
-    udid: str,
-    state: SessionState,
-    bound_route: DeviceConnectionType | None,
-    *,
-    compare_legacy: bool = True,
-) -> None:
-    revision = device_revision_ledger.bump(udid)
-    device_registry.record_session(
-        udid,
-        state,
-        bound_route=bound_route,
-        revision=revision,
-        legacy_route=bound_route,
-        compare_legacy=compare_legacy,
-    )
-
-
 class LockdownSimulateLocationWrapper:
     """Wrapper for iOS < 17 lockdown location simulation that creates a fresh lockdown connection per command."""
 
-    def __init__(self, udid: str):
+    def __init__(
+        self,
+        udid: str,
+        bound_route: DeviceConnectionType,
+        get_lockdown: Callable[[str, DeviceConnectionType], Awaitable[Any]] | None = None,
+    ):
         self.udid = udid
+        self.bound_route = bound_route
+        self._get_lockdown = get_lockdown
 
     async def _send(self, command: int, lat: float | None = None, lng: float | None = None) -> None:
-        async with await device_manager.get_lockdown(self.udid) as lockdown:
+        get_lockdown = self._get_lockdown or _require_runtime().get_lockdown
+        async with await get_lockdown(self.udid, self.bound_route) as lockdown:
             # DtSimulateLocation uses this wire format but leaves its fresh
             # developer-service connection without an explicit close.
             service = await lockdown.start_lockdown_developer_service("com.apple.dt.simulatelocation")
@@ -134,24 +168,25 @@ class LockdownSimulateLocationWrapper:
 
 
 async def get_session(udid: str) -> DeviceSession:
-    existing = _sessions.get(udid)
+    existing = device_session_store.get(udid)
     if existing is not None:
         return existing
 
-    lock = _session_locks.setdefault(udid, asyncio.Lock())
+    runtime = _require_runtime()
+    lock = device_session_store.lock_for(udid)
     async with lock:
         # Re-check now that we hold the lock — another concurrent call for the same
         # udid may have already created the session while we were waiting.
-        existing = _sessions.get(udid)
+        existing = device_session_store.get(udid)
         if existing is not None:
             return existing
 
-        device = await device_manager.get_device(udid)
+        device = await runtime.get_device(udid)
         if device.status != "ready":
             raise RuntimeError(device.detail or f"Device is not ready (status: {device.status}).")
 
         if device.transport == "lockdown":
-            async with await device_manager.get_lockdown(udid) as lockdown:
+            async with await runtime.get_lockdown(udid, device.connection_type) as lockdown:
                 if device.connection_type == "wireless_direct":
                     # The disk image is prepared over USB during setup. iOS 16
                     # can reject image-mounter requests over Wi-Fi, while the
@@ -160,7 +195,7 @@ async def get_session(udid: str) -> DeviceSession:
                     await service.close()
                 else:
                     try:
-                        await asyncio.wait_for(device_manager.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
+                        await asyncio.wait_for(runtime.ensure_mounted(lockdown), timeout=MOUNT_TIMEOUT_SECONDS)
                     except asyncio.TimeoutError as e:
                         raise RuntimeError(
                             "Timed out mounting the Developer Disk Image. Check your internet connection and try again."
@@ -168,39 +203,70 @@ async def get_session(udid: str) -> DeviceSession:
             session = DeviceSession(
                 udid,
                 transport="lockdown",
-                backend=LockdownSimulateLocationWrapper(udid),
+                backend=LockdownSimulateLocationWrapper(
+                    udid,
+                    device.connection_type,
+                    runtime.get_lockdown,
+                ),
                 bound_route=device.connection_type,
+                transport_identity=(
+                    f"lockdown:{device.connection_type}:{device.ip_address or device.udid}:{device.revision}"
+                ),
+                cleanup_failed_direct=runtime.cleanup_failed_direct,
             )
         else:
-            rsd = await device_manager.get_rsd(udid)
+            rsd = await runtime.get_rsd(udid, device.connection_type)
             dvt_cm = DvtProvider(rsd)
             dvt = await dvt_cm.__aenter__()
-            ls_cm = LocationSimulation(dvt)
-            location_simulation = await ls_cm.__aenter__()
+            ls_cm = None
+            try:
+                ls_cm = LocationSimulation(dvt)
+                location_simulation = await ls_cm.__aenter__()
+            except BaseException as exc:
+                # A partially-created RSD session still owns the DVT channel.
+                # Release both contexts here because no DeviceSession exists yet
+                # to take responsibility for their lifetime.
+                if ls_cm is not None:
+                    try:
+                        await ls_cm.__aexit__(type(exc), exc, exc.__traceback__)
+                    except Exception:
+                        logger.debug("Failed to close partial location context for %s", udid, exc_info=True)
+                try:
+                    await dvt_cm.__aexit__(type(exc), exc, exc.__traceback__)
+                except Exception:
+                    logger.debug("Failed to close partial DVT context for %s", udid, exc_info=True)
+                raise
             session = DeviceSession(
                 udid,
                 transport="rsd",
                 backend=location_simulation,
                 bound_route=device.connection_type,
+                transport_identity=f"rsd:{device.connection_type}:{id(rsd)}",
+                cleanup_failed_direct=runtime.cleanup_failed_direct,
                 dvt_cm=dvt_cm,
                 ls_cm=ls_cm,
             )
 
-        _sessions[udid] = session
-        _publish_session(udid, SessionState.ACTIVE, session.bound_route)
+        device_session_store.register(session)
+        publish_session_state(
+            udid,
+            SessionState.ACTIVE,
+            session.bound_route,
+            transport_identity=session.transport_identity,
+        )
         return session
 
 
 async def close_session(udid: str) -> None:
-    session = _sessions.pop(udid, None)
+    session = device_session_store.pop(udid)
     if session is not None:
         await session.close()
-        _publish_session(udid, SessionState.IDLE, None, compare_legacy=False)
-        await device_manager.transport_controller.apply_policy_effects()
+        publish_session_state(udid, SessionState.IDLE, None, compare_legacy=False)
+        await _require_runtime().apply_policy_effects()
 
 
 def has_session(udid: str) -> bool:
-    return udid in _sessions
+    return device_session_store.has(udid)
 
 
 async def set_location(udid: str, lat: float, lng: float, max_retries: int = 3, retry_delay: float = 2.0) -> None:

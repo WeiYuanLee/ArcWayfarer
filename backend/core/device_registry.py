@@ -282,12 +282,16 @@ class DeviceRegistry:
         state: SessionState,
         *,
         bound_route: DeviceConnectionType | None = None,
+        transport_identity: str | None = None,
         revision: int | None = None,
         legacy_route: DeviceConnectionType | None = None,
         compare_legacy: bool = True,
     ) -> DeviceAggregate:
         return self._apply(
-            replace(self._current(udid), session=DeviceSessionState(state, bound_route)),
+            replace(
+                self._current(udid),
+                session=DeviceSessionState(state, bound_route, transport_identity),
+            ),
             event="session_changed",
             revision=revision,
             legacy_route=legacy_route,
