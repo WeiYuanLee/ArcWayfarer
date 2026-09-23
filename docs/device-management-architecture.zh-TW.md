@@ -209,7 +209,7 @@ flowchart LR
 | **P3（已完成）** | 所有開關 tunnel 的呼叫收斂進 `TransportController`；session 持有 `bound_route` 與 transport identity，斷開對 manager 的反向依賴 | 單一入口管理 Direct transport；active I/O 固定 route；循環依賴消失 |
 | **P4-A（已完成）** | 拆 `discovery/`、route adapters 與 `pairing_manager`，移除 manager 的舊 discovery／pairing 狀態 | manager facade 不保存 scanner／pairing state；adapter 契約與完整回歸測試全綠 |
 | **P4-B（已完成）** | 拆前端 Device Manager modal 與 controller | 元件測試覆蓋連線、錯誤、快速復連與 stale snapshot |
-| **V1（進行中）** | 架構邊界測試與 macOS arm64／x64、Windows x64 原生封裝 | 三平台 workflow 全綠並保留短期測試安裝包 |
+| **V1（已完成）** | 架構邊界測試與 macOS arm64／x64、Windows x64 原生封裝 | 三平台 workflow 全綠並保留短期測試安裝包 |
 | **V2** | Windows 與 iOS 16／17+ 實機矩陣 | USB、一般 Wi-Fi、Direct、換網與多設備情境逐項簽核 |
 
 **護欄：** 每階段獨立 PR、獨立可回退。任何一階段若讓行為測試轉紅，先停、先修，不進下一階段。P0 的行為測試是整個重寫的安全網——沒有它，全面重寫就是在最脆弱的子系統上蒙眼開刀。
