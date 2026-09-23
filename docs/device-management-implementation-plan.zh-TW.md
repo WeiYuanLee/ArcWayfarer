@@ -21,8 +21,11 @@
 - [x] **P3-B**：`DeviceSession` 固定保存 `bound_route` 與 transport identity，session start／stop／failure 發布 Registry event；route-specific Lockdown／RSD 查詢禁止 active session 靜默換線，舊 handle 的晚到錯誤不能清理新 runtime，部分建立失敗會完整釋放 DVT context。以 runtime injection 移除 `device_manager ↔ device_session` 循環依賴，並移除 `DEVICE_REGISTRY_READS` 雙模式開關。
 - [x] **P4-A**：拆出 USB、system Wi-Fi、Direct endpoint discovery，USB／Wi-Fi／Direct TCP／Direct RSD transport adapter 與 `PairingManager`；USB presence、診斷、tunneld source result、endpoint cache 及配對檔案不再由 `device_manager.py` 保存。舊 `direct_transport_adapter.py` 僅保留 compatibility import。
 - [x] **P4-B**：`DeviceManagerModal.tsx` 縮為 modal shell；清單、端點探索、連線狀態、快速復連與命令 controller 已拆成獨立模組。controller 保留 command revision refresh，視圖測試固定三種傳輸 badge 與最近兩筆復連行為。
+- [x] **V1-A**：加入 production source 架構邊界測試，阻止 discovery／GET 重新取得 transport command 或 close 能力，並防止已移除的七組全域狀態與 `DEVICE_REGISTRY_READS` 回歸。
+- [ ] **V1-B**：執行 macOS arm64／x64、Windows x64 原生封裝 workflow，保存三平台短期測試安裝包並記錄結果。
+- [ ] **V2**：依最終驗收矩陣完成 Windows 與 iOS 實機測試。
 
-目前驗證基線：後端 120 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
+目前驗證基線：V1-A 後端 123 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
 
 ---
 
@@ -59,7 +62,8 @@ flowchart TD
     P3A --> P3B[P3-B Session Binding]
     P3B --> P4A[P4-A Discovery + Pairing 拆分]
     P4A --> P4B[P4-B Frontend Modal 拆分]
-    P4B --> V[跨平台與多設備驗收]
+    P4B --> V1[V1 自動化跨平台驗收]
+    V1 --> V2[V2 Windows 與 iPhone 實機驗收]
 ```
 
 | PR | 目的 | 風險 | 預期規模 |
@@ -75,6 +79,8 @@ flowchart TD
 | P3-B | Session 綁定 route、移除循環依賴 | 高 | L |
 | P4-A | 拆 discovery／pairing adapters，移除舊全域 | 中 | L |
 | P4-B（已完成） | 拆 DeviceManagerModal 並補元件測試 | 中 | M |
+| V1 | 架構 gate、三平台測試與原生封裝 | 中 | M |
+| V2 | Windows、iOS 與多設備實機矩陣 | 高 | L |
 
 ---
 

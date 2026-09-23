@@ -32,6 +32,49 @@ try {
     Pop-Location
 }
 
+$BackendExe = "$RootDir\dist-py\arcwayfarer-backend\arcwayfarer-backend.exe"
+if (-not (Test-Path $BackendExe)) {
+    throw "Packaged backend was not created: $BackendExe"
+}
+
+if ($env:ARCWAYFARER_VERIFY_BACKEND -eq "1") {
+    Write-Host "==> Verifying packaged backend startup"
+    $BackendLog = Join-Path $env:TEMP "arcwayfarer-backend-$PID.log"
+    $BackendErrorLog = Join-Path $env:TEMP "arcwayfarer-backend-$PID.err.log"
+    $BackendPort = 18787
+    $PreviousApiPort = $env:ARCWAYFARER_API_PORT
+    $env:ARCWAYFARER_API_PORT = "$BackendPort"
+    $BackendProcess = $null
+    try {
+        $BackendProcess = Start-Process -FilePath $BackendExe -PassThru -NoNewWindow `
+            -RedirectStandardOutput $BackendLog -RedirectStandardError $BackendErrorLog
+        $Healthy = $false
+        for ($Attempt = 0; $Attempt -lt 60; $Attempt++) {
+            if ($BackendProcess.HasExited) { break }
+            try {
+                $Response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$BackendPort/health" -TimeoutSec 1
+                if ($Response.StatusCode -eq 200) {
+                    $Healthy = $true
+                    break
+                }
+            } catch {}
+            Start-Sleep -Seconds 1
+        }
+        if (-not $Healthy) {
+            if (Test-Path $BackendLog) { Get-Content $BackendLog -ErrorAction SilentlyContinue }
+            if (Test-Path $BackendErrorLog) { Get-Content $BackendErrorLog -ErrorAction SilentlyContinue }
+            throw "Packaged backend did not become healthy within 60 seconds."
+        }
+    } finally {
+        if ($BackendProcess -and -not $BackendProcess.HasExited) {
+            Stop-Process -Id $BackendProcess.Id -Force -ErrorAction SilentlyContinue
+            $BackendProcess.WaitForExit()
+        }
+        $env:ARCWAYFARER_API_PORT = $PreviousApiPort
+        Remove-Item $BackendLog, $BackendErrorLog -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "==> Building frontend"
 Push-Location "$RootDir\frontend"
 try {

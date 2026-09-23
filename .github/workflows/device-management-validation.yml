@@ -1,0 +1,131 @@
+name: Device management cross-platform validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/windows-wireless-direct-spike
+    paths:
+      - .github/workflows/device-management-validation.yml
+      - backend/**
+      - frontend/**
+      - scripts/**
+
+concurrency:
+  group: device-management-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit and architecture tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q -r requirements.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m unittest discover -s tests -v
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npx vitest run
+
+      - name: Check frontend types
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+  package:
+    name: Package ${{ matrix.os }} ${{ matrix.arch }}
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            os: macOS
+            arch: arm64
+          - runner: macos-15-intel
+            os: macOS
+            arch: x64
+          - runner: windows-latest
+            os: Windows
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build macOS package
+        if: matrix.os == 'macOS'
+        env:
+          ARCWAYFARER_VERIFY_BACKEND: "1"
+        run: bash scripts/build-mac.sh --arch ${{ matrix.arch }}
+
+      - name: Build Windows package
+        if: matrix.os == 'Windows'
+        shell: powershell
+        env:
+          ARCWAYFARER_VERIFY_BACKEND: "1"
+        run: scripts/build-win.ps1
+
+      - name: Write macOS package checksum
+        if: matrix.os == 'macOS'
+        shell: bash
+        run: cd frontend/release && shasum -a 256 *.dmg > SHA256SUMS-macos-${{ matrix.arch }}.txt
+
+      - name: Write Windows package checksum
+        if: matrix.os == 'Windows'
+        shell: powershell
+        run: |
+          $Lines = Get-ChildItem frontend/release/*.exe | ForEach-Object {
+            "$( (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant() )  $($_.Name)"
+          }
+          $Lines | Set-Content frontend/release/SHA256SUMS-windows-${{ matrix.arch }}.txt
+
+      - name: Upload macOS validation package
+        if: matrix.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-macos-${{ matrix.arch }}
+          path: |
+            frontend/release/*.dmg
+            frontend/release/SHA256SUMS-*.txt
+          retention-days: 7
+
+      - name: Upload Windows validation package
+        if: matrix.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-windows-${{ matrix.arch }}
+          path: |
+            frontend/release/*.exe
+            frontend/release/SHA256SUMS-*.txt
+          retention-days: 7
