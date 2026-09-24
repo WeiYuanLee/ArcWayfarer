@@ -322,7 +322,6 @@ export default function App() {
   }
 
   const focusedPosition = focusedDeviceId ? positions[focusedDeviceId] ?? null : null
-  const focusedDeviceState = (focusedDeviceId ? states[focusedDeviceId] : undefined) ?? 'idle'
   const isFocusedModeChangeLocked = Boolean(focusedDeviceId && isDeviceBusy(focusedDeviceId))
   const focusedPoint = focusedDeviceId ? pointByDevice[focusedDeviceId] ?? null : null
   const isMapEngineSwitchLocked = Object.values(states).some((state) =>
@@ -413,7 +412,6 @@ export default function App() {
           <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} />
           <div className="overlay-status-dock">
             <StatusBar
-              deviceState={focusedDeviceState}
               livePosition={focusedPosition ? { lat: focusedPosition.lat, lng: focusedPosition.lng } : null}
               liveSpeedMps={focusedPosition?.speedMps ?? null}
               lat={focusedDeviceId ? pointByDevice[focusedDeviceId]?.lat ?? null : null}

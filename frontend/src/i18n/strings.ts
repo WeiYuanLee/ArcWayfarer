@@ -194,6 +194,7 @@ export const STRINGS = {
   'statusbar.lng': { zh: '經度', en: 'Lng' },
   'statusbar.speed': { zh: '速度', en: 'Speed' },
   'statusbar.standby': { zh: '待命', en: 'Standby' },
+  'statusbar.timezone_unavailable': { zh: '尚未選擇有效座標', en: 'No valid coordinate selected' },
 
   // Teleport panel
   'teleport.title': { zh: '瞬移', en: 'Teleport' },
