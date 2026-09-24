@@ -76,7 +76,7 @@ export function DeviceManagerModal(props: Props) {
       />}
       {controller.view === 'connecting' && <DirectConnectionFlow
         state={controller.connectingState} onBack={() => controller.setView('wireless_direct')} onClose={props.onClose}
-        onRetry={() => void controller.executeConnect(controller.connectingState)}
+        onRetry={() => void controller.retryConnect()}
       />}
     </Modal>
     <Modal opened={Boolean(renaming)} onClose={cancelRename} title="編輯自訂名稱" centered size="sm" zIndex={2300}>

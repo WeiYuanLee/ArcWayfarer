@@ -33,7 +33,7 @@ ArcWayfarer 可讓你透過電腦在地圖上設定 iPhone 的模擬位置、沿
 | iOS 16 及以下 | 以 USB 連接 iPhone、解鎖螢幕，並在手機上選擇「信任這部電腦」。 |
 | iOS 17 及以上 | ArcWayfarer 會自動建立所需通道。macOS 可能要求系統授權；Windows 啟動時可能要求系統管理員權限。 |
 
-Windows 使用者若無法偵測裝置，請確認已安裝 iTunes 或 Apple Mobile Device Support。
+Windows 使用者若無法偵測裝置，請安裝 Apple 提供的[傳統 64 位元 iTunes 安裝包](https://www.apple.com/itunes/download/win64/)。Microsoft Store 的「Apple 裝置」App 可提供部分 USB 支援，但其 Apple 行動裝置服務無法讓 usbmux 探索未接線的 Wi-Fi 設備。
 
 ### 第一次執行
 
@@ -198,7 +198,7 @@ Mobile Remote 可讓你用手機操作桌面版 ArcWayfarer。
 1. USB 線材與連接埠是否正常。
 2. iPhone 是否已解鎖。
 3. 手機是否出現「信任這部電腦」提示；若有，請選擇信任。
-4. Windows 是否已安裝 iTunes 或 Apple Mobile Device Support。
+4. Windows 是否已安裝 Apple 官網的傳統 64 位元 iTunes 安裝包；Microsoft Store 的「Apple 裝置」App 不足以支援一般 Wi-Fi 探索。
 5. 重新插拔裝置後，重新啟動 ArcWayfarer。
 
 ### iOS 17 以上無法開始操作

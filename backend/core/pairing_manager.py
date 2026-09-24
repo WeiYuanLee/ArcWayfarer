@@ -26,11 +26,17 @@ class PairingManager:
     def load_address(self, udid: str) -> str | None:
         return pairing_store.load_address(udid)
 
+    def load_port(self, udid: str) -> int | None:
+        return pairing_store.load_port(udid)
+
     def load_version(self, udid: str) -> str | None:
         return pairing_store.load_version(udid)
 
     def save_address(self, udid: str, address: str) -> None:
         pairing_store.save_address(udid, address)
+
+    def save_port(self, udid: str, port: int) -> None:
+        pairing_store.save_port(udid, port)
 
     def save_version(self, udid: str, ios_version: str) -> None:
         pairing_store.save_version(udid, ios_version)

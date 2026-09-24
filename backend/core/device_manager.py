@@ -5,9 +5,10 @@ from packaging.version import Version
 from pymobiledevice3.bonjour import browse_mobdev2
 from pymobiledevice3.exceptions import AlreadyMountedError
 from pymobiledevice3.lockdown import LockdownClient, create_using_usbmux
+from pymobiledevice3.pair_records import iter_remote_paired_identifiers
 from pymobiledevice3.remote import tunnel_service
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
-from pymobiledevice3.remote.tunnel_service import RemotePairingLockdownService, iter_remote_paired_identifiers
+from pymobiledevice3.remote.tunnel_service import RemotePairingLockdownService
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
 from pymobiledevice3.services.mobile_image_mounter import auto_mount
@@ -337,6 +338,7 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
                 pass
 
         actual_ip = getattr(tunnel, "peer_ip", None) or ip
+        actual_port = getattr(tunnel, "peer_port", None) or port
         device = DeviceInfo(
             udid=rsd.udid,
             name=rsd.name or rsd.udid,
@@ -352,6 +354,10 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
         if actual_ip and not actual_ip.startswith("127."):
             try:
                 pairing_manager.save_address(udid, actual_ip)
+                # The RemotePairing listener is advertised by DNS-SD and can
+                # change across networks or restarts. Persist it with the IP;
+                # never reconstruct an iOS 17+ endpoint using a fixed 49152.
+                pairing_manager.save_port(udid, actual_port)
                 _direct_transport_adapter.install_address(udid, actual_ip)
             except Exception as e:
                 logger.warning("Failed to save direct address %s for %s: %s", actual_ip, udid, e)
@@ -365,7 +371,10 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
     except Exception as exc:
         if tunnel is not None:
             await _direct_transport_adapter.close_candidate(tunnel)
-        raise ValueError(f"無線 RSD 連線失敗：{type(exc).__name__}。請確認同一 Wi-Fi、手機已解鎖，然後重試。") from exc
+        raise ValueError(
+            f"無線 RSD 連線失敗：{type(exc).__name__}。請確認同一 Wi-Fi、手機已解鎖。"
+            "若端點已出現仍無法連線，請用 USB 接上該手機後按「重新連線」刷新授權。"
+        ) from exc
     except BaseException:
         if tunnel is not None:
             await _direct_transport_adapter.close_candidate(tunnel)
@@ -459,6 +468,30 @@ async def _resolve_direct_target_udid(ip: str, port: int = 49152) -> str:
     return matched_udid
 
 
+def _same_udid(first: str, second: str) -> bool:
+    return first.replace("-", "").strip().lower() == second.replace("-", "").strip().lower()
+
+
+async def _usb_pairing_target(expected_udid: str | None = None) -> str:
+    """Return the single trusted USB phone used for an explicit retry."""
+    try:
+        mux_devices = await asyncio.wait_for(usbmux_list_devices(), timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+    except Exception as exc:
+        raise ValueError("無法讀取 USB 裝置。請確認 Apple 驅動正常、手機已解鎖並信任此電腦。") from exc
+
+    usb_udids = [
+        device.serial for device in mux_devices
+        if device.serial and _connection_type_from_mux(device) == "usb"
+    ]
+    if not usb_udids:
+        raise ValueError("重新連線前，請先用 USB 接上這台手機、解鎖並信任此電腦。")
+    if len(usb_udids) > 1:
+        raise ValueError("偵測到多台 USB 手機。請只保留要刷新 Wireless Direct 授權的手機後再重試。")
+    if expected_udid and not _same_udid(expected_udid, usb_udids[0]):
+        raise ValueError("USB 接上的手機與所選 Wireless Direct 端點不同，請接上正確的手機後再重試。")
+    return usb_udids[0]
+
+
 async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
     saved_version = pairing_manager.load_version(udid)
     is_ios17 = (saved_version and Version(saved_version) >= IOS_17) or (
@@ -534,10 +567,21 @@ async def _connect_direct_impl(udid: str, ip: str | None = None, fallback_bonjou
     raise ValueError("找不到已授權的手機。請確認手機已連上同一 Wi-Fi，且螢幕已解鎖。")
 
 
-async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: bool = True, port: int = 49152) -> DeviceInfo:
+async def connect_direct(
+    udid: str,
+    ip: str | None = None,
+    fallback_bonjour: bool = True,
+    port: int = 49152,
+    refresh_pairing: bool = False,
+) -> DeviceInfo:
     if not udid or udid.lower() == "auto":
         if not ip:
             raise ValueError("未指定目標裝置 UDID，請提供 IP 位址以進行配對搜尋。")
+        if refresh_pairing:
+            # The user followed the USB retry instruction. Resolve identity
+            # from that trusted cable instead of probing unrelated records.
+            usb_udid = await _usb_pairing_target()
+            return await connect_direct(usb_udid, ip, fallback_bonjour, port, refresh_pairing=True)
         # Concurrent clicks for one endpoint share resolution work. Release
         # this lock before entering the per-device command domain so lock
         # ordering can never form an endpoint/device cycle.
@@ -546,9 +590,15 @@ async def connect_direct(udid: str, ip: str | None = None, fallback_bonjour: boo
         return await connect_direct(matched_udid, ip, fallback_bonjour, port)
     if await has_blocking_session(udid):
         raise ValueError("請先停止並還原目前的定位，再切換連線方式。")
+    async def connect_operation() -> DeviceInfo:
+        if refresh_pairing:
+            usb_udid = await _usb_pairing_target(udid)
+            await enable_direct_pairing(usb_udid)
+        return await _connect_direct_impl(udid, ip, fallback_bonjour, port)
+
     return await transport_controller.connect_direct(
         udid,
-        lambda: _connect_direct_impl(udid, ip, fallback_bonjour, port),
+        connect_operation,
     )
 
 

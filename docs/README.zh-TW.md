@@ -63,7 +63,7 @@ ArcWayfarer 讓你不需要實際移動，就能在地圖上傳送、導航或�
 - **iOS 16 及以下** — 透過 USB 連接並信任電腦，裝置會自動出現，無需額外操作。
 - **iOS 17 及以上** — ArcWayfarer 會自動處理 RemoteXPC 通道。
   - **macOS**：通道啟動時會出現系統授權視窗。
-  - **Windows**：App 啟動時需要系統管理員權限（UAC）。需安裝 iTunes 或 Apple Mobile Device Support。
+  - **Windows**：App 啟動時需要系統管理員權限（UAC）。USB 與一般 Wi-Fi 裝置探索請安裝 Apple 提供的[傳統 64 位元 iTunes 安裝包](https://www.apple.com/itunes/download/win64/)；Microsoft Store 的「Apple 裝置」App 無法透過 usbmux 顯示未接線的設備。
 
 ### 首次使用
 

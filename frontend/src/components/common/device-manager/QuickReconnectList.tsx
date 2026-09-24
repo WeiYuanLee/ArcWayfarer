@@ -9,6 +9,12 @@ type Props = {
   onClear: () => void
 }
 
+function reconnectPort(record: QuickReconnectRecord): number | null {
+  if (record.port && record.port >= 1 && record.port <= 65535) return record.port
+  const parsed = Number(record.endpoint.match(/:(\d+)$/)?.[1])
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : null
+}
+
 export function QuickReconnectList({ records, onConnect, onClear }: Props) {
   if (records.length === 0) return null
   return (
@@ -27,7 +33,9 @@ export function QuickReconnectList({ records, onConnect, onClear }: Props) {
           </Menu.Dropdown>
         </Menu>
       </Group>
-      {records.slice(0, 2).map((record) => (
+      {records.slice(0, 2).map((record) => {
+        const port = reconnectPort(record)
+        return (
         <Paper key={record.udid || record.endpoint} withBorder p="sm" radius="md" className="device-manager-secondary-card">
           <Group justify="space-between" wrap="nowrap">
             <Group gap="sm" wrap="nowrap">
@@ -38,12 +46,14 @@ export function QuickReconnectList({ records, onConnect, onClear }: Props) {
               </div>
             </Group>
             <Button size="xs" variant="light" color="arcBlue" leftSection={<IconWifi size={14} />}
-              onClick={() => onConnect({ targetUdid: record.udid || '', targetIp: record.ip, targetName: record.name, fallbackBonjour: true, port: record.port ?? 49152 })}>
+              disabled={port === null}
+              onClick={() => { if (port !== null) onConnect({ targetUdid: record.udid || '', targetIp: record.ip, targetName: record.name, fallbackBonjour: true, port }) }}>
               點擊連線
             </Button>
           </Group>
         </Paper>
-      ))}
+        )
+      })}
     </Stack>
   )
 }

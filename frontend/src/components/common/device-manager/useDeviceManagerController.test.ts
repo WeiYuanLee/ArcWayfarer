@@ -64,4 +64,26 @@ describe('useDeviceManagerController', () => {
     expect(onUnhideDevice).not.toHaveBeenCalled()
     expect(onHideDevice).not.toHaveBeenCalled()
   })
+
+  it('retries the same endpoint with an explicit USB pairing refresh', async () => {
+    vi.mocked(connectWirelessDirect)
+      .mockRejectedValueOnce(new Error('授權已失效'))
+      .mockResolvedValueOnce(directDevice)
+    const { result } = setup()
+
+    await act(async () => {
+      await result.current.executeConnect({
+        targetUdid: 'phone-a', targetIp: '10.0.0.16', targetName: 'Lence',
+        fallbackBonjour: false, port: 51999,
+      })
+    })
+    expect(result.current.connectingState.status).toBe('error')
+
+    await act(async () => { await result.current.retryConnect() })
+
+    expect(connectWirelessDirect).toHaveBeenNthCalledWith(
+      2, 'phone-a', '10.0.0.16', false, 51999, true,
+    )
+    expect(result.current.view).toBe('list')
+  })
 })

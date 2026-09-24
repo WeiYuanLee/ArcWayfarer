@@ -41,13 +41,13 @@ git rev-parse --short HEAD
 powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
 ```
 
-建置需要 Python 3.13、Node.js/npm，以及可下載專案依賴的網路。安裝 iTunes 或 Apple Mobile Device Support 後，從 `frontend/release/` 安裝本機產生的 Windows `.exe`。測試時記下上方顯示的 commit，以便對照結果。
+建置需要 Python 3.13、Node.js/npm，以及可下載專案依賴的網路。請安裝 Apple 官網的[傳統 64 位元 iTunes 安裝包](https://www.apple.com/itunes/download/win64/)後，再從 `frontend/release/` 安裝本機產生的 Windows `.exe`。Microsoft Store 的「Apple 裝置」App 無法讓 usbmux 探索未接線的 Wi-Fi 設備。測試時記下上方顯示的 commit，以便對照結果。
 
 ## 一台 iOS 17+ iPhone 的驗證順序
 
 1. 用 USB 接上手機，解鎖並在手機選擇信任這部電腦。先確認 ArcWayfarer 能列出該裝置。
-2. 在裝置管理開啟 Wireless Direct，執行無線授權。全新 Windows 配對紀錄會透過 USB lockdown 建立，完成後才保存 ArcWayfarer 的授權狀態。
-3. 確認手機與電腦在可互通的同一網路，拔掉 USB。重新掃描端點，記錄 `_remotepairing` 廣告提供的 IP 與埠號；埠號不保證為 `49152`。若沒有廣告，可手動輸入手機 IP，並只把 `49152` 當成缺少 SRV 資訊時的預設測試值。
+2. 在裝置管理開啟 Wireless Direct，執行無線授權。全新 Windows 配對紀錄會透過 USB lockdown 建立，完成後才保存 ArcWayfarer 的授權狀態。若無線連線失敗後依提示接線重試，請只接目標手機；「重新連線」會先核對 USB 裝置並刷新該手機授權，再重連原本掃描到的 IP 與連接埠。
+3. 確認手機與電腦在可互通的同一網路，拔掉 USB。重新掃描端點，記錄 `_remotepairing` 廣告提供的 IP 與埠號；埠號不保證為 `49152`。若沒有取得 SRV 廣告，請先排查 mDNS／防火牆或重新接 USB 刷新授權，不要猜測固定埠號。手動輸入必須同時填入掃描工具實際顯示的 IP 與埠號。
 4. 點選端點連線，確認顯示的 UDID 是原手機。設定一個容易辨識的測試位置，親眼確認手機地圖移動，再按停止並親眼確認位置還原。
 5. 完全關閉並重啟 ArcWayfarer，不接 USB 重複連線、設定與還原。
 6. 若可行，再測手機鎖定、IP 變更、Wi-Fi 暫時中斷。每次記錄介面狀態及是否真正還原定位。

@@ -102,6 +102,20 @@ def load_address(udid: str) -> str | None:
         return None
 
 
+def save_port(udid: str, port: int) -> None:
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid RemotePairing port")
+    _atomic_write(_path(udid).with_suffix(".port"), str(port).encode("ascii"))
+
+
+def load_port(udid: str) -> int | None:
+    try:
+        value = int(_path(udid).with_suffix(".port").read_text(encoding="ascii"))
+    except (FileNotFoundError, ValueError):
+        return None
+    return value if 1 <= value <= 65535 else None
+
+
 def address_modified_at(udid: str) -> str | None:
     try:
         return datetime.fromtimestamp(_path(udid).with_suffix(".address").stat().st_mtime, tz=timezone.utc).isoformat()
@@ -125,9 +139,11 @@ def load_version(udid: str) -> str | None:
 
 def remove_address(udid: str) -> None:
     _path(udid).with_suffix(".address").unlink(missing_ok=True)
+    _path(udid).with_suffix(".port").unlink(missing_ok=True)
 
 
 def remove(udid: str) -> None:
     _path(udid).unlink(missing_ok=True)
     _path(udid).with_suffix(".address").unlink(missing_ok=True)
+    _path(udid).with_suffix(".port").unlink(missing_ok=True)
     _path(udid).with_suffix(".version").unlink(missing_ok=True)

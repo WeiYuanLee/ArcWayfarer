@@ -8,7 +8,7 @@
 
 ---
 
-## 實作進度（2026-09-23）
+## 實作進度（2026-09-25）
 
 - [x] **P0-A**：加入 `DeviceDiscoveryPort`、immutable `DiscoverySnapshot`、公開 `DeviceManagementService` 與可控制完成順序的 fake。
 - [x] **P0-B（第一批）**：加入 query safety、source failure、single-flight、多設備失敗隔離、Direct I/O failure 等回歸案例；revision 競爭案例隨 P1-C 完成。
@@ -24,9 +24,10 @@
 - [x] **V1-A**：加入 production source 架構邊界測試，阻止 discovery／GET 重新取得 transport command 或 close 能力，並防止已移除的七組全域狀態與 `DEVICE_REGISTRY_READS` 回歸。
 - [x] **V1-B**：macOS arm64／x64、Windows x64 原生封裝 workflow 全綠；Windows 封裝後 backend `/health` smoke test 通過，三平台 artifact 與 SHA-256 manifest 保留 7 天。
 - [x] **V2-A**：提供不需本機 build 的 Windows artifact 下載流程，以及唯讀、去識別化的多階段驗收擷取工具；報告保留 route、revision、動態 port 與 runtime/TLS 版本，不保存完整 UDID、IP 或私鑰。
+- [x] **V2-B（相容性修正）**：升級 `pymobiledevice3 11.19.1`，以 Bonjour `authTag`／配對紀錄 `altIRK` 驗證隱私化 RemotePairing 廣播；保存 DNS-SD 實際動態埠，USB 重試會核對並刷新同一台手機的授權。Windows 一般 Wi-Fi 探索文件改用 Apple 官網傳統 iTunes 安裝包。
 - [ ] **V2**：依最終驗收矩陣完成 Windows 與 iOS 實機測試。
 
-目前驗證基線：V2-A 後端 124 項測試全綠；P4-B 前端 112 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 local build、Electron 啟動 smoke test 與 ad-hoc 簽章驗證皆通過。P4-B 測試安裝檔為 `frontend/release/ArcWayfarer-0.1.16-x64.dmg`（218 MB；SHA-256：`bbd3cf006ed685c8595355371e77cc6ce4d928a876e70704ca508d930c71e74a`）。
+目前驗證基線：V2-B 後端 127 項測試在 `pymobiledevice3 11.19.1` 全綠；前端 116 項測試、TypeScript 型別檢查與 desktop/mobile production build 全綠。macOS x64 的 11.19.1 PyInstaller backend 可完成封裝，首次 discovery 完成後 `/health` smoke test 通過。Windows 與 iPhone 實機結果仍以本輪 V2 artifact 驗收為準。
 
 V1 跨平台驗收：[GitHub Actions run 35826086172](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35826086172) 全綠。短期 artifacts：Windows x64 約 201 MB、macOS arm64 約 211 MB、macOS x64 約 218 MB；每個 artifact 均包含安裝包與對應 SHA-256 manifest。
 

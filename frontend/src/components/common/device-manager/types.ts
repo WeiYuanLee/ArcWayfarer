@@ -26,6 +26,7 @@ export type DirectConnectionState = {
 }
 
 export type DirectConnectRequest = Omit<DirectConnectionState, 'status' | 'errorMessage'>
+  & { refreshPairing?: boolean }
 
 export type DeviceManagerController = {
   view: DeviceManagerView
@@ -40,6 +41,7 @@ export type DeviceManagerController = {
   connectingState: DirectConnectionState
   loadEndpoints: () => Promise<void>
   executeConnect: (request: DirectConnectRequest) => Promise<void>
+  retryConnect: () => Promise<void>
   handleToggle: (item: ManagedDevice, checked: boolean) => Promise<void>
   handlePair: (device: Device) => Promise<void>
   clearQuickReconnects: () => Promise<void>

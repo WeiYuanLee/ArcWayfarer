@@ -42,11 +42,14 @@ describe('Device Manager views', () => {
   })
 
   it('limits quick reconnect rendering to the two most recent records', () => {
+    const onConnect = vi.fn()
     const records = ['one', 'two', 'three'].map((name, index) => ({ name, endpoint: `10.0.0.${index + 1}:49152`, ip: `10.0.0.${index + 1}`, timestamp: '2026-09-23 10:00' }))
-    render(<MantineProvider><QuickReconnectList records={records} onConnect={vi.fn()} onClear={vi.fn()} /></MantineProvider>)
+    render(<MantineProvider><QuickReconnectList records={records} onConnect={onConnect} onClear={vi.fn()} /></MantineProvider>)
     expect(screen.getByText('10.0.0.1:49152')).toBeTruthy()
     expect(screen.getByText('10.0.0.2:49152')).toBeTruthy()
     expect(screen.queryByText('10.0.0.3:49152')).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: '點擊連線' })[0])
+    expect(onConnect).toHaveBeenCalledWith(expect.objectContaining({ port: 49152 }))
   })
 
   it('returns from a failed connection to the endpoint list without issuing another command', () => {

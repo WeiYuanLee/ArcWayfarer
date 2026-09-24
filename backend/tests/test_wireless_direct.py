@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import tempfile
 import struct
 import unittest
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from pymobiledevice3.exceptions import RemotePairingCompletedError
+from pymobiledevice3.remote.siphash import compute_auth_tag
 
 from api.device import _require_desktop
 from core import device_manager, device_session, pairing_store
@@ -35,6 +37,8 @@ class PairingStoreTests(unittest.TestCase):
             pairing_store.save_version("A1B2C3D4", "26.6.2")
             self.assertEqual(pairing_store.load("a1b2c3d4"), PAIR_RECORD)
             self.assertEqual(pairing_store.load_address("a1b2c3d4"), "192.168.1.20")
+            pairing_store.save_port("A1B2C3D4", 51999)
+            self.assertEqual(pairing_store.load_port("a1b2c3d4"), 51999)
             self.assertEqual(pairing_store.load_version("a1b2c3d4"), "26.6.2")
             self.assertEqual(pairing_store.list_udids(), ["a1b2c3d4"])
             if pairing_store.os.name == "posix":
@@ -45,6 +49,7 @@ class PairingStoreTests(unittest.TestCase):
             pairing_store.remove("A1B2C3D4")
             self.assertIsNone(pairing_store.load("a1b2c3d4"))
             self.assertIsNone(pairing_store.load_address("a1b2c3d4"))
+            self.assertIsNone(pairing_store.load_port("a1b2c3d4"))
             self.assertIsNone(pairing_store.load_version("a1b2c3d4"))
 
     def test_rejects_incomplete_record_and_unsafe_identifier(self) -> None:
@@ -138,6 +143,35 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(probe.await_count, 2)
         self.assertTrue(all(call.kwargs["autopair"] is False for call in probe.await_args_list))
 
+    async def test_explicit_retry_refreshes_selected_usb_phone_before_reconnecting(self) -> None:
+        """錯誤畫面重試必須先刷新同一台 USB 手機，再使用原 IP 與 port。"""
+        udid = "00008101-001239E11EB9003A"
+        connected = DeviceInfo(
+            udid=udid, name="Lence", ios_version="26.6.2", transport="rsd",
+            connection_type="wireless_direct", ip_address="10.0.0.16", status="ready",
+        )
+        with (
+            patch.object(device_manager, "_usb_pairing_target", AsyncMock(return_value=udid)) as usb_target,
+            patch.object(device_manager, "enable_direct_pairing", AsyncMock()) as refresh,
+            patch.object(device_manager, "_connect_direct_impl", AsyncMock(return_value=connected)) as connect,
+            patch.object(device_manager, "_has_active_session", return_value=False),
+        ):
+            result = await device_manager.connect_direct(
+                udid, "10.0.0.16", fallback_bonjour=False, port=51999, refresh_pairing=True,
+            )
+
+        self.assertEqual(result.udid, udid)
+        usb_target.assert_awaited_once_with(udid)
+        refresh.assert_awaited_once_with(udid)
+        connect.assert_awaited_once_with(udid, "10.0.0.16", False, 51999)
+
+    async def test_explicit_retry_rejects_a_different_usb_phone(self) -> None:
+        """重試不可拿 B 的 USB 授權覆蓋所選 A 的端點。"""
+        usb = SimpleNamespace(serial="PHONE-B", connection_type="USB")
+        with patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[usb])):
+            with self.assertRaisesRegex(ValueError, "USB 接上的手機.*不同"):
+                await device_manager._usb_pairing_target("PHONE-A")
+
     async def test_failed_switch_does_not_release_another_device_runtime(self) -> None:
         """B 的端點驗證失敗不可清掉 A 已明確建立的 Direct runtime。"""
         old_udid = "00008101-001239E11EB9003A"
@@ -161,16 +195,26 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_windows_remote_pairing_browse_keeps_port_and_ipv6_scope(self) -> None:
         udid = "00008030-001234567890ABCD"
+        alt_irk = b"\x01" * 16
+        service_identifier = "rotating-private-identifier"
         service = SimpleNamespace(
-            instance=f"{udid}._remotepairing._tcp.local.", host="Phone.local", port=51999,
+            instance=f"{service_identifier}._remotepairing._tcp.local.", host="Phone.local", port=51999,
             addresses=[SimpleNamespace(full_ip="fe80::abcd%Ethernet")],
+            properties={
+                "identifier": service_identifier,
+                "authTag": base64.b64encode(compute_auth_tag(alt_irk, service_identifier)).decode(),
+            },
         )
         with (
             patch("platform.system", return_value="Windows"),
             patch.object(direct_endpoint_scanner, "_get_arp_map_async", AsyncMock(return_value={})),
             patch.object(direct_endpoint_scanner, "browse_remotepairing", AsyncMock(return_value=[service])),
             patch.object(direct_endpoint_scanner, "browse_mobdev2", AsyncMock(return_value=[])),
-            patch.object(direct_endpoint_scanner, "iter_remote_paired_identifiers", return_value=[udid]),
+            patch.object(
+                direct_endpoint_scanner,
+                "iter_remote_pair_records_by_identifier",
+                return_value=[(udid, Path("remote-record"), {"peer_alt_irk": alt_irk})],
+            ),
             patch.object(direct_endpoint_scanner.socket, "if_nametoindex", return_value=12) as index,
             patch.object(pairing_store, "list_udids", return_value=[]),
         ):
@@ -299,6 +343,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "load_version", return_value="26.6.2"),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "save_address"),
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             connected = await device_manager.connect_direct(udid)
@@ -348,6 +393,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "load_version", return_value="26.6.2"),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "save_address") as mock_save_addr,
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             # Test 1: Connect directly with valid IP
@@ -791,6 +837,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save_addr,
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             # Probing auto with Device B's IP should connect Device B and skip Device A
@@ -834,6 +881,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save_addr,
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             # Connecting with stale IP 192.168.1.50 should fallback to Bonjour (ip=None),
@@ -858,6 +906,28 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             endpoints = await device_manager.list_direct_endpoints()
             self.assertEqual(len(endpoints), 0)
             self.assertEqual(direct_endpoint_scanner.cached_endpoints(), ())
+
+    async def test_modern_history_uses_saved_srv_port_and_rejects_ip_only_record(self) -> None:
+        """iOS 17+ 歷史端點不得用 49152 補上遺失的 SRV port。"""
+        udid = "00008030-001234567890ABCD"
+        with tempfile.TemporaryDirectory() as root, patch.object(
+            pairing_store, "PAIRING_DIR", Path(root) / "records",
+        ), patch("platform.system", return_value="Linux"), patch.object(
+            direct_endpoint_scanner, "browse_mobdev2", AsyncMock(return_value=[]),
+        ), patch.object(
+            direct_endpoint_scanner, "_ping_tcp_async", AsyncMock(return_value=True),
+        ):
+            pairing_store.save(udid, PAIR_RECORD)
+            pairing_store.save_version(udid, "17.4")
+            pairing_store.save_address(udid, "10.0.0.16")
+            pairing_store.save_port(udid, 51999)
+
+            endpoints = await direct_endpoint_scanner.list_direct_endpoints()
+            self.assertEqual(endpoints[0]["endpoint"], "10.0.0.16:51999")
+            self.assertEqual(endpoints[0]["port"], 51999)
+
+            pairing_store._path(udid).with_suffix(".port").unlink()
+            self.assertEqual(await direct_endpoint_scanner.list_direct_endpoints(), [])
 
     async def test_reassigned_ip_connects_to_new_owner_not_old_cached_phone(self) -> None:
         """舊 IP 被另一台手機取得時，掃描端點不誤植舊身分，連線嚴格匹配新持有者，不回退 Bonjour 至舊手機。"""
@@ -935,6 +1005,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save,
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             connected = await device_manager.connect_direct("auto", reassigned_ip)
@@ -980,6 +1051,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address", wraps=pairing_store.save_address) as mock_save_addr,
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
             patch.object(pairing_store, "_atomic_write") as mock_atomic_write,
         ):
@@ -991,8 +1063,8 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             mock_save_addr.assert_called_with(udid, ipv6_scoped)
             # Check atomic write wrote the intact scoped IPv6 address "fe80::1234%en0"
             mock_atomic_write.assert_called()
-            args, _ = mock_atomic_write.call_args
-            self.assertEqual(args[1], b"fe80::1234%en0")
+            payloads = [call.args[1] for call in mock_atomic_write.call_args_list]
+            self.assertIn(b"fe80::1234%en0", payloads)
 
             # Verify tunnel and device are successfully registered in device_manager dicts
             self.assertIn(udid.lower(), device_manager._direct_transport_adapter.rsd_tunnels)
@@ -1041,6 +1113,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "load_address", return_value=ipv6_scoped),
             patch.object(pairing_store, "save_address"),
+            patch.object(pairing_store, "save_port"),
             patch.object(pairing_store, "save_version"),
         ):
             # Simulate quick reconnect: caller passes cached IP loaded from pairing_store

@@ -31,6 +31,7 @@ type Props = {
 export function WirelessDirectView(props: Props) {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualIp, setManualIp] = useState('')
+  const [manualPort, setManualPort] = useState('')
   const [targetUdid, setTargetUdid] = useState('')
   const targetOptions = useMemo(() => [
     { value: '', label: '自動偵測已配對裝置' },
@@ -50,7 +51,10 @@ export function WirelessDirectView(props: Props) {
           const history = endpoint.status === 'history'
           const matched = endpoint.udid ? props.devices.find((item) => sameUdid(item.udid, endpoint.udid)) : undefined
           const name = matched ? props.deviceNames[normalizeDeviceId(matched.udid)] || matched.name : endpoint.device_name || 'iPhone'
-          const request = { targetUdid: history ? endpoint.udid || matched?.udid || '' : '', targetIp: endpoint.ip, targetName: name, fallbackBonjour: history, port: endpoint.port }
+          // A DNS-SD identifier is accepted only after the scanner matches it
+          // to an authorized UDID. Preserve that identity so a retry refreshes
+          // the exact USB phone instead of probing every pairing record.
+          const request = { targetUdid: endpoint.udid || matched?.udid || '', targetIp: endpoint.ip, targetName: name, fallbackBonjour: history, port: endpoint.port }
           const subtitle = history ? `歷史連線紀錄： ${endpoint.device_name || name} 於 ${displayDate(endpoint.last_connected)}` : endpoint.last_connected ? `上次連線: ${displayDate(endpoint.last_connected)}` : null
           return (
             <Paper key={endpoint.endpoint} withBorder p="sm" radius="md" className="device-manager-secondary-card">
@@ -61,7 +65,7 @@ export function WirelessDirectView(props: Props) {
       )}
       <div>
         <Button variant="subtle" size="compact-xs" color="gray" onClick={() => setManualOpen((open) => !open)}>{manualOpen ? '收合手動輸入' : '進階：手動輸入 IP 位址'}</Button>
-        <Collapse in={manualOpen}><Paper withBorder p="sm" radius="md" mt="xs"><Stack gap="xs"><Group gap="xs" grow><Select size="xs" label="目標裝置" placeholder="選擇裝置或自動偵測" data={targetOptions} value={targetUdid} onChange={(value) => setTargetUdid(value || '')} /><TextInput size="xs" label="手機 IP 位址" placeholder="192.168.1.105" value={manualIp} onChange={(event) => setManualIp(event.currentTarget.value)} /></Group><Group justify="flex-end"><Button size="xs" color="blue" disabled={!manualIp.trim()} onClick={() => { const target = props.managedDevices.find((item) => item.udid === targetUdid); props.onConnect({ targetUdid, targetIp: manualIp.trim(), targetName: target?.name || '已配對裝置', fallbackBonjour: false, port: 49152 }) }}>連線</Button></Group></Stack></Paper></Collapse>
+        <Collapse in={manualOpen}><Paper withBorder p="sm" radius="md" mt="xs"><Stack gap="xs"><Group gap="xs" grow><Select size="xs" label="目標裝置" placeholder="選擇裝置或自動偵測" data={targetOptions} value={targetUdid} onChange={(value) => setTargetUdid(value || '')} /><TextInput size="xs" label="手機 IP 位址" placeholder="192.168.1.105" value={manualIp} onChange={(event) => setManualIp(event.currentTarget.value)} /><TextInput size="xs" label="RemotePairing 連接埠" placeholder="以掃描結果為準" value={manualPort} onChange={(event) => setManualPort(event.currentTarget.value.replace(/\D/g, '').slice(0, 5))} /></Group><Text size="xs" c="dimmed">iOS 17+ 的連接埠由手機動態廣播，並非固定 49152。請填入 DNS-SD 掃描顯示的埠號。</Text><Group justify="flex-end"><Button size="xs" color="blue" disabled={!manualIp.trim() || Number(manualPort) < 1 || Number(manualPort) > 65535} onClick={() => { const target = props.managedDevices.find((item) => item.udid === targetUdid); props.onConnect({ targetUdid, targetIp: manualIp.trim(), targetName: target?.name || '已配對裝置', fallbackBonjour: false, port: Number(manualPort) }) }}>連線</Button></Group></Stack></Paper></Collapse>
       </div>
       <Group justify="flex-end" mt="xs"><Button variant="default" onClick={props.onBack}>返回裝置清單</Button></Group>
     </Stack>

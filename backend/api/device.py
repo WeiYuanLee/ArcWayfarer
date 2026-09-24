@@ -18,8 +18,11 @@ router = APIRouter(prefix="/api")
 
 class DirectConnectRequest(BaseModel):
     ip: str | None = None
-    port: int = Field(default=49152, ge=1, le=65535)
+    # The client must carry the DNS-SD SRV port with the selected endpoint.
+    # There is no universally valid iOS 17+ RemotePairing default.
+    port: int = Field(ge=1, le=65535)
     fallback_bonjour: bool = True
+    refresh_pairing: bool = False
 
 
 class DiscoverySourceResponse(BaseModel):
@@ -76,6 +79,7 @@ async def connect_wireless_direct(udid: str, body: DirectConnectRequest, request
             str(body.ip) if body.ip else None,
             fallback_bonjour=body.fallback_bonjour,
             port=body.port,
+            refresh_pairing=body.refresh_pairing,
         )
     except (ValueError, OSError, TimeoutError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

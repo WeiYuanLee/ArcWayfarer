@@ -1,6 +1,6 @@
 """Direct TCP lockdown transport with an unbound service socket for TLS.
 
-pymobiledevice3 11.3.1 pre-binds asyncio streams when opening a TCP service.
+The original pymobiledevice3 path pre-binds asyncio streams when opening a TCP service.
 Its SSL upgrade then takes the StreamWriter.start_tls path. On the tested
 iOS 16.7.16 device, that path accepted a simulate-location command but did
 not change the phone's location. Starting TLS on an unbound socket, as the

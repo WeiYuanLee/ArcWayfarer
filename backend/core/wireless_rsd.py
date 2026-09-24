@@ -1,4 +1,4 @@
-"""Wi-Fi RemotePairing RSD tunnel for pymobiledevice3 11.3.1.
+"""Wi-Fi RemotePairing RSD tunnel for pymobiledevice3 11.19.1.
 
 The upstream UserspaceRsdTunnel always tries usbmux first. This subclass
 selects an already paired RemotePairing service directly, then uses the same
@@ -8,6 +8,7 @@ PyTCP lifecycle and cleanup as the upstream implementation.
 import asyncio
 from contextlib import AsyncExitStack
 
+from pymobiledevice3.pair_records import iter_remote_paired_identifiers
 from pymobiledevice3.remote import tunnel_service, userspace_tunnel
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
 from pymobiledevice3.remote.userspace_tunnel import UserspaceDialPlane, UserspaceRsdTunnel
@@ -20,6 +21,7 @@ class WiFiRsdTunnel(UserspaceRsdTunnel):
         self.fallback_bonjour = fallback_bonjour
         self.port = port
         self.peer_ip: str | None = None
+        self.peer_port: int | None = None
 
     async def _aopen_locked(self) -> RemoteServiceDiscoveryService:
         if userspace_tunnel._active_tunnel is not None:
@@ -29,7 +31,7 @@ class WiFiRsdTunnel(UserspaceRsdTunnel):
         stack = AsyncExitStack()
         try:
             canonical_udid = next(
-                (i for i in tunnel_service.iter_remote_paired_identifiers() if i.lower() == self.serial.lower()),
+                (i for i in iter_remote_paired_identifiers() if i.lower() == self.serial.lower()),
                 self.serial,
             )
 
@@ -51,6 +53,7 @@ class WiFiRsdTunnel(UserspaceRsdTunnel):
                 raise ValueError("未指定 IP 位址且未啟用 Bonjour 搜尋。")
 
             self.peer_ip = getattr(provider, "hostname", None) or self.ip
+            self.peer_port = getattr(provider, "port", None) or self.port
 
             stack.push_async_callback(provider.close)
 

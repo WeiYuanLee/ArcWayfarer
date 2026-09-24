@@ -82,7 +82,7 @@
       <h2>開始前先確認這些條件</h2>
       <div class="guide-cards three">
         <article><span class="card-icon">⌘</span><h3>macOS</h3><p>支援 Apple Silicon 與 Intel Mac。iOS 17+ 建立開發者服務通道時，系統可能要求額外權限。</p></article>
-        <article><span class="card-icon">⊞</span><h3>Windows</h3><p>支援 Windows 10 / 11 64-bit。請確保已安裝 iTunes 或 Apple Mobile Device Support。</p></article>
+        <article><span class="card-icon">⊞</span><h3>Windows</h3><p>支援 Windows 10 / 11 64-bit。請安裝 <a href="https://www.apple.com/itunes/download/win64/" target="_blank" rel="noopener">Apple 官網的傳統 64 位元 iTunes 套件</a>；Microsoft Store 的「Apple 裝置」App 不支援一般 Wi-Fi 探索。</p></article>
         <article><span class="card-icon">◉</span><h3>iPhone</h3><p>支援 iOS 16 以上。需使用可傳輸資料的 USB 線，並完成「信任這部電腦」。</p></article>
       </div>
       <div class="guide-callout success"><strong>iPhone 17 / iOS 26.6：</strong>Apple Silicon Mac 的裝置偵測相容性問題已於 ArcWayfarer v0.1.10 修正。若仍使用較舊版本，請先更新。</div>
@@ -114,7 +114,7 @@
         <article><b>2</b><div><h3>信任這部電腦</h3><p>iPhone 跳出提示時選擇「信任」，並輸入解鎖密碼。</p></div></article>
         <article><b>3</b><div><h3>回到 ArcWayfarer</h3><p>裝置通常會自動出現在裝置選擇區。多裝置時請確認目前選取的 iPhone。</p></div></article>
       </div>
-      <div class="guide-tip"><strong>找不到裝置？</strong>先換 USB 線與 USB Port，再確認 Windows 的 Apple Mobile Device Support 是否正常。</div>
+      <div class="guide-tip"><strong>找不到裝置？</strong>先換 USB 線與 USB Port，再確認 Windows 已安裝 Apple 官網的傳統 64 位元 iTunes 套件。</div>
     </section>
 
     <section class="guide-section" id="developer-mode">
@@ -230,7 +230,7 @@
     <section class="guide-section" id="troubleshooting">
       <div class="section-kicker">15 · TROUBLESHOOTING</div>
       <h2>常見問題與疑難排解</h2>
-      <details open><summary>ArcWayfarer 找不到我的 iPhone</summary><p>確認 iPhone 已解鎖、USB 線支援資料傳輸、已選擇「信任這部電腦」。重新插拔並重啟 ArcWayfarer。Windows 另外確認 iTunes 或 Apple Mobile Device Support。</p></details>
+      <details open><summary>ArcWayfarer 找不到我的 iPhone</summary><p>確認 iPhone 已解鎖、USB 線支援資料傳輸、已選擇「信任這部電腦」。重新插拔並重啟 ArcWayfarer。Windows 另請確認已安裝 Apple 官網的傳統 64 位元 iTunes 套件。</p></details>
       <details><summary>已經按過「信任」，為什麼還是找不到？</summary><p>「信任」只代表 pairing 已完成。裝置偵測仍可能受 USB 通訊、Apple Device Driver、Developer Services、RemoteXPC 或系統權限影響。請允許 ArcWayfarer 啟動時要求的權限並重新連線。</p></details>
       <details><summary>為什麼 ArcWayfarer 啟動要系統權限？</summary><p>ArcWayfarer 需要建立與 iPhone Developer Services 的通訊環境，底層包含 pymobiledevice3 相關服務。一般使用者只需要接受系統授權，不需要自行執行指令。</p></details>
       <details><summary>Developer Mode 找不到</summary><p>先用 USB 連接 iPhone、完成信任，再使用 ArcWayfarer 左上角的 Developer Mode 協助功能。之後回到「設定 → 隱私權與安全性」重新查看。</p></details>

@@ -64,7 +64,7 @@ Supports **macOS 13 or later** (Apple Silicon + Intel) and **Windows 10/11**.
 - **iOS 16 and below** — Connect via USB and trust the computer. The device appears automatically, no extra steps.
 - **iOS 17 and later** — ArcWayfarer handles the RemoteXPC tunnel automatically.
   - **macOS**: A system authorization dialog will appear when the tunnel starts.
-  - **Windows**: The app requests Administrator privileges (UAC) at launch. iTunes or Apple Mobile Device Support must be installed.
+  - **Windows**: The app requests Administrator privileges (UAC) at launch. For USB and Wi-Fi device discovery, install Apple's [classic 64-bit iTunes package](https://www.apple.com/itunes/download/win64/); the Microsoft Store Apple Devices app does not expose uncabled devices through usbmux.
 
 ### First Use
 

@@ -37,7 +37,7 @@ export function pairWirelessDirect(udid: string): Promise<{ status: string; revi
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/pair`, {}, undefined, 150000)
 }
 
-export function connectWirelessDirect(udid: string, ip?: string, fallbackBonjour = true, port = 49152): Promise<Device> {
+export function connectWirelessDirect(udid: string, ip: string | undefined, fallbackBonjour: boolean, port: number, refreshPairing = false): Promise<Device> {
   if (ip) {
     const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip) && ip.split('.').every((part) => Number(part) <= 255)
     const isIpv6 = ip.includes(':')
@@ -48,7 +48,7 @@ export function connectWirelessDirect(udid: string, ip?: string, fallbackBonjour
   const target = udid.trim() || 'auto'
   return postJsonWithResponse(
     `/api/devices/${encodeURIComponent(target)}/wireless-direct/connect`,
-    { ip: ip || null, port, fallback_bonjour: fallbackBonjour },
+    { ip: ip || null, port, fallback_bonjour: fallbackBonjour, refresh_pairing: refreshPairing },
     undefined,
     90000
   )

@@ -47,7 +47,7 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   const [quickReconnects, setQuickReconnects] = useState<QuickReconnectRecord[]>([])
   const [pairingBusyId, setPairingBusyId] = useState<string | null>(null)
   const [connectingState, setConnectingState] = useState<DeviceManagerController['connectingState']>({
-    status: 'loading', targetUdid: '', targetName: '', fallbackBonjour: true, port: 49152,
+    status: 'loading', targetUdid: '', targetName: '', fallbackBonjour: true, port: 0,
   })
 
   useEffect(() => {
@@ -106,18 +106,29 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   }, [view, loadEndpoints])
 
   const executeConnect = useCallback(async (request: DirectConnectRequest) => {
-    setConnectingState({ status: 'loading', ...request })
+    // Copy only command fields. The retry source is the previous UI state and
+    // may still contain `status: error`; spreading it would immediately undo
+    // the loading transition and make the retry appear to do nothing.
+    const command: DirectConnectRequest = {
+      targetUdid: request.targetUdid,
+      targetIp: request.targetIp,
+      targetName: request.targetName,
+      fallbackBonjour: request.fallbackBonjour,
+      port: request.port,
+      refreshPairing: request.refreshPairing,
+    }
+    setConnectingState({ status: 'loading', ...command })
     setView('connecting')
     try {
       const connected = await connectWirelessDirect(
-        request.targetUdid, request.targetIp, request.fallbackBonjour, request.port,
+        command.targetUdid, command.targetIp, command.fallbackBonjour, command.port, command.refreshPairing,
       )
-      const udid = request.targetUdid || connected.udid
-      const name = request.targetName || connected.name || 'iPhone'
-      const ip = connected.ip_address || request.targetIp || ''
+      const udid = command.targetUdid || connected.udid
+      const name = command.targetName || connected.name || 'iPhone'
+      const ip = connected.ip_address || command.targetIp || ''
       const record: QuickReconnectRecord = {
-        udid, name, ip, port: request.port,
-        endpoint: ip ? `${ip.includes(':') ? `[${ip}]` : ip}:${request.port}` : String(request.port),
+        udid, name, ip, port: command.port,
+        endpoint: ip ? `${ip.includes(':') ? `[${ip}]` : ip}:${command.port}` : String(command.port),
         timestamp: currentTimestamp(),
       }
       setQuickReconnects(saveQuickReconnectRecord(record))
@@ -140,6 +151,17 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       }))
     }
   }, [activeCount, allDevices, options.onRefreshDevices, options.onUnhideDevice])
+
+  const retryConnect = useCallback(() => executeConnect({
+    targetUdid: connectingState.targetUdid,
+    targetIp: connectingState.targetIp,
+    targetName: connectingState.targetName,
+    fallbackBonjour: connectingState.fallbackBonjour,
+    port: connectingState.port,
+    // A retry after the USB instruction is a distinct command: refresh the
+    // selected phone's authorization before reconnecting the same endpoint.
+    refreshPairing: true,
+  }), [connectingState, executeConnect])
 
   const handleToggle = useCallback(async (item: ManagedDevice, checked: boolean) => {
     if (checked) {
@@ -182,6 +204,6 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   }, [quickReconnects])
 
   return { view, setView, allDevices, activeCount, endpoints, isScanning, lastScanTime,
-    quickReconnects, pairingBusyId, connectingState, loadEndpoints, executeConnect,
+    quickReconnects, pairingBusyId, connectingState, loadEndpoints, executeConnect, retryConnect,
     handleToggle, handlePair, clearQuickReconnects }
 }
