@@ -4,7 +4,7 @@
 
 ## 取得已封裝的 Windows 測試版（建議）
 
-不需要在 Windows 本機建置。以瀏覽器開啟 [V1 跨平台驗證 run](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35826086172)，在頁面最下方 **Artifacts** 下載 `validation-windows-x64`。ZIP 內含 Windows 安裝程式與 `SHA256SUMS-windows-x64.txt`；artifact 保留至 workflow 執行後 7 天。
+不需要在 Windows 本機建置。以瀏覽器開啟 [V2-A 跨平台驗證 run](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35837709290)，在頁面最下方 **Artifacts** 下載 `validation-windows-x64`。ZIP 內含 Windows 安裝程式與 `SHA256SUMS-windows-x64.txt`；artifact 保留至 workflow 執行後 7 天。
 
 若 C 槽空間不足，請下載、解壓及安裝至 D 槽。安裝器暫存空間也可在同一個 PowerShell 視窗暫時移至 D 槽：
 

@@ -30,6 +30,8 @@
 
 V1 跨平台驗收：[GitHub Actions run 35826086172](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35826086172) 全綠。短期 artifacts：Windows x64 約 201 MB、macOS arm64 約 211 MB、macOS x64 約 218 MB；每個 artifact 均包含安裝包與對應 SHA-256 manifest。
 
+V2-A 工具與安裝包驗證：[GitHub Actions run 35837709290](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35837709290) 全綠。Windows artifact 約 201 MB，包含支援 runtime／TLS 診斷的新安裝包；PowerShell 驗收工具通過 Windows PowerShell parser 檢查，raw branch 下載網址已驗證。
+
 ---
 
 ## 1. 執行原則
