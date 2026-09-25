@@ -4,7 +4,7 @@
 
 ## 取得已封裝的 Windows 測試版（建議）
 
-不需要在 Windows 本機建置。以瀏覽器開啟 [最新跨平台驗證 run](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/35950358245)，在頁面最下方 **Artifacts** 下載 `validation-windows-x64`。ZIP 內含 Windows 安裝程式與 `SHA256SUMS-windows-x64.txt`；artifact 保留至 workflow 執行後 7 天。
+不需要在 Windows 本機建置。以瀏覽器開啟 [最新跨平台驗證 run](https://github.com/WeiYuanLee/ArcWayfarer/actions/runs/36029695744)，在頁面最下方 **Artifacts** 下載 `validation-windows-x64`。這一輪對應 commit `29cf371`，包含 `pymobiledevice3 11.19.1`、動態 RemotePairing 埠與 USB 重試刷新授權修正。ZIP 內含 Windows 安裝程式與 `SHA256SUMS-windows-x64.txt`；artifact 保留至 workflow 執行後 7 天。
 
 若 C 槽空間不足，請下載、解壓及安裝至 D 槽。安裝器暫存空間也可在同一個 PowerShell 視窗暫時移至 D 槽：
 
