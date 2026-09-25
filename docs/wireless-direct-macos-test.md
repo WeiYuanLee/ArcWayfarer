@@ -1,5 +1,7 @@
 # macOS 無線直連測試版
 
+> 2026-09-25 更新：新版 RemotePairing 廣播會以 `authTag` 搭配配對紀錄的 `peer_alt_irk` 驗證裝置。若既有紀錄缺少該欄位，請保持目標手機以 USB 接上並再次執行無線授權；ArcWayfarer 會只重建該手機的紀錄，完成後要求手機重新發布 Bonjour，再拔線掃描。macOS 掃描會讀取廣播的實際動態埠與 IPv6 scope，不應填入固定埠號。
+
 macOS 已分別以 iOS 16.7.16 的 Direct TCP 與 iOS 26.6.2 的 RemotePairing／RSD 完成限定環境實機驗證。這些結果不能推定所有 iOS 版本與網路環境都可用；目前設備狀態與切換行為以 [設備管理架構決策](device-management-architecture.zh-TW.md)為準。
 
 ## 使用步驟

@@ -26,13 +26,57 @@ def _verified_remote_pairing_udid(service: object) -> str | None:
     properties = getattr(service, "properties", {}) or {}
     service_identifier = properties.get("identifier")
     auth_tag = properties.get("authTag")
-    if not service_identifier or not auth_tag:
-        return None
-    for udid, _path, pair_record in iter_remote_pair_records_by_identifier():
-        alt_irk = pair_record.get(PEER_ALT_IRK_KEY)
-        if alt_irk is not None and validate_auth_tag(alt_irk, service_identifier, auth_tag):
+    if service_identifier and auth_tag:
+        for udid, _path, pair_record in iter_remote_pair_records_by_identifier():
+            alt_irk = pair_record.get(PEER_ALT_IRK_KEY)
+            if alt_irk is not None and validate_auth_tag(alt_irk, service_identifier, auth_tag):
+                return udid
+
+    # Older iOS releases exposed the UDID as the service instance. Keep this
+    # compatibility path, but never treat an unrelated opaque instance as an
+    # identity when authTag validation is unavailable.
+    instance = re.split(
+        r"\._remotepairing\._tcp\.local\.?$",
+        str(getattr(service, "instance", "")),
+        flags=re.IGNORECASE,
+    )[0]
+    for udid in iter_remote_paired_identifiers():
+        if udid.lower() == instance.lower():
             return udid
     return None
+
+
+def _add_remote_pairing_services(scan_endpoints: dict[str, dict], services: list[object], system: str) -> None:
+    """Project structured Bonjour answers without losing ports or IPv6 scope."""
+    for service in services:
+        verified_udid = _verified_remote_pairing_udid(service)
+        for address in getattr(service, "addresses", []):
+            ip = address.full_ip
+            if system == "Windows" and ":" in ip and "%" in ip:
+                host, scope = ip.rsplit("%", 1)
+                if not scope.isdecimal():
+                    try:
+                        # Windows sockets use a numeric IPv6 interface index;
+                        # macOS accepts the interface name returned by Bonjour.
+                        ip = f"{host}%{socket.if_nametoindex(scope)}"
+                    except OSError:
+                        logger.debug("Could not map IPv6 interface %s to an index", scope)
+            if ip.startswith("127."):
+                continue
+            port = int(getattr(service, "port"))
+            endpoint = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+            host = getattr(service, "host", None)
+            scan_endpoints[endpoint] = {
+                "udid": verified_udid,
+                "ip": ip,
+                "port": port,
+                "endpoint": endpoint,
+                "source": "remotepairing",
+                "status": "history" if ip.startswith("169.254.") else "online",
+                "last_connected": None,
+                "device_name": host.removesuffix(".local") if host else None,
+                "ios_version": "unknown",
+            }
 
 
 def cached_endpoints() -> tuple[dict, ...]:
@@ -182,49 +226,21 @@ async def list_direct_endpoints() -> list[dict]:
     scan_endpoints: dict[str, dict] = {}
     arp_map = await _get_arp_map_async()
 
-    # pymobiledevice3's DNS-SD browser retains the
-    # advertised port and the interface scope for IPv6 link-local addresses.
-    # Windows has no system `dns-sd` command, so use that browser directly.
-    if platform.system() == "Windows":
+    system = platform.system()
+
+    # Use pymobiledevice3's structured browser on both desktop platforms. It
+    # retains TXT authTag, the advertised dynamic port, and IPv6 link-local
+    # scope. The old macOS text parser could not authenticate privacy-preserving
+    # instance names and discarded IPv6-only phones.
+    if system in {"Darwin", "Windows"}:
         try:
-            services = await asyncio.wait_for(browse_remotepairing(timeout=1.0), timeout=1.5)
-            for service in services:
-                instance = re.split(r"\._remotepairing\._tcp\.local\.?$", service.instance, flags=re.IGNORECASE)[0]
-                # Current iOS uses an opaque, rotating Bonjour identifier.
-                # Match authTag with the altIRK saved during USB pairing;
-                # instance-name equality is neither stable nor an identity.
-                verified_udid = _verified_remote_pairing_udid(service)
-                for address in service.addresses:
-                    ip = address.full_ip
-                    if ":" in ip and "%" in ip:
-                        host, scope = ip.rsplit("%", 1)
-                        if not scope.isdecimal():
-                            try:
-                                # Windows sockets normally use a numeric IPv6
-                                # interface index, while mDNS may return a name.
-                                ip = f"{host}%{socket.if_nametoindex(scope)}"
-                            except OSError:
-                                logger.debug("Could not map IPv6 interface %s to an index", scope)
-                    if ip.startswith("127."):
-                        continue
-                    port = service.port
-                    endpoint = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
-                    scan_endpoints[endpoint] = {
-                        "udid": verified_udid,
-                        "ip": ip,
-                        "port": port,
-                        "endpoint": endpoint,
-                        "source": "remotepairing",
-                        "status": "history" if ip.startswith("169.254.") else "online",
-                        "last_connected": None,
-                        "device_name": service.host.removesuffix(".local") if service.host else None,
-                        "ios_version": "unknown",
-                    }
+            services = await asyncio.wait_for(browse_remotepairing(timeout=2.5), timeout=3.0)
+            _add_remote_pairing_services(scan_endpoints, services, system)
         except Exception as exc:
             logger.debug("RemotePairing mDNS browse failed: %s", exc)
 
     # 1. Native macOS dns-sd discovery
-    if platform.system() == "Darwin":
+    if system == "Darwin":
         try:
             rp_insts = await _browse_dns_sd_services("_remotepairing._tcp", duration=1.0)
 

@@ -6,7 +6,7 @@ import unittest
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from pymobiledevice3.exceptions import RemotePairingCompletedError
 from pymobiledevice3.remote.siphash import compute_auth_tag
@@ -75,7 +75,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         device_manager._direct_transport_adapter.rsd_tunnels.clear()
         direct_endpoint_scanner.clear_cache()
 
-    async def test_usb_refreshes_existing_remote_pairing_before_saving(self) -> None:
+    async def test_usb_rebuilds_remote_pairing_record_without_alt_irk(self) -> None:
         udid = "00008030-001234567890ABCD"
         class Lockdown:
             paired = True
@@ -93,23 +93,39 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         lockdown = Lockdown()
-        first = SimpleNamespace(connect=AsyncMock(side_effect=RemotePairingCompletedError()), close=AsyncMock())
+        stale_path = SimpleNamespace(unlink=Mock())
+        unrelated_path = SimpleNamespace(unlink=Mock())
+        fresh_record = {"peer_alt_irk": b"\x01" * 16}
+        record_reads = iter([
+            [(udid, stale_path, {}), ("OTHER-PHONE", unrelated_path, {})],
+            [(udid, Path("remote-record"), fresh_record), ("OTHER-PHONE", unrelated_path, {})],
+        ])
+        pairing = SimpleNamespace(connect=AsyncMock(side_effect=RemotePairingCompletedError()), close=AsyncMock())
         verified = SimpleNamespace(connect=AsyncMock(), close=AsyncMock())
         with (
             # Existing files must be revalidated on macOS too. Their presence
             # does not prove that the phone still accepts the key.
             patch("platform.system", return_value="Darwin"),
             patch.object(device_manager, "create_using_usbmux", AsyncMock(return_value=lockdown)),
-            patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[udid]),
-            patch.object(device_manager.RemotePairingLockdownService, "create", AsyncMock(side_effect=[first, verified])) as create,
+            patch.object(device_manager, "iter_remote_pair_records_by_identifier", side_effect=lambda: iter(next(record_reads))),
+            patch.object(
+                device_manager.RemotePairingLockdownService,
+                "create",
+                AsyncMock(side_effect=[pairing, verified]),
+            ) as create,
+            patch.object(device_manager, "_announce_wifi_change", AsyncMock()) as announce,
             patch.object(pairing_store, "save") as save,
             patch.object(pairing_store, "save_version"),
         ):
             await device_manager.enable_direct_pairing(udid)
         self.assertEqual(create.await_count, 2)
-        first.close.assert_awaited_once()
+        stale_path.unlink.assert_called_once_with(missing_ok=True)
+        unrelated_path.unlink.assert_not_called()
+        pairing.connect.assert_awaited_once_with(autopair=True)
+        pairing.close.assert_awaited_once()
         verified.connect.assert_awaited_once_with(autopair=False)
         verified.close.assert_awaited_once()
+        announce.assert_awaited_once_with(lockdown)
         save.assert_called_once_with(udid, PAIR_RECORD)
 
     async def test_retry_refreshes_single_usb_phone_then_connects_selected_ip(self) -> None:
@@ -238,6 +254,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("platform.system", return_value="Darwin"),
             patch.object(direct_endpoint_scanner, "_get_arp_map_async", AsyncMock(return_value={})),
+            patch.object(direct_endpoint_scanner, "browse_remotepairing", AsyncMock(return_value=[])),
             patch.object(direct_endpoint_scanner, "_browse_dns_sd_services", AsyncMock(side_effect=browse)),
             patch.object(direct_endpoint_scanner, "_resolve_dns_sd_instance", AsyncMock(return_value=("Phone.local", new_port))),
             patch.object(direct_endpoint_scanner, "_resolve_host_ips_async", AsyncMock(return_value=[new_ip])),
@@ -251,6 +268,42 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(endpoints[0]["ip"], new_ip)
         self.assertEqual(endpoints[0]["port"], new_port)
         self.assertEqual(endpoints[0]["endpoint"], f"{new_ip}:{new_port}")
+
+    async def test_macos_structured_browse_matches_private_advert_and_keeps_ipv6_scope(self) -> None:
+        """macOS must authenticate opaque iOS adverts and retain scoped IPv6 endpoints."""
+        udid = "00008030-001234567890ABCD"
+        alt_irk = b"\x02" * 16
+        service_identifier = "opaque-private-identifier"
+        service = SimpleNamespace(
+            instance=f"{service_identifier}._remotepairing._tcp.local.",
+            host="Private-iPhone.local",
+            port=53124,
+            addresses=[SimpleNamespace(full_ip="fe80::1234%en0")],
+            properties={
+                "identifier": service_identifier,
+                "authTag": base64.b64encode(compute_auth_tag(alt_irk, service_identifier)).decode(),
+            },
+        )
+        with (
+            patch("platform.system", return_value="Darwin"),
+            patch.object(direct_endpoint_scanner, "_get_arp_map_async", AsyncMock(return_value={})),
+            patch.object(direct_endpoint_scanner, "browse_remotepairing", AsyncMock(return_value=[service])),
+            patch.object(direct_endpoint_scanner, "_browse_dns_sd_services", AsyncMock(return_value=[])),
+            patch.object(direct_endpoint_scanner, "browse_mobdev2", AsyncMock(return_value=[])),
+            patch.object(
+                direct_endpoint_scanner,
+                "iter_remote_pair_records_by_identifier",
+                return_value=[(udid, Path("remote-record"), {"peer_alt_irk": alt_irk})],
+            ),
+            patch.object(pairing_store, "list_udids", return_value=[]),
+        ):
+            endpoints = await device_manager.list_direct_endpoints()
+
+        self.assertEqual(len(endpoints), 1)
+        self.assertEqual(endpoints[0]["udid"], udid)
+        self.assertEqual(endpoints[0]["ip"], "fe80::1234%en0")
+        self.assertEqual(endpoints[0]["port"], 53124)
+        self.assertEqual(endpoints[0]["endpoint"], "[fe80::1234%en0]:53124")
 
     def test_windows_arp_table_is_parsed_without_mac_format(self) -> None:
         output = "Interface: 192.168.1.2 --- 0xc\n  Internet Address      Physical Address      Type\n  192.168.1.25          f0-1f-c7-01-02-03     dynamic\n"
@@ -894,6 +947,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_list_direct_endpoints_creates_fresh_snapshot(self) -> None:
         with (
             patch.object(direct_endpoint_scanner, "_get_arp_map_async", AsyncMock(return_value={})),
+            patch.object(direct_endpoint_scanner, "browse_remotepairing", AsyncMock(return_value=[])),
             patch.object(direct_endpoint_scanner, "_browse_dns_sd_services", AsyncMock(return_value=[])),
             patch.object(direct_endpoint_scanner, "browse_mobdev2", AsyncMock(return_value=[])),
             patch.object(pairing_store, "list_udids", return_value=[]),
@@ -938,6 +992,7 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         # 1. Verify list_direct_endpoints does NOT assign Phone A's UDID to Phone B's endpoint
         with (
             patch.object(direct_endpoint_scanner, "_get_arp_map_async", AsyncMock(return_value={})),
+            patch.object(direct_endpoint_scanner, "browse_remotepairing", AsyncMock(return_value=[])),
             patch.object(direct_endpoint_scanner, "_browse_dns_sd_services", AsyncMock(return_value=[])),
             patch.object(direct_endpoint_scanner, "_resolve_dns_sd_instance", AsyncMock(return_value=(None, None))),
             patch.object(direct_endpoint_scanner, "browse_mobdev2", AsyncMock(return_value=[])),

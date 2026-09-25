@@ -5,13 +5,14 @@ from packaging.version import Version
 from pymobiledevice3.bonjour import browse_mobdev2
 from pymobiledevice3.exceptions import AlreadyMountedError
 from pymobiledevice3.lockdown import LockdownClient, create_using_usbmux
-from pymobiledevice3.pair_records import iter_remote_paired_identifiers
+from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier, iter_remote_paired_identifiers
 from pymobiledevice3.remote import tunnel_service
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
 from pymobiledevice3.remote.tunnel_service import RemotePairingLockdownService
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
 from pymobiledevice3.services.mobile_image_mounter import auto_mount
+from pymobiledevice3.services.notification_proxy import NotificationProxyService
 from pymobiledevice3.tunneld.api import _list_tunnels, get_tunneld_device_by_udid
 from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 
@@ -269,13 +270,20 @@ async def _connect_direct_tcp(udid: str, ip: str) -> LockdownClient:
     return await _direct_tcp_adapter.connect(udid, ip)
 
 
+async def _announce_wifi_change(lockdown: LockdownClient) -> None:
+    """Make lockdownd republish this host's Wi-Fi Bonjour credentials."""
+    async with NotificationProxyService(lockdown) as notifications:
+        await notifications.notify_post("com.apple.mobile.lockdown.BonjourServiceChanged")
+
+
 async def enable_direct_pairing(udid: str) -> None:
     await pairing_manager.enable(
         udid,
         create_usb_lockdown=create_using_usbmux,
         create_remote_service=RemotePairingLockdownService.create,
-        remote_identifiers=iter_remote_paired_identifiers,
+        remote_pair_records=iter_remote_pair_records_by_identifier,
         ensure_mounted=ensure_mounted,
+        announce_wifi_change=_announce_wifi_change,
     )
     revision = device_revision_ledger.bump(udid)
     device_registry.record_authorization(
