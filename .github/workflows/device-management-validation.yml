@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feat/windows-wireless-direct-spike
+      - fix/windows-wireless-direct-session
     paths:
       - .github/workflows/device-management-validation.yml
       - backend/**
