@@ -87,6 +87,19 @@ describe('useWebSocket background recovery', () => {
     unmount()
   })
 
+  it('publishes the latest device registry revision to discovery consumers', () => {
+    const { result, unmount } = renderHook(() => useWebSocket())
+    const socket = FakeWebSocket.instances[0]
+
+    act(() => {
+      socket.emit({ type: 'device_snapshot', revision: 7 })
+      socket.emit({ type: 'device_snapshot', revision: 6 })
+    })
+
+    expect(result.current.deviceSnapshotRevision).toBe(7)
+    unmount()
+  })
+
   it('retains semantic flower config from an authoritative snapshot', () => {
     const { result, unmount } = renderHook(() => useWebSocket())
     const socket = FakeWebSocket.instances[0]

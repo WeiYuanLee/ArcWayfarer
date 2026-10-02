@@ -30,14 +30,23 @@ ArcWayfarer 可讓你透過電腦在地圖上設定 iPhone 的模擬位置、沿
 
 | iOS 版本 | 開始前需完成的事項 |
 | --- | --- |
-| iOS 16 及以下 | 以 USB 連接 iPhone、解鎖螢幕，並在手機上選擇「信任這部電腦」。 |
-| iOS 17 及以上 | ArcWayfarer 會自動建立所需通道。macOS 可能要求系統授權；Windows 啟動時可能要求系統管理員權限。 |
+| iOS 15 及以下 | 以 USB 連接 iPhone；ArcWayfarer 會引導你解鎖並信任這部電腦。 |
+| iOS 16 及以上 | 除了 USB 信任，還需要在 iPhone 開啟開發者模式。ArcWayfarer 會在裝置管理中檢查狀態並協助顯示設定選項。 |
 
 Windows 使用者若無法偵測裝置，請安裝 Apple 提供的[傳統 64 位元 iTunes 安裝包](https://www.apple.com/itunes/download/win64/)。Microsoft Store 的「Apple 裝置」App 可提供部分 USB 支援，但其 Apple 行動裝置服務無法讓 usbmux 探索未接線的 Wi-Fi 設備。
 
 ### 第一次執行
 
 第一次對某部裝置設定位置時，ArcWayfarer 會下載並掛載 Developer Disk Image。依網路與裝置狀況，可能需要數秒到數分鐘；完成後，後續設定通常會更快。
+
+首次接上新的 iPhone 時，請開啟「裝置管理」並選擇「設定這台 iPhone」：
+
+1. 依畫面指示解鎖 iPhone。
+2. 按下「我已解鎖，繼續」，ArcWayfarer 會讓 iPhone 顯示「信任這部電腦」。請在手機上確認並依提示輸入密碼。
+3. iOS 16 以上若尚未開啟開發者模式，按「在 iPhone 上顯示開發者模式選項」，再前往「設定 → 隱私權與安全性 → 開發者模式」完成設定。
+4. iPhone 重新啟動並接回 USB 後，ArcWayfarer 會重新檢查，接著完成 Wi-Fi 連線授權。
+
+完成授權後，拔除 USB 並讓電腦與 iPhone 保持在同一個 Wi-Fi。只有實際找到這台 iPhone 時，它才會以 `Wi-Fi` 出現在裝置清單；掃描不到時不會保留離線裝置卡片。
 
 ![待補：已連接裝置與主地圖畫面](assets/user-guide/01-connected-device.png)
 
@@ -206,6 +215,12 @@ Mobile Remote 可讓你用手機操作桌面版 ArcWayfarer。
 - macOS：確認已允許系統顯示的授權要求。
 - Windows：以系統管理員身分啟動 ArcWayfarer，並確認 Apple 相關驅動已正確安裝。
 - 保持 USB 連線、不要讓 iPhone 鎖定，然後重試。
+
+### Wireless Direct 連線失敗
+
+- Wi-Fi 暫時波動、手機剛喚醒或端點短暫無回應時，先按「再試一次」；這個操作只重新建立連線，不會要求 USB 或改寫授權。
+- 多次重試仍失敗，或畫面顯示目前授權遭手機拒絕時，只接上目標 iPhone，保持解鎖並信任此電腦，再按「接上 USB 修復授權」。
+- USB 修復會先核對接上的手機，只刷新該手機的 Wireless Direct 授權，再重新連接原端點。若同時接了多台手機，請先拔除其他手機。
 
 ### 第一次設定位置很久沒有完成
 

@@ -304,6 +304,33 @@ class ShadowRegistryTests(unittest.TestCase):
 
 
 class DeviceDiscoveryCoordinatorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_and_background_refresh_share_one_inflight_scan(self) -> None:
+        ledger = DeviceRevisionLedger()
+        registry = DeviceRegistry(ledger)
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def discover() -> DiscoverySnapshot:
+            started.set()
+            await release.wait()
+            capture = ledger.capture()
+            return DiscoverySnapshot(
+                devices=(device("PHONE-A", "usb"),),
+                sources={"usb": DiscoverySourceResult("success")},
+                snapshot_revision=capture.snapshot_revision,
+                device_revisions=capture.device_revisions,
+            )
+
+        coordinator = DeviceDiscoveryCoordinator(discover, registry)
+        first = asyncio.create_task(coordinator.refresh_once())
+        await started.wait()
+        second = asyncio.create_task(coordinator.refresh_once())
+        await asyncio.sleep(0)
+        release.set()
+
+        self.assertIs(await first, await second)
+        self.assertEqual(registry.projected_snapshot().devices[0].udid, "PHONE-A")
+
     async def test_background_publisher_populates_registry_without_http_read(self) -> None:
         ledger = DeviceRevisionLedger()
         registry = DeviceRegistry(ledger)
@@ -322,6 +349,32 @@ class DeviceDiscoveryCoordinatorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry.projected_snapshot().devices[0].selected_route, "usb")
         discover.assert_awaited_once()
+
+
+class UsbPresenceRegistryTests(unittest.TestCase):
+    def test_fast_usb_presence_preserves_wifi_and_then_enriches_same_row(self) -> None:
+        ledger = DeviceRevisionLedger()
+        registry = DeviceRegistry(ledger)
+        capture = ledger.capture()
+        registry.publish_discovery(DiscoverySnapshot(
+            devices=(device("PHONE-A", "wifi"),),
+            sources={"system_wifi": DiscoverySourceResult("success")},
+            snapshot_revision=capture.snapshot_revision,
+            device_revisions=capture.device_revisions,
+        ))
+        placeholder = DeviceInfo(
+            udid="PHONE-A", name="PHONE-A", ios_version="unknown",
+            transport="lockdown", connection_type="usb", status="discovering",
+        )
+
+        self.assertTrue(registry.publish_usb_presence((placeholder,)))
+        projected = registry.projected_snapshot().devices[0]
+        self.assertEqual(projected.connection_type, "usb")
+        self.assertEqual(projected.status, "discovering")
+
+        self.assertTrue(registry.publish_usb_presence(()))
+        fallback = registry.projected_snapshot().devices[0]
+        self.assertEqual(fallback.connection_type, "wifi")
 
 
 if __name__ == "__main__":

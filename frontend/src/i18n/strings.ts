@@ -9,6 +9,11 @@ export const STRINGS = {
   'generic.number_increase': { zh: '增加數值', en: 'Increase value' },
   'generic.number_decrease': { zh: '減少數值', en: 'Decrease value' },
 
+  // Appearance
+  'appearance.switch_light': { zh: '切換至淺色模式', en: 'Switch to light mode' },
+  'appearance.switch_dark': { zh: '切換至深色模式', en: 'Switch to dark mode' },
+  'appearance.use_system': { zh: '改為跟隨系統設定', en: 'Use system appearance' },
+
   // Map overlay
   'overlay.collapse_panel': { zh: '收合面板', en: 'Collapse panel' },
   'overlay.expand_panel': { zh: '展開面板', en: 'Expand panel' },
@@ -115,14 +120,7 @@ export const STRINGS = {
 
 
   // Dev menu
-  'devmenu.title': { zh: '開發者模式選單', en: 'Developer Menu' },
-  'devmenu.select_device_first': { zh: '請先連線裝置', en: 'Select a device first' },
-  'devmenu.amfi_reveal': { zh: '顯示開發者模式選項 (AMFI)', en: 'Reveal Developer Mode option (AMFI)' },
-  'devmenu.amfi_success': {
-    zh: '已在裝置上顯示開發者模式選項，請至 設定→隱私權與安全性 手動開啟',
-    en: 'Developer Mode option revealed on device. Enable it manually under Settings → Privacy & Security.',
-  },
-  'devmenu.amfi_failed': { zh: 'AMFI reveal 失敗', en: 'AMFI reveal failed' },
+  'devmenu.title': { zh: '功能選單', en: 'App Menu' },
   'devmenu.lang_label': { zh: '語言', en: 'Language' },
   'devmenu.remote': { zh: '手機遙控', en: 'Mobile Remote' },
   'devmenu.sponsor': { zh: '支持開發者', en: 'Support the Developer' },
@@ -161,6 +159,7 @@ export const STRINGS = {
   'device.status.mounting': { zh: '（掛載開發者映像中…）', en: ' (mounting developer image…)' },
   'device.status.tunnel_required': { zh: '（需要 tunnel）', en: ' (tunnel required)' },
   'device.status.error': { zh: '（錯誤）', en: ' (error)' },
+  'device.status.discovering': { zh: '（正在讀取裝置資訊…）', en: ' (reading device information…)' },
   'device.rescan': { zh: '重新掃描裝置', en: 'Rescan for devices' },
   'device.wifi.enable': { zh: '開啟 Wi‑Fi 裝置探索', en: 'Enable Wi‑Fi device discovery' },
   'device.wifi.disable': { zh: '關閉 Wi‑Fi 裝置探索', en: 'Disable Wi‑Fi device discovery' },

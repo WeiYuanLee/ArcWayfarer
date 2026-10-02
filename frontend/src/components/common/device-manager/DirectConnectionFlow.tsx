@@ -7,9 +7,10 @@ type Props = {
   onBack: () => void
   onClose: () => void
   onRetry: () => void
+  onRepairAuthorization: () => void
 }
 
-export function DirectConnectionFlow({ state, onBack, onClose, onRetry }: Props) {
+export function DirectConnectionFlow({ state, onBack, onClose, onRetry, onRepairAuthorization }: Props) {
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center">
@@ -29,7 +30,14 @@ export function DirectConnectionFlow({ state, onBack, onClose, onRetry }: Props)
             <Text fw={600} size="md" c="red">連線建立失敗</Text>
             <Text size="xs" c="dimmed" ta="center" maw={360}>{state.errorMessage || '請確認手機已在同一 Wi-Fi，且已解鎖並信任此電腦。'}</Text>
           </Stack>
-          <Group mt="md"><Button variant="default" onClick={onBack}>返回端點清單</Button><Button color="blue" onClick={onRetry}>重新連線</Button></Group>
+          <Text size="xs" c="dimmed" ta="center" maw={400}>
+            若再試一次仍失敗，請只接上這台 iPhone，保持解鎖並信任此電腦，再修復 Wireless Direct 授權。
+          </Text>
+          <Group mt="sm" justify="center">
+            <Button variant="default" onClick={onBack}>返回端點清單</Button>
+            <Button variant="light" color="blue" onClick={onRetry}>再試一次</Button>
+            <Button color="blue" onClick={onRepairAuthorization}>接上 USB 修復授權</Button>
+          </Group>
         </>}
       </Stack>
     </Stack>

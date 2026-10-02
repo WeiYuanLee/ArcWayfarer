@@ -25,8 +25,8 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 
 export default function MobileApp() {
   const t = useT()
-  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, send } = useWebSocket()
-  const { devices, refresh: refreshDevices } = useDevices()
+  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
+  const { devices, refresh: refreshDevices } = useDevices(false, deviceSnapshotRevision)
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('teleport')

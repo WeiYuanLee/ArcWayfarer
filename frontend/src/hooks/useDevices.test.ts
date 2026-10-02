@@ -211,4 +211,20 @@ describe('useDevices', () => {
     expect(result.current.devices).toEqual([device])
     expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false, rescan: true })
   })
+
+  it('reads a pushed registry revision without triggering another rescan', async () => {
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([], 1))
+      .mockResolvedValueOnce(snapshot([device], 2))
+
+    const { result, rerender } = renderHook(({ revision }) => useDevices(false, revision), {
+      initialProps: { revision: 0 },
+    })
+    await flushRequests()
+    rerender({ revision: 2 })
+    await flushRequests()
+
+    expect(result.current.devices).toEqual([device])
+    expect(mockedGetDeviceSnapshot).toHaveBeenLastCalledWith({ includeWifi: false, rescan: false })
+  })
 })

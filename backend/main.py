@@ -30,6 +30,7 @@ async def lifespan(_app: FastAPI):
     events.on_state_change = websocket.broadcast_state
     events.on_restored = websocket.broadcast_restored
     events.on_flower_progress = websocket.broadcast_flower_progress
+    events.on_device_snapshot = websocket.broadcast_device_snapshot
     await device_manager.start_device_discovery()
     try:
         yield

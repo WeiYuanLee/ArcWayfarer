@@ -65,6 +65,16 @@ if ($env:ARCWAYFARER_VERIFY_BACKEND -eq "1") {
             if (Test-Path $BackendErrorLog) { Get-Content $BackendErrorLog -ErrorAction SilentlyContinue }
             throw "Packaged backend did not become healthy within 60 seconds."
         }
+
+        $Diagnostics = Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:$BackendPort/api/devices/diagnostics" -TimeoutSec 10
+        $Runtime = $Diagnostics.runtime
+        if ($Runtime.pymobiledevice3_version -ne "11.19.1") {
+            throw "Packaged backend has unexpected pymobiledevice3 version: $($Runtime.pymobiledevice3_version)"
+        }
+        if (-not $Runtime.pmd_pytcp_version -or [version]$Runtime.pmd_pytcp_version -lt [version]"0.3.7") {
+            throw "Packaged backend requires pmd-pytcp 0.3.7 or newer; found: $($Runtime.pmd_pytcp_version)"
+        }
+        Write-Host "Packaged transport stack verified: pymobiledevice3 $($Runtime.pymobiledevice3_version), pmd-pytcp $($Runtime.pmd_pytcp_version)"
     } finally {
         if ($BackendProcess -and -not $BackendProcess.HasExited) {
             Stop-Process -Id $BackendProcess.Id -Force -ErrorAction SilentlyContinue

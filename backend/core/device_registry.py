@@ -136,6 +136,40 @@ class DeviceRegistry:
 
         self._sources = dict(snapshot.sources)
 
+    def publish_usb_presence(self, devices: tuple[DeviceInfo, ...]) -> bool:
+        """Publish the fast usbmux view without touching Wi-Fi or Direct state."""
+        rows = {device.udid.lower(): device for device in devices}
+        known_usb = {
+            key for key, aggregate in self._devices.items()
+            if aggregate.usb_device is not None or aggregate.availability.usb == Availability.AVAILABLE
+        }
+        changed = False
+        for key in sorted(known_usb | set(rows)):
+            row = rows.get(key)
+            current = self._devices.get(key, DeviceAggregate(udid=row.udid if row is not None else key))
+            candidate = replace(
+                current,
+                availability=replace(
+                    current.availability,
+                    usb=Availability.AVAILABLE if row is not None else Availability.UNAVAILABLE,
+                ),
+                usb_device=row,
+            )
+            candidate = replace(candidate, selected_route=decide_route(candidate).selected_route)
+            if candidate == current:
+                continue
+            revision = self._ledger.bump(candidate.udid)
+            self._apply(
+                candidate,
+                event="usb_presence",
+                revision=revision,
+                legacy_route=None,
+                compare_legacy=False,
+            )
+            changed = True
+        self._sources["usb"] = DiscoverySourceResult("success")
+        return changed
+
     def projected_snapshot(self, include_wifi: bool = True) -> DiscoverySnapshot:
         devices: list[DeviceInfo] = []
         capture = self._ledger.capture()

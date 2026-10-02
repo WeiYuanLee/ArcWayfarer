@@ -10,11 +10,20 @@ class SupportDiagnosticTests(unittest.TestCase):
             report = runtime_diagnostic()
 
         self.assertEqual(report["pymobiledevice3_version"], "9.9.9")
+        self.assertEqual(report["pmd_pytcp_version"], "9.9.9")
         self.assertIn("OpenSSL", report["openssl_version"])
         self.assertTrue(report["python_version"])
         self.assertEqual(
             set(report),
-            {"platform", "platform_release", "machine", "python_version", "openssl_version", "pymobiledevice3_version"},
+            {
+                "platform",
+                "platform_release",
+                "machine",
+                "python_version",
+                "openssl_version",
+                "pymobiledevice3_version",
+                "pmd_pytcp_version",
+            },
         )
 
 

@@ -47,8 +47,8 @@ export default function App() {
   const [hidingDeviceId, setHidingDeviceId] = useState<string | null>(null)
   const [restoringDeviceId, setRestoringDeviceId] = useState<string | null>(null)
   const [pendingHiddenIds, setPendingHiddenIds] = useState<Set<string>>(() => new Set())
-  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, send } = useWebSocket()
-  const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi)
+  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
+  const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi, deviceSnapshotRevision)
   const { hiddenDevices, hideDevice, unhideDevice } = useHiddenDevices()
   const { deviceNames, getDeviceName, setDeviceName } = useDeviceNames()
   const isDeviceBusy = useCallback((udid: string) => (
@@ -378,9 +378,6 @@ export default function App() {
         positions={positions}
         overlaysByDevice={overlaysByDevice}
         devicesLoading={devicesLoading}
-        onRefreshDevices={refreshDevices}
-        includeWifi={includeWifi}
-        onIncludeWifiChange={handleIncludeWifiChange}
         discoveryDiagnostic={discoveryDiagnostic}
         onOpenDeviceManager={handleOpenDeviceManager}
         onOpenCmdPalette={handleOpenCommandPalette}
@@ -455,6 +452,9 @@ export default function App() {
           onRestoreDevice={handleRestoreBackgroundDevice}
           onSetDeviceName={setDeviceName}
           onRefreshDevices={(minimumRevision) => refreshDevices(false, minimumRevision)}
+          includeWifi={includeWifi}
+          devicesLoading={devicesLoading}
+          onIncludeWifiChange={handleIncludeWifiChange}
           isUnhideDisabled={isUnhideDisabled}
           unhideDisabledReason={() => undefined}
         />}

@@ -1,6 +1,6 @@
 # Windows Wireless Direct 實機測試
 
-這是開發分支的驗證流程；目前尚無 Windows 拔線定位的實機成功紀錄。請用自己的 iPhone 與同一部 Windows 電腦完成配對，不要從 Mac 複製 RemotePairing 私鑰。
+這是開發分支的驗證流程。目前 Windows 實機已能完成 Wireless Direct 配對與連線，但舊測試版在拔線後的定位命令失效；開發分支已移除連線階段多開一次定位通道的流程，仍需用新版 Windows 安裝檔確認瞬移、導航與還原皆有效。請用自己的 iPhone 與同一部 Windows 電腦完成配對，不要從 Mac 複製 RemotePairing 私鑰。
 
 ## 取得已封裝的 Windows 測試版（建議）
 
@@ -28,7 +28,13 @@ cd D:\ArcWayfarerTest
 powershell -ExecutionPolicy Bypass -File .\windows-device-acceptance.ps1 -Label preflight
 ```
 
-工具只呼叫 GET API，不會配對、連線、斷線或操作定位。輸出的完整 UDID 與 IP 會換成不可逆短雜湊；報告仍會保留 route、revision、動態 port、IPv4／IPv6、OpenSSL、Python 與 pymobiledevice3 版本。
+工具預設只呼叫 GET API，不會配對、連線、斷線或操作定位。輸出的完整 UDID 與 IP 會換成不可逆短雜湊；報告仍會保留 route、revision、動態 port、IPv4／IPv6、OpenSSL、Python 與 pymobiledevice3 版本。
+
+Wireless Direct 顯示連線後，可明確加入 `-RunLocationProbe` 執行一次定位與還原。這會暫時改變手機定位；工具即使遇到逾時也會送出還原要求，並分別記錄 set 與 clear 的成功狀態、錯誤和耗時。完整 UDID 只用於呼叫本機 API，不會寫入報告：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-device-acceptance.ps1 -Label direct-location -RunLocationProbe -ProbeUdid '<Device Manager 顯示的 UDID>'
+```
 
 ## 從原始碼自行建置（選用）
 
@@ -49,8 +55,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
 2. 在裝置管理開啟 Wireless Direct，執行無線授權。全新 Windows 配對紀錄會透過 USB lockdown 建立，完成後才保存 ArcWayfarer 的授權狀態。若無線連線失敗後依提示接線重試，請只接目標手機；「重新連線」會先核對 USB 裝置並刷新該手機授權，再重連原本掃描到的 IP 與連接埠。
 3. 確認手機與電腦在可互通的同一網路，拔掉 USB。重新掃描端點，記錄 `_remotepairing` 廣告提供的 IP 與埠號；埠號不保證為 `49152`。若沒有取得 SRV 廣告，請先排查 mDNS／防火牆或重新接 USB 刷新授權，不要猜測固定埠號。手動輸入必須同時填入掃描工具實際顯示的 IP 與埠號。
 4. 點選端點連線，確認顯示的 UDID 是原手機。設定一個容易辨識的測試位置，親眼確認手機地圖移動，再按停止並親眼確認位置還原。
-5. 完全關閉並重啟 ArcWayfarer，不接 USB 重複連線、設定與還原。
-6. 若可行，再測手機鎖定、IP 變更、Wi-Fi 暫時中斷。每次記錄介面狀態及是否真正還原定位。
+5. 依序驗證瞬移、導航、路線循環、多點巡迴（含跳躍模式）、隨機漫遊與搖桿。每一項都要親眼確認手機端位置實際變化，不能只看 ArcWayfarer 顯示執行中。
+6. 每個連續模式至少測試一次暫停、繼續與停止；最後執行還原，確認手機重新取得真實 GPS 位置。
+7. 完全關閉並重啟 ArcWayfarer，不接 USB 重複連線、設定與還原。
+8. 若可行，再測手機鎖定、IP 變更、Wi-Fi 暫時中斷。每次記錄介面狀態及是否真正還原定位。
 
 在主要狀態各執行一次擷取，產生可比較的去識別 JSON：
 

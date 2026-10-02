@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from core import joystick, simulation_engine
+from core.device_revision import device_revision_ledger
 from services import mobile_auth
 from services.mobile_auth import valid_session
 
@@ -94,6 +95,7 @@ def _status_snapshot() -> dict:
         "positions": list(_latest_positions.values()),
         "states": list(_latest_states.values()),
         "flower_progress": list(_latest_flower_progress.values()),
+        "device_revision": device_revision_ledger.capture().snapshot_revision,
     }
 
 
@@ -219,6 +221,10 @@ async def broadcast_state(udid: str, state: str) -> None:
 
 async def broadcast_restored(udid: str) -> None:
     await _broadcast({"type": "restored", "udid": udid})
+
+
+async def broadcast_device_snapshot(revision: int) -> None:
+    await _broadcast({"type": "device_snapshot", "revision": revision}, latest_wins=True)
 
 
 async def broadcast_flower_progress(udid: str, progress: dict) -> None:

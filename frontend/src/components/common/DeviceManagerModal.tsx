@@ -4,6 +4,7 @@ import type { Device } from '../../services/api'
 import type { HiddenDevice } from '../../hooks/useHiddenDevices'
 import type { DeviceState } from '../panels/types'
 import { DeviceListView } from './device-manager/DeviceListView'
+import { DeviceSetupFlow } from './device-manager/DeviceSetupFlow'
 import { DirectConnectionFlow } from './device-manager/DirectConnectionFlow'
 import { WirelessDirectView } from './device-manager/WirelessDirectView'
 import { normalizeDeviceId, useDeviceManagerController } from './device-manager/useDeviceManagerController'
@@ -25,6 +26,9 @@ type Props = {
   onRestoreDevice?: (udid: string) => void | Promise<void>
   onSetDeviceName: (udid: string, name: string) => void
   onRefreshDevices?: (minimumRevision?: number) => void | Promise<void>
+  includeWifi: boolean
+  devicesLoading: boolean
+  onIncludeWifiChange: (enabled: boolean) => void
   isUnhideDisabled?: (udid: string) => boolean
   unhideDisabledReason?: (udid: string) => string | undefined
 }
@@ -61,10 +65,12 @@ export function DeviceManagerModal(props: Props) {
       {controller.view === 'list' && <DeviceListView
         devices={controller.allDevices} activeCount={controller.activeCount} deviceStates={props.deviceStates}
         hidingDeviceId={props.hidingDeviceId} restoringDeviceId={props.restoringDeviceId}
-        pairingBusyId={controller.pairingBusyId} quickReconnects={controller.quickReconnects}
+        quickReconnects={controller.quickReconnects}
+        includeWifi={props.includeWifi} devicesLoading={props.devicesLoading}
         onClose={props.onClose} onOpenDirect={() => controller.setView('wireless_direct')} onRename={beginRename}
+        onRefresh={() => void props.onRefreshDevices?.()} onIncludeWifiChange={props.onIncludeWifiChange}
         onToggle={(device, checked) => void controller.handleToggle(device, checked)}
-        onPair={(device) => { if (device.device) void controller.handlePair(device.device) }}
+        onSetup={controller.beginSetup}
         onQuickConnect={(request) => void controller.executeConnect(request)}
         onClearQuickReconnects={() => void controller.clearQuickReconnects()}
       />}
@@ -77,6 +83,13 @@ export function DeviceManagerModal(props: Props) {
       {controller.view === 'connecting' && <DirectConnectionFlow
         state={controller.connectingState} onBack={() => controller.setView('wireless_direct')} onClose={props.onClose}
         onRetry={() => void controller.retryConnect()}
+        onRepairAuthorization={() => void controller.repairAuthorization()}
+      />}
+      {controller.view === 'setup' && controller.setupState && <DeviceSetupFlow
+        state={controller.setupState} onBack={controller.returnToSetupList} onClose={props.onClose}
+        onRequestTrust={() => void controller.requestTrust()}
+        onRevealDeveloperMode={() => void controller.revealDeveloperMode()}
+        onCheckDeveloperMode={() => void controller.requestTrust()}
       />}
     </Modal>
     <Modal opened={Boolean(renaming)} onClose={cancelRename} title="編輯自訂名稱" centered size="sm" zIndex={2300}>

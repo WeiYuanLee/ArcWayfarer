@@ -10,7 +10,7 @@ export function authHeaders(headers: Record<string, string> = {}): Record<string
   return session ? { ...headers, Authorization: `Bearer ${session}` } : headers
 }
 
-export type DeviceStatus = 'ready' | 'mounting' | 'tunnel_required' | 'error'
+export type DeviceStatus = 'discovering' | 'ready' | 'mounting' | 'tunnel_required' | 'error'
 
 export type Device = {
   udid: string
@@ -23,6 +23,7 @@ export type Device = {
   connection_type: 'usb' | 'wifi' | 'wireless_direct'
   ip_address?: string | null
   direct_paired?: boolean
+  trusted?: boolean | null
   revision?: number
   selected_route?: 'usb' | 'wifi' | 'wireless_direct' | null
 }
@@ -35,6 +36,18 @@ export type DeviceSnapshot = {
 
 export function pairWirelessDirect(udid: string): Promise<{ status: string; revision: number }> {
   return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/wireless-direct/pair`, {}, undefined, 150000)
+}
+
+export type DeviceSetupStatus = {
+  status: 'trusted'
+  ios_version: string
+  developer_mode_required: boolean
+  developer_mode_enabled: boolean
+  revision: number
+}
+
+export function trustDeviceForSetup(udid: string): Promise<DeviceSetupStatus> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/setup/trust`, {}, undefined, 75000)
 }
 
 export function connectWirelessDirect(udid: string, ip: string | undefined, fallbackBonjour: boolean, port: number, refreshPairing = false): Promise<Device> {
@@ -230,8 +243,8 @@ async function deleteJson(path: string): Promise<void> {
   }
 }
 
-export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string }> {
-  return postJsonWithResponse(`/api/devices/${udid}/amfi/reveal-developer-mode`, {})
+export function amfiRevealDeveloperMode(udid: string): Promise<{ status: string; revision: number }> {
+  return postJsonWithResponse(`/api/devices/${encodeURIComponent(udid)}/amfi/reveal-developer-mode`, {})
 }
 
 async function postJsonWithResponse<T>(path: string, body: unknown, externalSignal?: AbortSignal, timeoutMs = 15000): Promise<T> {
@@ -249,7 +262,12 @@ async function postJsonWithResponse<T>(path: string, body: unknown, externalSign
     })
     const payload = await res.json().catch(() => null)
     if (!res.ok) {
-      throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+      const detail = payload?.detail
+      throw new Error(
+        typeof detail === 'string'
+          ? detail
+          : detail?.message || `Request failed (${res.status})`,
+      )
     }
     return payload as T
   } catch (err: any) {

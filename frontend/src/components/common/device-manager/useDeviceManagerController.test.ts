@@ -6,13 +6,20 @@ import {
   connectWirelessDirect,
   getQuickReconnectRecords,
   getWirelessDirectEndpoints,
+  pairWirelessDirect,
+  trustDeviceForSetup,
+  amfiRevealDeveloperMode,
   type Device,
 } from '../../../services/api'
 import { useDeviceManagerController } from './useDeviceManagerController'
 
 vi.mock('../../../services/api', async (loadOriginal) => {
   const original = await loadOriginal<typeof import('../../../services/api')>()
-  return { ...original, connectWirelessDirect: vi.fn(), getWirelessDirectEndpoints: vi.fn(), pairWirelessDirect: vi.fn(), clearWirelessDirectAddress: vi.fn() }
+  return {
+    ...original,
+    connectWirelessDirect: vi.fn(), getWirelessDirectEndpoints: vi.fn(), pairWirelessDirect: vi.fn(),
+    trustDeviceForSetup: vi.fn(), amfiRevealDeveloperMode: vi.fn(), clearWirelessDirectAddress: vi.fn(),
+  }
 })
 vi.mock('../Toast', () => ({ showToast: vi.fn() }))
 
@@ -26,6 +33,9 @@ describe('useDeviceManagerController', () => {
     clearQuickReconnectRecord()
     vi.mocked(connectWirelessDirect).mockReset()
     vi.mocked(getWirelessDirectEndpoints).mockReset().mockResolvedValue([])
+    vi.mocked(pairWirelessDirect).mockReset()
+    vi.mocked(trustDeviceForSetup).mockReset()
+    vi.mocked(amfiRevealDeveloperMode).mockReset()
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -65,7 +75,7 @@ describe('useDeviceManagerController', () => {
     expect(onHideDevice).not.toHaveBeenCalled()
   })
 
-  it('retries the same endpoint with an explicit USB pairing refresh', async () => {
+  it('retries the same endpoint without requiring a USB pairing refresh', async () => {
     vi.mocked(connectWirelessDirect)
       .mockRejectedValueOnce(new Error('授權已失效'))
       .mockResolvedValueOnce(directDevice)
@@ -82,8 +92,64 @@ describe('useDeviceManagerController', () => {
     await act(async () => { await result.current.retryConnect() })
 
     expect(connectWirelessDirect).toHaveBeenNthCalledWith(
+      2, 'phone-a', '10.0.0.16', false, 51999, false,
+    )
+    expect(result.current.view).toBe('list')
+  })
+
+  it('refreshes USB pairing only when authorization repair is requested', async () => {
+    vi.mocked(connectWirelessDirect)
+      .mockRejectedValueOnce(new Error('授權已失效'))
+      .mockResolvedValueOnce(directDevice)
+    const { result } = setup()
+
+    await act(async () => {
+      await result.current.executeConnect({
+        targetUdid: 'phone-a', targetIp: '10.0.0.16', targetName: 'Lence',
+        fallbackBonjour: false, port: 51999,
+      })
+    })
+    await act(async () => { await result.current.repairAuthorization() })
+
+    expect(connectWirelessDirect).toHaveBeenNthCalledWith(
       2, 'phone-a', '10.0.0.16', false, 51999, true,
     )
     expect(result.current.view).toBe('list')
+  })
+
+  it('keeps onboarding in Device Manager until Developer Mode is enabled', async () => {
+    const usb = { ...directDevice, connection_type: 'usb' as const, transport: 'rsd' as const }
+    vi.mocked(trustDeviceForSetup).mockResolvedValue({
+      status: 'trusted', ios_version: '18.0', developer_mode_required: true,
+      developer_mode_enabled: false, revision: 13,
+    })
+    vi.mocked(amfiRevealDeveloperMode).mockResolvedValue({ status: 'ok', revision: 14 })
+    const { result } = setup([usb])
+
+    act(() => result.current.beginSetup(result.current.allDevices[0]))
+    await act(async () => { await result.current.requestTrust() })
+    expect(result.current.setupState?.step).toBe('developer_mode')
+    expect(pairWirelessDirect).not.toHaveBeenCalled()
+
+    await act(async () => { await result.current.revealDeveloperMode() })
+    expect(result.current.setupState?.step).toBe('waiting_for_developer_mode')
+  })
+
+  it('continues from trusted Developer Mode to Wi-Fi authorization', async () => {
+    const usb = { ...directDevice, connection_type: 'usb' as const, transport: 'rsd' as const }
+    vi.mocked(trustDeviceForSetup).mockResolvedValue({
+      status: 'trusted', ios_version: '18.0', developer_mode_required: true,
+      developer_mode_enabled: true, revision: 15,
+    })
+    vi.mocked(pairWirelessDirect).mockResolvedValue({ status: 'paired', revision: 16 })
+    const { result, onRefreshDevices } = setup([usb])
+
+    act(() => result.current.beginSetup(result.current.allDevices[0]))
+    await act(async () => { await result.current.requestTrust() })
+
+    expect(pairWirelessDirect).toHaveBeenCalledWith('phone-a')
+    expect(onRefreshDevices).toHaveBeenCalledWith(15)
+    expect(onRefreshDevices).toHaveBeenCalledWith(16)
+    expect(result.current.setupState?.step).toBe('complete')
   })
 })

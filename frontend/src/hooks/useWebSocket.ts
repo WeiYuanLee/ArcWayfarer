@@ -68,6 +68,7 @@ type WireTask = { udid: string; state: DeviceState; kind: string; path: { lat: n
 type StateMessage = { type: 'state'; udid: string; state: DeviceState; task?: WireTask | null }
 type TaskSnapshotMessage = { type: 'task_snapshot'; tasks: WireTask[] }
 type RestoredMessage = { type: 'restored'; udid: string }
+type DeviceSnapshotMessage = { type: 'device_snapshot'; revision: number }
 type FlowerProgressMessage = { type: 'flower_progress'; udid: string; flower_index?: number; flower_total?: number; total_flowers?: number; circle?: number; round?: number; total_circles?: number; phase?: string; eta_seconds?: number; eta_scope?: 'total' | 'round'; lat?: number; lng?: number }
 type StatusSnapshotMessage = {
   type: 'status_snapshot'
@@ -75,8 +76,9 @@ type StatusSnapshotMessage = {
   positions: PositionMessage[]
   states: StateMessage[]
   flower_progress: FlowerProgressMessage[]
+  device_revision?: number
 }
-type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgressMessage | TaskSnapshotMessage | StatusSnapshotMessage
+type Message = PositionMessage | StateMessage | RestoredMessage | FlowerProgressMessage | TaskSnapshotMessage | StatusSnapshotMessage | DeviceSnapshotMessage
 
 function activeTaskFromWire(task: WireTask): ActiveTask {
   return {
@@ -96,6 +98,7 @@ export function useWebSocket() {
   const [restoredAt, setRestoredAt] = useState<Record<string, number>>({})
   const [flowerProgress, setFlowerProgress] = useState<Record<string, FlowerProgress>>({})
   const [activeTasks, setActiveTasks] = useState<Record<string, ActiveTask>>({})
+  const [deviceSnapshotRevision, setDeviceSnapshotRevision] = useState(0)
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectAttemptRef = useRef(0)
   const pendingPositionsRef = useRef<Map<string, PositionMessage>>(new Map())
@@ -234,9 +237,14 @@ export function useWebSocket() {
             for (const item of message.positions) pendingPositionsRef.current.set(item.udid, item)
             pendingFlowerProgressRef.current.clear()
             pendingFlowerSnapshotRef.current = message.flower_progress
+            if (message.device_revision !== undefined) {
+              setDeviceSnapshotRevision((current) => Math.max(current, message.device_revision!))
+            }
             scheduleTelemetryFlush()
           } else if (message.type === 'restored') {
             setRestoredAt((prev) => ({ ...prev, [message.udid]: Date.now() }))
+          } else if (message.type === 'device_snapshot') {
+            setDeviceSnapshotRevision((current) => Math.max(current, message.revision))
           } else if (message.type === 'flower_progress') {
             // Flower movement always emits the canonical position message
             // first. Do not synthesize a second position here: if the two
@@ -274,5 +282,5 @@ export function useWebSocket() {
     socketRef.current?.send(JSON.stringify({ type, data, udid }))
   }, [])
 
-  return { connected, positions, states, restoredAt, flowerProgress, activeTasks, send }
+  return { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send }
 }

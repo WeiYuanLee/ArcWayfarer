@@ -19,6 +19,14 @@ def attribute_calls(node: ast.AST) -> set[str]:
     }
 
 
+def function_attribute_calls(path: Path, function_name: str) -> set[str]:
+    module = parse_python(path)
+    for node in module.body:
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == function_name:
+            return attribute_calls(node)
+    raise AssertionError(f"Missing function {function_name} in {path}")
+
+
 def is_get_handler(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
     return any(
         isinstance(decorator, ast.Call)
@@ -90,6 +98,47 @@ class DeviceArchitectureBoundaryTests(unittest.TestCase):
             if found:
                 violations.append(f"{path.relative_to(REPOSITORY_ROOT)}: {sorted(found)}")
         self.assertEqual(violations, [], "Removed global state or read-mode flag was reintroduced")
+
+    def test_every_location_mode_routes_through_the_shared_command_engine(self) -> None:
+        """Keep every public mode on the Direct-bound device_session path."""
+        expected_entrypoints = {
+            ("navigator.py", "start_navigate"): {"start"},
+            ("route_loop.py", "start_route_loop"): {"start"},
+            ("multi_stop.py", "start_multi_stop"): {"start", "start_jump"},
+            ("random_walk.py", "start_random_walk"): {"start_dynamic"},
+            ("joystick.py", "start_joystick"): {"joystick_start"},
+        }
+        violations: list[str] = []
+        for (filename, function_name), required_calls in expected_entrypoints.items():
+            calls = function_attribute_calls(BACKEND_ROOT / "core" / filename, function_name)
+            missing = required_calls - calls
+            if missing:
+                violations.append(f"{filename}:{function_name} missing {sorted(missing)}")
+
+        # Teleport/restore and Flower intentionally write directly through the
+        # same session boundary instead of scheduling a simulation runner.
+        for filename, function_name, required_calls in (
+            ("teleport.py", "set_location", {"set_location"}),
+            ("teleport.py", "clear_location", {"clear_location"}),
+            ("flower.py", "_move_phase", {"set_location"}),
+        ):
+            calls = function_attribute_calls(BACKEND_ROOT / "core" / filename, function_name)
+            missing = required_calls - calls
+            if missing:
+                violations.append(f"{filename}:{function_name} missing {sorted(missing)}")
+
+        self.assertEqual(violations, [], "A location mode bypassed the shared command boundary")
+
+    def test_only_device_session_can_create_dvt_location_channels(self) -> None:
+        violations: list[str] = []
+        for path in sorted((BACKEND_ROOT / "core").rglob("*.py")):
+            if path.name == "device_session.py":
+                continue
+            for node in ast.walk(parse_python(path)):
+                if isinstance(node, ast.ImportFrom) and node.module and ".services.dvt" in node.module:
+                    violations.append(str(path.relative_to(REPOSITORY_ROOT)))
+                    break
+        self.assertEqual(violations, [], "A feature opened a second DVT channel outside device_session")
 
 
 if __name__ == "__main__":

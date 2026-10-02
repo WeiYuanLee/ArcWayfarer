@@ -4,11 +4,13 @@ OnPosition = Callable[[str, Optional[float], Optional[float], float, float, Opti
 OnStateChange = Callable[[str, str], Awaitable[None]]
 OnRestored = Callable[[str], Awaitable[None]]
 OnFlowerProgress = Callable[[str, dict], Awaitable[None]]
+OnDeviceSnapshot = Callable[[int], Awaitable[None]]
 
 on_position: Optional[OnPosition] = None
 on_state_change: Optional[OnStateChange] = None
 on_restored: Optional[OnRestored] = None
 on_flower_progress: Optional[OnFlowerProgress] = None
+on_device_snapshot: Optional[OnDeviceSnapshot] = None
 
 
 async def emit_position(
@@ -37,3 +39,9 @@ async def emit_restored(udid: str) -> None:
 async def emit_flower_progress(udid: str, progress: dict) -> None:
     if on_flower_progress is not None:
         await on_flower_progress(udid, progress)
+
+
+async def emit_device_snapshot(revision: int) -> None:
+    """Notify desktop clients that the Registry has a newer projection."""
+    if on_device_snapshot is not None:
+        await on_device_snapshot(revision)

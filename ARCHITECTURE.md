@@ -508,6 +508,8 @@ simulation_engine.start(loop=True) 會無限循環
 | D8 | 每個 discovery source 必須回報 `success` 或 `failed`；只有成功空結果可表示未發現設備 | 服務故障被誤判為設備離線 |
 | D9 | tunneld-only 只能記錄 observed source；不得在 discovery 層直接推論為 USB 或 Wi-Fi | 顯示錯誤 transport |
 | D10 | Wireless Direct 只能由使用者顯式啟用並保持黏著；只可因顯式中斷、閒置時 USB 接管或實際傳輸失敗而改變 | Direct 自動復活或被掃描搶走 |
+| D11 | usbmux `Attached`／`Detached` presence 必須先獨立發布；名稱、iOS、信任與 tunnel enrichment 不得延遲設備列出現 | 插線後需等待完整掃描 30～60 秒才看見設備 |
+| D12 | 一般 discovery 必須使用 `autopair=False`；只有使用者明確啟動的設定 command 可以等待信任或配對 | 背景掃描跳出信任提示並阻塞所有設備與手動重新整理 |
 
 #### 全域圖層層級架構速查 (Z-Index Tiers)
 ```

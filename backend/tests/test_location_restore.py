@@ -2,11 +2,77 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from core import device_session, events, simulation_engine, teleport
+from core import device_session, events, flower, simulation_engine, teleport
 from core.device_session_store import device_session_store
 
 
 class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_all_simulation_runners_write_through_device_session(self) -> None:
+        writes: list[tuple[str, float, float]] = []
+        joystick_write = asyncio.Event()
+
+        async def record(udid: str, lat: float, lng: float, **_kwargs) -> None:
+            writes.append((udid, lat, lng))
+            if udid == "mode-joystick":
+                joystick_write.set()
+
+        async def one_leg(current):
+            return ([(2.0, 2.0)], 0.0) if current is None else None
+
+        with (
+            patch.object(device_session, "set_location", side_effect=record),
+            patch.object(simulation_engine, "set_state", AsyncMock()),
+            patch.object(simulation_engine.events, "emit_position", AsyncMock()),
+            patch.object(flower.events, "emit_position", AsyncMock()),
+            patch.object(flower, "_progress", AsyncMock()),
+            patch.object(flower, "NAVIGATE_TICK_SECONDS", 0),
+        ):
+            await simulation_engine._run(
+                simulation_engine.NavigationSession("mode-route"),
+                [(1.0, 1.0)],
+                tick_seconds=0,
+                speed_mps=1.0,
+                loop=False,
+                active_state=simulation_engine.SimulationState.NAVIGATING,
+                station_indices=frozenset(),
+                station_pause_range=(0.0, 0.0),
+            )
+            await simulation_engine._run_dynamic(
+                simulation_engine.NavigationSession("mode-random"), one_leg, tick_seconds=0, speed_mps=1.0
+            )
+            await simulation_engine._run_jump(
+                simulation_engine.NavigationSession("mode-jump"), [(3.0, 3.0)], pre_delay=0, post_delay=0
+            )
+
+            joystick_session = simulation_engine.NavigationSession("mode-joystick")
+            joystick_session.joystick_position = (4.0, 4.0)
+            joystick_session.joystick_input = {"direction": 90.0, "intensity": 1.0}
+            joystick_task = asyncio.create_task(simulation_engine._run_joystick(joystick_session, 1.0, 0.01))
+            await asyncio.wait_for(joystick_write.wait(), timeout=1)
+            joystick_task.cancel()
+            await joystick_task
+
+            flower_session = simulation_engine.NavigationSession("mode-flower")
+            flower_session.flower_skip_event = asyncio.Event()
+            flower_session.flower_eta_remaining = 0.0
+            await flower._move_phase(
+                flower_session,
+                [(5.0, 5.0)],
+                speed=1.0,
+                round_no=0,
+                flower_no=0,
+                total=1,
+                phase="circle",
+            )
+
+        self.assertEqual([write[0] for write in writes], [
+            "mode-route",
+            "mode-random",
+            "mode-jump",
+            "mode-joystick",
+            "mode-flower",
+        ])
+
     async def test_direct_io_failure_releases_only_its_runtime(self) -> None:
         backend = type("Backend", (), {"set": AsyncMock(side_effect=ConnectionError("network changed"))})()
         disconnect = AsyncMock()

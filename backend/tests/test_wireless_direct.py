@@ -14,6 +14,7 @@ from pymobiledevice3.remote.siphash import compute_auth_tag
 from api.device import _require_desktop
 from core import device_manager, device_session, pairing_store
 from core.device_aggregate import DirectRuntimeState
+from core.device_registry import DeviceRegistry
 from core.discovery import direct_endpoint_scanner
 from core.direct_lockdown import DirectTcpLockdownClient
 from models.schemas import DeviceInfo
@@ -391,8 +392,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager, "_describe_direct", AsyncMock(return_value=device)) as tcp_describe,
             patch.object(device_manager, "browse_mobdev2", AsyncMock(return_value=[])) as tcp_discovery,
             patch.object(device_manager, "WiFiRsdTunnel", Tunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "load_version", return_value="26.6.2"),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "save_address"),
@@ -407,6 +406,83 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             await device_manager.disconnect_direct(udid)
             self.assertIsNone(device_manager.direct_address(udid))
             self.assertIsNone(device_manager._direct_transport_adapter.rsd_tunnels.get(udid.lower()))
+
+    async def test_ios17_direct_first_location_command_owns_only_dvt_channel(self) -> None:
+        """Exercise the public Direct -> registry -> session -> command route."""
+        udid = "A1B2C3D4"
+        rsd = SimpleNamespace(udid=udid, name="Phone", product_version="18.0")
+        location_backend = SimpleNamespace(set=AsyncMock(), clear=AsyncMock())
+
+        class Tunnel:
+            def __init__(self, **_kwargs):
+                self.rsd = None
+                self.peer_ip = "192.168.1.20"
+                self.peer_port = 51234
+
+            async def aopen(self):
+                self.rsd = rsd
+                return rsd
+
+            async def aclose(self):
+                self.rsd = None
+
+        class Channel:
+            def __init__(self, value):
+                self.value = value
+                self.entered = 0
+                self.exited = 0
+
+            async def __aenter__(self):
+                self.entered += 1
+                return self.value
+
+            async def __aexit__(self, *_args):
+                self.exited += 1
+
+        dvt_context = Channel(object())
+        location_context = Channel(location_backend)
+        registry = DeviceRegistry()
+        coordinator = SimpleNamespace(started=True, wait_ready=AsyncMock())
+        runtime = device_session.DeviceSessionRuntime(
+            get_device=device_manager.get_device,
+            get_lockdown=AsyncMock(),
+            get_rsd=device_manager.get_rsd,
+            ensure_mounted=AsyncMock(),
+            cleanup_failed_direct=AsyncMock(return_value=1),
+            apply_policy_effects=AsyncMock(),
+        )
+
+        with (
+            patch.object(device_manager, "WiFiRsdTunnel", Tunnel),
+            patch.object(device_session, "DvtProvider", return_value=dvt_context),
+            patch.object(device_session, "LocationSimulation", return_value=location_context),
+            patch.object(device_session, "publish_session_state"),
+            patch.object(device_manager, "device_registry", registry),
+            patch.object(device_manager.transport_controller, "_registry", registry),
+            patch.object(device_manager, "_device_discovery_coordinator", coordinator),
+            patch.object(pairing_store, "exists", return_value=True),
+            patch.object(pairing_store, "load_version", return_value="18.0"),
+            patch.object(pairing_store, "save_address"),
+            patch.object(pairing_store, "save_port"),
+            patch.object(pairing_store, "save_version"),
+        ):
+            connected = await device_manager.connect_direct(udid, "192.168.1.20", fallback_bonjour=False)
+            routed = await device_manager.get_device(udid)
+            self.assertEqual(routed.connection_type, "wireless_direct")
+            self.assertEqual(routed.selected_route, "wireless_direct")
+            self.assertEqual(routed.status, "ready")
+            device_session.configure_session_runtime(runtime)
+
+            await device_session.set_location(udid, 25.033, 121.5654, max_retries=1)
+            await device_session.clear_location(udid, max_retries=1, settle_seconds=0)
+            await device_manager.disconnect_direct(udid)
+
+        self.assertEqual(dvt_context.entered, 1)
+        self.assertEqual(dvt_context.exited, 1)
+        self.assertEqual(location_context.entered, 1)
+        self.assertEqual(location_context.exited, 1)
+        location_backend.set.assert_awaited_once_with(25.033, 121.5654)
+        location_backend.clear.assert_awaited_once_with()
 
     async def test_ios17_direct_accepts_ip_and_falls_back_when_ip_fails(self) -> None:
         udid = "A1B2C3D4"
@@ -441,8 +517,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager._direct_transport_adapter, "rsd_tunnels", {}),
             patch.object(device_manager._direct_transport_adapter, "rsd_devices", {}),
             patch.object(device_manager, "WiFiRsdTunnel", Tunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "load_version", return_value="26.6.2"),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "save_address") as mock_save_addr,
@@ -885,8 +959,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[udid_a, udid_b]),
             patch.object(device_manager.tunnel_service, "create_core_device_tunnel_service_using_remotepairing", side_effect=mock_create_tunnel),
             patch.object(device_manager, "WiFiRsdTunnel", MockTunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save_addr,
@@ -929,8 +1001,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(device_manager, "_has_active_session", return_value=False),
             patch.object(device_manager, "WiFiRsdTunnel", MockFallbackTunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save_addr,
@@ -1055,8 +1125,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager, "iter_remote_paired_identifiers", return_value=[udid_a, udid_b]),
             patch.object(device_manager.tunnel_service, "create_core_device_tunnel_service_using_remotepairing", side_effect=fake_probe),
             patch.object(device_manager, "WiFiRsdTunnel", MockTunnelB),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address") as mock_save,
@@ -1101,8 +1169,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(device_manager, "_has_active_session", return_value=False),
             patch.object(device_manager, "WiFiRsdTunnel", MockIPv6Tunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "save_address", wraps=pairing_store.save_address) as mock_save_addr,
@@ -1162,8 +1228,6 @@ class DirectRoutingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(device_manager, "_has_active_session", return_value=False),
             patch.object(device_manager, "WiFiRsdTunnel", MockIPv6Tunnel),
-            patch.object(device_manager, "DvtProvider", return_value=Channel()),
-            patch.object(device_manager, "LocationSimulation", return_value=Channel()),
             patch.object(pairing_store, "exists", return_value=True),
             patch.object(pairing_store, "load_version", return_value="17.4"),
             patch.object(pairing_store, "load_address", return_value=ipv6_scoped),

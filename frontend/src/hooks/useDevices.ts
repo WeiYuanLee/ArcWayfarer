@@ -4,7 +4,7 @@ import { getDeviceDiscoveryDiagnostic, getDeviceSnapshot, type Device, type Devi
 export const DEVICE_SCAN_INTERVAL_MS = 20_000
 export const DEVICE_RESUME_SCAN_DEBOUNCE_MS = 5_000
 
-export function useDevices(includeWifi = false) {
+export function useDevices(includeWifi = false, pushedRevision = 0) {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -169,6 +169,14 @@ export function useDevices(includeWifi = false) {
       unsubscribeRestore?.()
     }
   }, [refresh])
+
+  useEffect(() => {
+    if (pushedRevision <= highestSnapshotRevisionRef.current) return
+    // The WebSocket event means the Registry already changed. Read that
+    // projection without starting another device scan; revision ordering will
+    // schedule one follow-up if an older HTTP response is still in flight.
+    void refresh(true, pushedRevision)
+  }, [pushedRevision, refresh])
 
   return {
     devices,

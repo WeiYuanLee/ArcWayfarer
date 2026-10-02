@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  amfiRevealDeveloperMode,
   clearQuickReconnectRecord,
   clearWirelessDirectAddress,
   connectWirelessDirect,
@@ -7,6 +8,7 @@ import {
   getWirelessDirectEndpoints,
   pairWirelessDirect,
   saveQuickReconnectRecord,
+  trustDeviceForSetup,
   type Device,
   type QuickReconnectRecord,
   type WirelessDirectEndpoint,
@@ -45,7 +47,8 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   const [isScanning, setIsScanning] = useState(false)
   const [lastScanTime, setLastScanTime] = useState('')
   const [quickReconnects, setQuickReconnects] = useState<QuickReconnectRecord[]>([])
-  const [pairingBusyId, setPairingBusyId] = useState<string | null>(null)
+  const [setupState, setSetupState] = useState<DeviceManagerController['setupState']>(null)
+  const [setupSawUsbDisconnect, setSetupSawUsbDisconnect] = useState(false)
   const [connectingState, setConnectingState] = useState<DeviceManagerController['connectingState']>({
     status: 'loading', targetUdid: '', targetName: '', fallbackBonjour: true, port: 0,
   })
@@ -53,6 +56,8 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   useEffect(() => {
     if (!options.isOpen) return
     setView('list')
+    setSetupState(null)
+    setSetupSawUsbDisconnect(false)
     setQuickReconnects(getQuickReconnectRecords())
   }, [options.isOpen])
 
@@ -81,12 +86,92 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       connection_type: device.connection_type,
       status: device.status,
       direct_paired: device.direct_paired,
+      trusted: device.trusted,
       device,
       isActive: !hiddenKeys.has(key) && (!usableKeys || usableKeys.has(key)),
     }
   }), [options.devices, options.deviceNames, hiddenKeys, usableKeys])
 
   const activeCount = useMemo(() => allDevices.filter((item) => item.isActive).length, [allDevices])
+
+  const beginSetup = useCallback((device: ManagedDevice) => {
+    setSetupSawUsbDisconnect(false)
+    setSetupState({ step: 'unlock', device })
+    setView('setup')
+  }, [])
+
+  const authorizeWifi = useCallback(async (device: ManagedDevice) => {
+    if (!device.device) return
+    setSetupState({ step: 'authorizing_wifi', device })
+    try {
+      const result = await pairWirelessDirect(device.udid)
+      await options.onRefreshDevices?.(result.revision)
+      setSetupState({ step: 'complete', device })
+      showToast('已完成一般 Wi-Fi 連線授權。拔線後將自動尋找這台 iPhone。')
+    } catch (error) {
+      setSetupState({
+        step: 'error', device, retryTarget: 'trust',
+        errorMessage: error instanceof Error ? error.message : '無法完成 Wi-Fi 連線授權，請保持 USB 連線後重試。',
+      })
+    }
+  }, [options.onRefreshDevices])
+
+  const requestTrust = useCallback(async () => {
+    const device = setupState?.device
+    if (!device) return
+    setSetupState({ step: 'requesting_trust', device })
+    try {
+      const result = await trustDeviceForSetup(device.udid)
+      await options.onRefreshDevices?.(result.revision)
+      if (result.developer_mode_required && !result.developer_mode_enabled) {
+        setSetupState({ step: 'developer_mode', device })
+        return
+      }
+      await authorizeWifi(device)
+    } catch (error) {
+      setSetupState({
+        step: 'error', device, retryTarget: 'trust',
+        errorMessage: error instanceof Error ? error.message : '無法確認 iPhone 的信任狀態，請解鎖手機後重試。',
+      })
+    }
+  }, [authorizeWifi, options.onRefreshDevices, setupState?.device])
+
+  useEffect(() => {
+    if (setupState?.step !== 'waiting_for_developer_mode') return
+    const target = normalizeDeviceId(setupState.device.udid)
+    const usbPresent = options.devices.some(
+      (device) => normalizeDeviceId(device.udid) === target && device.connection_type === 'usb',
+    )
+    if (!usbPresent) {
+      setSetupSawUsbDisconnect(true)
+      return
+    }
+    if (setupSawUsbDisconnect) {
+      setSetupSawUsbDisconnect(false)
+      void requestTrust()
+    }
+  }, [options.devices, requestTrust, setupSawUsbDisconnect, setupState])
+
+  const revealDeveloperMode = useCallback(async () => {
+    const device = setupState?.device
+    if (!device) return
+    setSetupState({ step: 'revealing_developer_mode', device })
+    try {
+      await amfiRevealDeveloperMode(device.udid)
+      setSetupState({ step: 'waiting_for_developer_mode', device })
+    } catch (error) {
+      setSetupState({
+        step: 'error', device, retryTarget: 'reveal',
+        errorMessage: error instanceof Error ? error.message : '暫時無法顯示開發者模式選項，請保持 USB 連線後重試。',
+      })
+    }
+  }, [setupState?.device])
+
+  const returnToSetupList = useCallback(() => {
+    setSetupSawUsbDisconnect(false)
+    setSetupState(null)
+    setView('list')
+  }, [])
 
   const loadEndpoints = useCallback(async () => {
     setIsScanning(true)
@@ -158,8 +243,18 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
     targetName: connectingState.targetName,
     fallbackBonjour: connectingState.fallbackBonjour,
     port: connectingState.port,
-    // A retry after the USB instruction is a distinct command: refresh the
-    // selected phone's authorization before reconnecting the same endpoint.
+    // A transient network retry must not require a cable or rewrite pairing.
+    refreshPairing: false,
+  }), [connectingState, executeConnect])
+
+  const repairAuthorization = useCallback(() => executeConnect({
+    targetUdid: connectingState.targetUdid,
+    targetIp: connectingState.targetIp,
+    targetName: connectingState.targetName,
+    fallbackBonjour: connectingState.fallbackBonjour,
+    port: connectingState.port,
+    // USB repair is explicit because it validates and refreshes the selected
+    // phone's authorization before reconnecting the same endpoint.
     refreshPairing: true,
   }), [connectingState, executeConnect])
 
@@ -177,19 +272,6 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
     }
   }, [activeCount, options.onHideDevice, options.onRefreshDevices, options.onUnhideDevice])
 
-  const handlePair = useCallback(async (device: Device) => {
-    setPairingBusyId(device.udid)
-    try {
-      const result = await pairWirelessDirect(device.udid)
-      showToast('已完成 Wi-Fi 連線授權，拔線後即可無線控制。')
-      await options.onRefreshDevices?.(result.revision)
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '配對失敗，請確認手機已解鎖並信任此電腦。')
-    } finally {
-      setPairingBusyId(null)
-    }
-  }, [options.onRefreshDevices])
-
   const clearQuickReconnects = useCallback(async () => {
     try {
       const ids = [...new Set(quickReconnects.map((item) => item.udid).filter(Boolean))] as string[]
@@ -204,6 +286,6 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   }, [quickReconnects])
 
   return { view, setView, allDevices, activeCount, endpoints, isScanning, lastScanTime,
-    quickReconnects, pairingBusyId, connectingState, loadEndpoints, executeConnect, retryConnect,
-    handleToggle, handlePair, clearQuickReconnects }
+    quickReconnects, setupState, connectingState, loadEndpoints, executeConnect, retryConnect, repairAuthorization,
+    handleToggle, beginSetup, requestTrust, revealDeveloperMode, returnToSetupList, clearQuickReconnects }
 }

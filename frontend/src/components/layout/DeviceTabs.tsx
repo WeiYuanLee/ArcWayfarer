@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ActionIcon, Tooltip } from '@mantine/core'
-import { IconAlertTriangle, IconCopy, IconDevices, IconRefresh, IconWifi, IconWifiOff } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCopy, IconDevices } from '@tabler/icons-react'
 import type { Device, DeviceDiscoveryDiagnostic } from '../../services/api'
 import type { DeviceState, MapOverlay } from '../panels/types'
 import type { Mode } from '../ModeSelector'
@@ -69,9 +69,6 @@ type Props = {
   positions?: Record<string, LivePosition>
   overlaysByDevice?: Record<string, MapOverlay>
   loading: boolean
-  onRefresh: () => void
-  includeWifi: boolean
-  onIncludeWifiChange: (enabled: boolean) => void
   discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
   onOpenDeviceManager: () => void
 }
@@ -85,9 +82,6 @@ export function DeviceTabs({
   positions = {},
   overlaysByDevice = {},
   loading,
-  onRefresh,
-  includeWifi,
-  onIncludeWifiChange,
   discoveryDiagnostic,
   onOpenDeviceManager,
 }: Props) {
@@ -224,22 +218,6 @@ export function DeviceTabs({
           aria-label={t('device.manager.open')}
         >
           <IconDevices size={16} />
-        </ActionIcon>
-      </Tooltip>
-      <Tooltip label={includeWifi ? t('device.wifi.enabled') : t('device.wifi.disabled')}>
-        <ActionIcon
-          className="device-wifi-discovery"
-          variant={includeWifi ? 'light' : 'default'}
-          color={includeWifi ? 'blue' : 'gray'}
-          onClick={() => onIncludeWifiChange(!includeWifi)}
-          aria-label={includeWifi ? t('device.wifi.disable') : t('device.wifi.enable')}
-        >
-          {includeWifi ? <IconWifi size={16} /> : <IconWifiOff size={16} />}
-        </ActionIcon>
-      </Tooltip>
-      <Tooltip label={t('device.rescan')}>
-        <ActionIcon className="device-refresh" variant="default" color="gray" loading={loading} onClick={onRefresh} aria-label={t('device.rescan')}>
-          <IconRefresh size={16} />
         </ActionIcon>
       </Tooltip>
     </div>

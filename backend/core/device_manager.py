@@ -3,22 +3,27 @@ import logging
 
 from packaging.version import Version
 from pymobiledevice3.bonjour import browse_mobdev2
-from pymobiledevice3.exceptions import AlreadyMountedError
+from pymobiledevice3.exceptions import (
+    AlreadyMountedError,
+    PairingDialogResponsePendingError,
+    PasswordRequiredError,
+    UserDeniedPairingError,
+)
 from pymobiledevice3.lockdown import LockdownClient, create_using_usbmux
 from pymobiledevice3.pair_records import iter_remote_pair_records_by_identifier, iter_remote_paired_identifiers
 from pymobiledevice3.remote import tunnel_service
 from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscoveryService
 from pymobiledevice3.remote.tunnel_service import RemotePairingLockdownService
-from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
-from pymobiledevice3.services.dvt.instruments.location_simulation import LocationSimulation
 from pymobiledevice3.services.mobile_image_mounter import auto_mount
 from pymobiledevice3.services.notification_proxy import NotificationProxyService
 from pymobiledevice3.tunneld.api import _list_tunnels, get_tunneld_device_by_udid
 from pymobiledevice3.usbmux import list_devices as usbmux_list_devices
 
+from core import events
 from core.discovery import direct_endpoint_scanner
 from core.discovery.system_wifi_scanner import system_wifi_scanner
 from core.discovery.usb_scanner import usb_scanner
+from core.discovery.usbmux_event_monitor import UsbmuxEventMonitor
 from core.direct_lockdown import create_direct_lockdown
 from core.device_ports import CallbackDiscoveryPort, DiscoverySnapshot, DiscoverySourceResult
 from core.device_aggregate import AuthorizationState, DirectRuntimeState, SessionState
@@ -43,6 +48,7 @@ logger = logging.getLogger(__name__)
 IOS_17 = Version("17.0")
 DEVICE_LIST_TIMEOUT_SECONDS = 5.0
 DEVICE_DESCRIBE_TIMEOUT_SECONDS = 10.0
+USB_PAIRING_TIMEOUT_SECONDS = 60.0
 
 _direct_transport_adapter = DirectRsdAdapter(lambda **kwargs: WiFiRsdTunnel(**kwargs))
 _direct_tcp_adapter = DirectTcpAdapter(
@@ -93,18 +99,65 @@ transport_controller = TransportController(
     device_command_locks,
     _device_management_service.invalidate,
 )
+
+
+async def _after_discovery_published() -> None:
+    await transport_controller.apply_policy_effects()
+    await events.emit_device_snapshot(device_registry.snapshot().snapshot_revision)
+
+
 _device_discovery_coordinator = DeviceDiscoveryCoordinator(
     _legacy_discovery_snapshot,
     device_registry,
-    on_published=transport_controller.apply_policy_effects,
+    on_published=_after_discovery_published,
 )
 
 
+def _usb_presence_device(mux_device: object) -> DeviceInfo | None:
+    if _connection_type_from_mux(mux_device) != "usb":
+        return None
+    udid = str(getattr(mux_device, "serial", "")).strip()
+    if not udid:
+        return None
+    current = device_registry.get(udid)
+    if current is not None and current.usb_device is not None:
+        return current.usb_device
+    return DeviceInfo(
+        udid=udid,
+        name=udid,
+        ios_version="unknown",
+        transport="lockdown",
+        connection_type="usb",
+        status="discovering",
+        detail="已偵測到 USB，正在讀取裝置資訊…",
+        trusted=None,
+        direct_paired=pairing_manager.exists(udid),
+    )
+
+
+async def _publish_usbmux_presence(mux_devices: tuple[object, ...]) -> None:
+    rows = tuple(
+        row for row in (_usb_presence_device(device) for device in mux_devices)
+        if row is not None
+    )
+    changed = device_registry.publish_usb_presence(rows)
+    if changed:
+        await _after_discovery_published()
+    # Enrichment is deliberately detached from presence publication. It joins
+    # any periodic/manual refresh already in flight instead of queueing more.
+    await _device_discovery_coordinator.request_refresh()
+
+
+_usbmux_event_monitor = UsbmuxEventMonitor(_publish_usbmux_presence)
+
+
 async def start_device_discovery() -> None:
+    await _usbmux_event_monitor.start()
     await _device_discovery_coordinator.start()
 
 
 async def stop_device_discovery() -> None:
+    await _usbmux_event_monitor.stop()
     await _device_discovery_coordinator.stop()
 
 
@@ -114,7 +167,12 @@ async def shutdown_device_transports() -> None:
 
 async def refresh_device_discovery() -> None:
     if _device_discovery_coordinator.started:
-        await _device_discovery_coordinator.refresh_once()
+        if _usbmux_event_monitor.started:
+            try:
+                await _usbmux_event_monitor.refresh()
+            except Exception as error:  # noqa: BLE001 - polling fallback remains active
+                logger.warning("Fast usbmux refresh failed; keeping the last presence snapshot: %s", error)
+        await _device_discovery_coordinator.request_refresh()
         return
     _device_management_service.invalidate()
 
@@ -155,13 +213,17 @@ async def _scan_devices() -> list[DeviceInfo]:
     # for every tunnel it finds; a periodic scan would therefore leave extra
     # iOS 17 developer-service connections alive and can interfere with the
     # single RSD connection that owns location simulation.
-    tunnel_udids = await _list_tunnel_udids()
-    mux_devices, usb_result = await usb_scanner.scan(usbmux_list_devices, timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+    tunnel_task = asyncio.create_task(_list_tunnel_udids())
+    mux_task = asyncio.create_task(
+        usb_scanner.scan(usbmux_list_devices, timeout=DEVICE_LIST_TIMEOUT_SECONDS)
+    )
+    tunnel_udids, (mux_devices, usb_result) = await asyncio.gather(tunnel_task, mux_task)
     if usb_result.status == "failed":
         logger.error("USB device discovery failed; returning tunnel-only results: %s", usb_result.detail)
 
     # Sort USB connections before Network connections so USB is preferred if both exist.
     mux_devices = sorted(mux_devices, key=lambda d: 0 if _connection_type_from_mux(d) == "usb" else 1)
+    describe_targets: list[tuple[str, DeviceConnectionType]] = []
     for mux_device in mux_devices:
         udid = mux_device.serial
         if not udid or udid.lower() in seen_udids:
@@ -172,38 +234,16 @@ async def _scan_devices() -> list[DeviceInfo]:
             # The device list contract only exposes routes that can be named
             # and selected. An unrecognized usbmux transport is not actionable.
             continue
-        try:
-            devices.append(
-                await asyncio.wait_for(
-                    _describe_device(udid, connection_type, tunnel_udids), timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS
-                )
-            )
-        except Exception as e:  # noqa: BLE001 - surface any pairing/lockdown failure to the UI
-            if tunnel_udids and udid.lower() in {known_udid.lower() for known_udid in tunnel_udids}:
-                devices.append(
-                    DeviceInfo(
-                        udid=udid,
-                        name=udid,
-                        ios_version="unknown",
-                        transport="rsd",
-                        connection_type=connection_type,
-                        status="ready",
-                        direct_paired=pairing_manager.exists(udid),
-                    )
-                )
-            else:
-                devices.append(
-                    DeviceInfo(
-                        udid=udid,
-                        name=udid,
-                        ios_version="unknown",
-                        transport="lockdown",
-                        connection_type=connection_type,
-                        status="error",
-                        detail=str(e),
-                        direct_paired=pairing_manager.exists(udid),
-                    )
-                )
+        describe_targets.append((udid, connection_type))
+
+    if describe_targets:
+        # A locked or unhealthy phone must not delay every other row. Preserve
+        # usbmux priority in the result while doing independent handshakes in
+        # parallel.
+        devices.extend(await asyncio.gather(*(
+            _describe_or_placeholder(udid, connection_type, tunnel_udids)
+            for udid, connection_type in describe_targets
+        )))
 
     # A tunneld-only identifier does not reveal whether its physical source is
     # USB or system Wi-Fi. Keep it as source health evidence only; publishing a
@@ -262,6 +302,51 @@ async def _scan_devices() -> list[DeviceInfo]:
     return devices
 
 
+def _discovery_error_detail(error: Exception) -> str:
+    if isinstance(error, PasswordRequiredError):
+        return "請先解鎖 iPhone；解鎖後再於裝置管理繼續設定。"
+    if isinstance(error, PairingDialogResponsePendingError):
+        return "請在 iPhone 上點選「信任」，再回到 ArcWayfarer 繼續設定。"
+    if isinstance(error, UserDeniedPairingError):
+        return "iPhone 拒絕了信任要求。請重新嘗試並在手機上點選「信任」。"
+    return str(error) or error.__class__.__name__
+
+
+async def _describe_or_placeholder(
+    udid: str,
+    connection_type: DeviceConnectionType,
+    tunnel_udids: set[str],
+) -> DeviceInfo:
+    try:
+        return await asyncio.wait_for(
+            _describe_device(udid, connection_type, tunnel_udids),
+            timeout=DEVICE_DESCRIBE_TIMEOUT_SECONDS,
+        )
+    except Exception as error:  # noqa: BLE001 - keep an enumerated phone visible
+        tunnel_keys = {known_udid.lower() for known_udid in tunnel_udids}
+        if udid.lower() in tunnel_keys:
+            return DeviceInfo(
+                udid=udid,
+                name=udid,
+                ios_version="unknown",
+                transport="rsd",
+                connection_type=connection_type,
+                status="ready",
+                direct_paired=pairing_manager.exists(udid),
+            )
+        return DeviceInfo(
+            udid=udid,
+            name=udid,
+            ios_version="unknown",
+            transport="lockdown",
+            connection_type=connection_type,
+            status="error",
+            detail=_discovery_error_detail(error),
+            trusted=False if connection_type == "usb" else None,
+            direct_paired=pairing_manager.exists(udid),
+        )
+
+
 async def _describe_direct(udid: str, ip: str) -> DeviceInfo:
     return await _direct_tcp_adapter.describe(udid, ip)
 
@@ -293,6 +378,66 @@ async def enable_direct_pairing(udid: str) -> None:
         legacy_route=None,
     )
     _device_management_service.invalidate()
+
+
+async def trust_usb_device(udid: str) -> dict[str, object]:
+    """Explicitly request USB trust, then report Developer Mode readiness.
+
+    USB discovery may issue a short bootstrap request so a new phone becomes
+    visible. This command owns the longer, user-facing confirmation window and
+    the Developer Mode check for the selected device.
+    """
+    try:
+        async with await create_using_usbmux(
+            serial=udid,
+            connection_type="USB",
+            autopair=True,
+            pair_timeout=USB_PAIRING_TIMEOUT_SECONDS,
+        ) as lockdown:
+            if not lockdown.paired or lockdown.udid.lower() != udid.lower():
+                raise ValueError("尚未收到這台 iPhone 的信任確認。請保持手機解鎖後重試。")
+            product_version = lockdown.product_version
+            developer_mode_required = Version(product_version) >= Version("16.0")
+            developer_mode_enabled = (
+                await lockdown.get_developer_mode_status()
+                if developer_mode_required
+                else True
+            )
+    except PasswordRequiredError as exc:
+        raise ValueError("iPhone 目前仍在鎖定中。請解鎖手機後重新嘗試。") from exc
+    except PairingDialogResponsePendingError as exc:
+        raise ValueError("尚未收到 iPhone 的信任確認。請解鎖手機並在畫面上點選「信任」。") from exc
+    except UserDeniedPairingError as exc:
+        raise ValueError("iPhone 拒絕了這次信任要求。請重新嘗試並在手機上點選「信任」。") from exc
+
+    revision = device_revision_ledger.bump(udid)
+    _device_management_service.invalidate()
+    return {
+        "status": "trusted",
+        "ios_version": product_version,
+        "developer_mode_required": developer_mode_required,
+        "developer_mode_enabled": developer_mode_enabled,
+        "revision": revision,
+    }
+
+
+async def reveal_developer_mode(udid: str) -> int:
+    """Reveal Developer Mode through the selected trusted USB route."""
+    from pymobiledevice3.services.amfi import AmfiService
+
+    async with await create_using_usbmux(
+        serial=udid,
+        connection_type="USB",
+        autopair=False,
+    ) as lockdown:
+        if not lockdown.paired or lockdown.udid.lower() != udid.lower():
+            raise ValueError("請先完成「信任這部電腦」，再顯示開發者模式選項。")
+        if Version(lockdown.product_version) < Version("16.0"):
+            raise ValueError(f"iOS {lockdown.product_version} 不需要開發者模式。")
+        if await lockdown.get_developer_mode_status():
+            return device_revision_ledger.revision_for(udid)
+        await AmfiService(lockdown).reveal_developer_mode_option_in_ui()
+    return device_revision_ledger.bump(udid)
 
 
 def _has_active_session(udid: str) -> bool:
@@ -341,9 +486,14 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
         )
         if rsd.udid.lower() != udid.lower():
             raise ValueError("無線 RSD 通道連到不同的手機。")
-        async with DvtProvider(rsd) as dvt:
-            async with LocationSimulation(dvt):
-                pass
+        # Do not open and immediately tear down a DVT location channel here.
+        # The Windows userspace tunnel routes each service connection through
+        # a loopback TCP relay.  Consuming one relay connection only as a
+        # preflight can leave the first real location session waiting on a
+        # second service connection even though the UI already reports the
+        # transport as ready.  RSD.connect() above validates the transport;
+        # device_session owns the single long-lived DVT/LocationSimulation
+        # channel when the first command is actually sent.
 
         actual_ip = getattr(tunnel, "peer_ip", None) or ip
         actual_port = getattr(tunnel, "peer_port", None) or port
@@ -356,7 +506,7 @@ async def _connect_direct_rsd(udid: str, ip: str | None = None, fallback_bonjour
             direct_paired=True,
             ip_address=actual_ip,
             status="ready",
-            detail="無線 RSD 定位通道已就緒。",
+            detail="無線 RSD 傳輸已就緒；定位通道會在首次操作時建立。",
         )
         pairing_manager.save_version(udid, rsd.product_version)
         if actual_ip and not actual_ip.startswith("127."):
@@ -639,9 +789,30 @@ async def _describe_device(
     connection_type: DeviceConnectionType,
     tunnel_udids: set[str] | None = None,
 ) -> DeviceInfo:
-    lockdown = await create_using_usbmux(serial=udid)
+    # Discovery is observation-only. Pairing belongs to the explicit setup
+    # command so a locked or unattended phone cannot block the device list.
+    lockdown = await create_using_usbmux(
+        serial=udid,
+        connection_type="USB" if connection_type == "usb" else "Network",
+        autopair=False,
+        pair_timeout=None,
+    )
     name = lockdown.all_values.get("DeviceName", udid)
     ios_version = lockdown.product_version
+    trusted = bool(getattr(lockdown, "paired", True))
+
+    if connection_type == "usb" and not trusted:
+        return DeviceInfo(
+            udid=udid,
+            name=name,
+            ios_version=ios_version,
+            transport="lockdown",
+            connection_type=connection_type,
+            status="error",
+            detail="需要完成首次設定並信任這部電腦。",
+            trusted=False,
+            direct_paired=pairing_manager.exists(udid),
+        )
 
     if Version(ios_version) < IOS_17:
         return DeviceInfo(
@@ -651,6 +822,7 @@ async def _describe_device(
             transport="lockdown",
             connection_type=connection_type,
             status="ready",
+            trusted=trusted,
             direct_paired=pairing_manager.exists(udid),
         )
 
@@ -662,6 +834,7 @@ async def _describe_device(
             transport="rsd",
             connection_type=connection_type,
             status="tunnel_required",
+            trusted=trusted,
             direct_paired=pairing_manager.exists(udid),
             detail="Run 'sudo python3 -m pymobiledevice3 remote tunneld' and reconnect the device.",
         )
@@ -673,6 +846,7 @@ async def _describe_device(
         transport="rsd",
         connection_type=connection_type,
         status="ready",
+        trusted=trusted,
         direct_paired=pairing_manager.exists(udid),
     )
 

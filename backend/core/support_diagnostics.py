@@ -11,6 +11,10 @@ def runtime_diagnostic() -> dict[str, str]:
         pymobiledevice3_version = version("pymobiledevice3")
     except PackageNotFoundError:
         pymobiledevice3_version = "unknown"
+    try:
+        pmd_pytcp_version = version("pmd-pytcp")
+    except PackageNotFoundError:
+        pmd_pytcp_version = "unknown"
     return {
         "platform": platform.system(),
         "platform_release": platform.release(),
@@ -18,4 +22,5 @@ def runtime_diagnostic() -> dict[str, str]:
         "python_version": platform.python_version(),
         "openssl_version": ssl.OPENSSL_VERSION,
         "pymobiledevice3_version": pymobiledevice3_version,
+        "pmd_pytcp_version": pmd_pytcp_version,
     }

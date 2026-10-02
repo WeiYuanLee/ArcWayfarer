@@ -185,6 +185,21 @@ select_route(device):
 - **foreground refresh 補跑。** 遇 in-flight 時標記 `pendingForegroundRefresh`，舊掃描結束後強制補跑一次，而非直接回傳舊 promise。
 - **DeviceManagerModal 已拆分並建立測試護欄。** `DeviceManagerModal.tsx` 從 939 行降為約 90 行；清單、Wireless Direct 探索、連線流程、快速復連與命令 controller 各自獨立。Vitest/RTL 覆蓋傳輸 badge、兩筆快速復連、連線成功 revision 與單一目標失敗隔離；stale snapshot 仍由 `useDevices.test.ts` 驗證。
 
+### 5.1 首次設定與信任流程
+
+首次設定仍遵守 discovery 不得改變 transport runtime，但 USB onboarding 有一項明確例外：部分全新或尚未信任的 iPhone 必須先收到 Pairing Request，Apple 的裝置服務才會提供足夠資訊讓它進入裝置管理。因此 USB discovery 使用 `autopair=True` 並設定短時間上限；它可以叫出 iPhone 的信任視窗，但不得無限等待，也不得建立或關閉任何定位通道。Network discovery 維持 `autopair=False`。裝置進入清單後，「設定這台 iPhone」再以較長、對使用者可見的等待流程完成信任與後續設定。
+
+流程固定為：
+
+1. 提醒使用者解鎖 iPhone 並保持 USB 連線。
+2. USB discovery 可能已先叫出信任視窗；使用者按「我已解鎖，繼續」後，ArcWayfarer 會針對所選 UDID 驗證或繼續完成「信任這部電腦」。手機端的信任確認與密碼仍由使用者完成。
+3. 信任成功後，iOS 16+ 透過 Lockdown 讀取 `DeveloperModeStatus`；已開啟則繼續，未開啟則留在裝置管理流程。
+4. 「在 iPhone 上顯示開發者模式選項」使用 USB Lockdown 的 AMFI Reveal。它只顯示系統設定入口，不代表開發者模式已經開啟，也不依賴 RSD tunnel ready。
+5. 手機依 iOS 指示重新啟動並再次以 USB 出現後，自動重新檢查；畫面也保留手動「重新檢查」作為回復入口。
+6. 開發者模式確認完成後，才建立一般 Wi-Fi／RemotePairing 授權。成功訊息只宣告授權完成；拔線後仍須實際掃描到 usbmux Network route 才顯示為 Wi-Fi。
+
+左上角功能選單不再暴露 AMFI 技術操作，避免繞過指定裝置、USB 信任與狀態檢查。信任、開發者模式、無線授權是三個獨立狀態，不得用單一「配對完成」混為一談。
+
 ---
 
 ## 6. 分階段路線（strangler，非大爆炸）

@@ -83,3 +83,16 @@ class WebSocketDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task["protocol_version"], 2)
         self.assertEqual(task["config"]["waypoints"], [{"lat": 25.0, "lng": 121.0}])
         self.assertTrue(task["task_id"])
+
+    async def test_device_snapshot_notification_is_latest_wins(self):
+        socket = _SlowWebSocket()
+        client = websocket._OutboundClient(socket)
+        websocket._connections[socket] = client
+
+        await websocket.broadcast_device_snapshot(12)
+        await websocket.broadcast_device_snapshot(13)
+
+        self.assertEqual(
+            client.telemetry[("device_snapshot", "None")],
+            {"type": "device_snapshot", "revision": 13},
+        )

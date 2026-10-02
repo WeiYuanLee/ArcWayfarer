@@ -1,10 +1,11 @@
 from ipaddress import IPv4Address
+import logging
 import platform
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from pymobiledevice3.exceptions import DeviceNotFoundError
+from pymobiledevice3.exceptions import DeviceNotFoundError, PyMobileDevice3Exception
 
 from core import device_manager, device_session, pairing_store
 from core.device_revision import device_revision_ledger
@@ -14,6 +15,7 @@ from core.support_diagnostics import runtime_diagnostic
 from models.schemas import DeviceInfo
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 class DirectConnectRequest(BaseModel):
@@ -34,6 +36,14 @@ class DeviceSnapshotResponse(BaseModel):
     snapshot_revision: int
     sources: dict[str, DiscoverySourceResponse]
     devices: list[DeviceInfo]
+
+
+class DeviceSetupResponse(BaseModel):
+    status: Literal["trusted"]
+    ios_version: str
+    developer_mode_required: bool
+    developer_mode_enabled: bool
+    revision: int
 
 
 def _snapshot_response(snapshot: DiscoverySnapshot) -> DeviceSnapshotResponse:
@@ -65,6 +75,17 @@ async def pair_wireless_direct(udid: str, request: Request) -> dict:
         except (ValueError, OSError, TimeoutError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "paired", "revision": device_revision_ledger.revision_for(udid)}
+
+
+@router.post("/devices/{udid}/setup/trust", response_model=DeviceSetupResponse)
+async def trust_device_for_setup(udid: str, request: Request) -> dict:
+    """Start the user-authorized USB trust flow and inspect Developer Mode."""
+    _require_desktop(request)
+    async with device_command_locks.hold(f"device:{udid}"):
+        try:
+            return await device_manager.trust_usb_device(udid)
+        except (ValueError, OSError, TimeoutError, PyMobileDevice3Exception) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/devices/{udid}/wireless-direct/connect")
@@ -133,7 +154,7 @@ async def get_devices_snapshot(include_wifi: bool = Query(default=False)) -> Dev
 
 @router.post("/devices/snapshot/refresh")
 async def refresh_devices_snapshot(include_wifi: bool = Query(default=False)) -> DeviceSnapshotResponse:
-    """Explicitly request one observation, then return the Registry projection."""
+    """Resync fast USB presence and schedule shared background enrichment."""
     await device_manager.refresh_device_discovery()
     return _snapshot_response(await device_manager.get_device_snapshot(include_wifi=include_wifi))
 
@@ -148,7 +169,7 @@ async def get_device_diagnostics() -> dict:
 
 
 @router.post("/devices/{udid}/amfi/reveal-developer-mode")
-async def amfi_reveal_developer_mode(udid: str) -> dict:
+async def amfi_reveal_developer_mode(udid: str, request: Request) -> dict:
     """Make iOS's "Developer Mode" option appear in Settings → Privacy &
     Security, without side-loading a developer-signed IPA. This is action 0
     (REVEAL) of the com.apple.amfi.lockdown service — it just creates the
@@ -156,47 +177,16 @@ async def amfi_reveal_developer_mode(udid: str) -> dict:
     prompt). The user still has to open Settings and toggle Developer Mode
     on themselves. iOS 16+ only.
     """
-    try:
-        device = await device_manager.get_device(udid)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    _require_desktop(request)
+    async with device_command_locks.hold(f"device:{udid}"):
+        try:
+            revision = await device_manager.reveal_developer_mode(udid)
+        except DeviceNotFoundError as exc:
+            raise HTTPException(status_code=400, detail="請以 USB 接上這台 iPhone 後重試。") from exc
+        except (ValueError, OSError, TimeoutError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Failed to reveal Developer Mode for %s", udid)
+            raise HTTPException(status_code=500, detail="暫時無法在 iPhone 上顯示開發者模式選項，請重新接線後再試一次。") from exc
 
-    if device.status != "ready":
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "device_not_ready", "message": device.detail or f"Device is not ready (status: {device.status})."},
-        )
-
-    try:
-        major = int((device.ios_version or "0.0").split(".")[0])
-    except Exception:
-        major = 0
-    if major < 16:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "ios_too_old", "message": f"iOS {device.ios_version} has no Developer Mode concept."},
-        )
-
-    try:
-        from pymobiledevice3.services.amfi import AmfiService
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "amfi_not_available", "message": f"Failed to load AMFI service: {exc}"},
-        )
-
-    try:
-        lockdown = await device_manager.get_lockdown(udid)
-        await AmfiService(lockdown).reveal_developer_mode_option_in_ui()
-    except DeviceNotFoundError:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "device_not_found_usbmux", "message": "Device must be connected via USB for AMFI reveal."},
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "amfi_reveal_failed", "message": f"AMFI reveal failed: {exc.__class__.__name__}: {exc}"},
-        )
-
-    return {"status": "ok"}
+    return {"status": "ok", "revision": revision}

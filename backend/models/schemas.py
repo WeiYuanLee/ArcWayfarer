@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 Transport = Literal["lockdown", "rsd"]
 DeviceConnectionType = Literal["usb", "wifi", "wireless_direct"]
-DeviceStatus = Literal["ready", "mounting", "tunnel_required", "error"]
+DeviceStatus = Literal["discovering", "ready", "mounting", "tunnel_required", "error"]
 
 
 class DeviceInfo(BaseModel):
@@ -17,6 +17,9 @@ class DeviceInfo(BaseModel):
     connection_type: DeviceConnectionType
     ip_address: Optional[str] = None
     direct_paired: bool = False
+    # None keeps older discovery adapters compatible. False is only published
+    # when a USB device is present but has not trusted this computer yet.
+    trusted: Optional[bool] = None
     status: DeviceStatus
     detail: Optional[str] = None
     # P1 migration fields. Older clients safely ignore them.

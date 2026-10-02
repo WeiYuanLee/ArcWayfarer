@@ -12,6 +12,9 @@ cryptography>=42,<46
 # 11.19.1 recognizes privacy-preserving Wi-Fi RemotePairing advertisements by
 # authTag/altIRK and remains compatible with the cryptography 45.x package cap.
 pymobiledevice3==11.19.1
+# Windows Wireless Direct relays DVT service connections over loopback TCP.
+# 0.3.7 includes the audited connection-liveness and cleanup fixes.
+pmd-pytcp>=0.3.7
 packaging>=23.0
 gpxpy>=1.6.0
 pyimg4>=0.1.0

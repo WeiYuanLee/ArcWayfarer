@@ -19,9 +19,6 @@ type Props = {
   positions?: Record<string, LivePosition>
   overlaysByDevice?: Record<string, MapOverlay>
   devicesLoading: boolean
-  onRefreshDevices: () => void
-  includeWifi: boolean
-  onIncludeWifiChange: (enabled: boolean) => void
   discoveryDiagnostic: DeviceDiscoveryDiagnostic | null
   onOpenDeviceManager: () => void
   onOpenCmdPalette?: () => void
@@ -42,9 +39,6 @@ export function TopBar({
   positions,
   overlaysByDevice,
   devicesLoading,
-  onRefreshDevices,
-  includeWifi,
-  onIncludeWifiChange,
   discoveryDiagnostic,
   onOpenDeviceManager,
   onOpenCmdPalette,
@@ -58,7 +52,7 @@ export function TopBar({
 
   return (
     <div className="top-bar">
-      <DevMenuButton deviceId={focusedDeviceId} />
+      <DevMenuButton />
       <div className="topbar-title-group">
         <h1>{t('topbar.title')}</h1>
         <VersionBadge
@@ -85,9 +79,6 @@ export function TopBar({
         positions={positions}
         overlaysByDevice={overlaysByDevice}
         loading={devicesLoading}
-        onRefresh={onRefreshDevices}
-        includeWifi={includeWifi}
-        onIncludeWifiChange={onIncludeWifiChange}
         discoveryDiagnostic={discoveryDiagnostic}
         onOpenDeviceManager={onOpenDeviceManager}
       />

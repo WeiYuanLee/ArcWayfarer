@@ -1,6 +1,7 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 from core import device_manager, pairing_store
 from core.device_ports import DiscoverySnapshot
@@ -120,6 +121,28 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(described, [("same", "usb")])
         self.assertEqual(devices[0].connection_type, "usb")
 
+    async def test_device_descriptions_run_concurrently(self) -> None:
+        both_started = asyncio.Event()
+        started: set[str] = set()
+
+        async def describe(udid: str, connection_type: str, _tunnels: set[str]) -> DeviceInfo:
+            started.add(udid)
+            if len(started) == 2:
+                both_started.set()
+            await asyncio.wait_for(both_started.wait(), timeout=0.1)
+            return _device(udid, connection_type)
+
+        with (
+            patch.object(device_manager, "usbmux_list_devices", AsyncMock(return_value=[
+                _MuxDevice("one", "USB"), _MuxDevice("two", "USB"),
+            ])),
+            patch.object(device_manager, "_describe_device", AsyncMock(side_effect=describe)),
+            patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
+        ):
+            devices = await device_manager._scan_devices()
+
+        self.assertEqual([item.udid for item in devices], ["one", "two"])
+
     async def test_usb_only_result_excludes_known_wifi_devices(self) -> None:
         with patch.object(
             device_manager,
@@ -145,6 +168,128 @@ class DeviceManagerTests(unittest.IsolatedAsyncioTestCase):
             patch.object(device_manager, "_list_tunnel_udids", AsyncMock(return_value=set())),
         ):
             self.assertEqual(await device_manager._scan_devices(), [])
+
+    async def test_usbmux_event_publishes_usb_placeholder_before_enrichment(self) -> None:
+        publish = Mock(return_value=True)
+        with (
+            patch.object(device_manager.device_registry, "get", return_value=None),
+            patch.object(device_manager.device_registry, "publish_usb_presence", publish),
+            patch.object(device_manager, "_after_discovery_published", AsyncMock()) as after_publish,
+            patch.object(device_manager._device_discovery_coordinator, "request_refresh", AsyncMock()) as enrich,
+        ):
+            await device_manager._publish_usbmux_presence((
+                _MuxDevice("usb-phone", "USB"),
+                _MuxDevice("wifi-phone", "Network"),
+            ))
+
+        rows = publish.call_args.args[0]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].udid, "usb-phone")
+        self.assertEqual(rows[0].status, "discovering")
+        after_publish.assert_awaited_once()
+        enrich.assert_awaited_once()
+
+    async def test_manual_refresh_returns_after_fast_presence_and_only_schedules_enrichment(self) -> None:
+        monitor = SimpleNamespace(started=True, refresh=AsyncMock())
+        coordinator = SimpleNamespace(started=True, request_refresh=AsyncMock())
+        with (
+            patch.object(device_manager, "_usbmux_event_monitor", monitor),
+            patch.object(device_manager, "_device_discovery_coordinator", coordinator),
+        ):
+            await device_manager.refresh_device_discovery()
+
+        monitor.refresh.assert_awaited_once()
+        coordinator.request_refresh.assert_awaited_once()
+
+    async def test_usb_discovery_never_triggers_pairing(self) -> None:
+        lockdown = SimpleNamespace(
+            all_values={"DeviceName": "New iPhone"}, product_version="18.0",
+            paired=False,
+        )
+        create = AsyncMock(return_value=lockdown)
+        with (
+            patch.object(device_manager, "create_using_usbmux", create),
+            patch.object(pairing_store, "exists", return_value=False),
+        ):
+            found = await device_manager._describe_device("PHONE-A", "usb", set())
+
+        create.assert_awaited_once_with(
+            serial="PHONE-A", connection_type="USB", autopair=False,
+            pair_timeout=None,
+        )
+        self.assertFalse(found.trusted)
+        self.assertEqual(found.status, "error")
+        self.assertIn("首次設定", found.detail)
+
+    async def test_network_discovery_never_triggers_pairing(self) -> None:
+        lockdown = SimpleNamespace(
+            all_values={"DeviceName": "Wi-Fi iPhone"}, product_version="16.7",
+            paired=True,
+        )
+        create = AsyncMock(return_value=lockdown)
+        with (
+            patch.object(device_manager, "create_using_usbmux", create),
+            patch.object(pairing_store, "exists", return_value=True),
+        ):
+            found = await device_manager._describe_device("PHONE-A", "wifi", set())
+
+        create.assert_awaited_once_with(
+            serial="PHONE-A", connection_type="Network", autopair=False,
+            pair_timeout=None,
+        )
+        self.assertEqual(found.connection_type, "wifi")
+        self.assertTrue(found.trusted)
+
+    async def test_explicit_setup_triggers_trust_and_checks_developer_mode(self) -> None:
+        class Lockdown:
+            paired = True
+            udid = "PHONE-A"
+            product_version = "18.0"
+            get_developer_mode_status = AsyncMock(return_value=False)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+        create = AsyncMock(return_value=Lockdown())
+        with patch.object(device_manager, "create_using_usbmux", create):
+            result = await device_manager.trust_usb_device("PHONE-A")
+
+        create.assert_awaited_once_with(
+            serial="PHONE-A", connection_type="USB", autopair=True,
+            pair_timeout=device_manager.USB_PAIRING_TIMEOUT_SECONDS,
+        )
+        self.assertTrue(result["developer_mode_required"])
+        self.assertFalse(result["developer_mode_enabled"])
+
+    async def test_developer_mode_reveal_uses_trusted_usb_without_rsd(self) -> None:
+        class Lockdown:
+            paired = True
+            udid = "PHONE-A"
+            product_version = "18.0"
+            get_developer_mode_status = AsyncMock(return_value=False)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+        create = AsyncMock(return_value=Lockdown())
+        reveal = AsyncMock()
+        amfi = SimpleNamespace(reveal_developer_mode_option_in_ui=reveal)
+        with (
+            patch.object(device_manager, "create_using_usbmux", create),
+            patch("pymobiledevice3.services.amfi.AmfiService", return_value=amfi),
+        ):
+            await device_manager.reveal_developer_mode("PHONE-A")
+
+        create.assert_awaited_once_with(
+            serial="PHONE-A", connection_type="USB", autopair=False,
+        )
+        reveal.assert_awaited_once()
 
     async def test_usb_discovery_failure_keeps_a_support_diagnostic(self) -> None:
         with (
