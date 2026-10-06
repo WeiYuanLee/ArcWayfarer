@@ -229,10 +229,11 @@ export async function getDeviceDiscoveryDiagnostic(): Promise<DeviceDiscoveryDia
   return response.usb_discovery
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() })
-  if (!res.ok) throw new Error(`Request failed (${res.status})`)
-  return res.json()
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders(), signal })
+  const payload = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(payload?.detail ?? `Request failed (${res.status})`)
+  return payload as T
 }
 
 async function deleteJson(path: string): Promise<void> {
@@ -562,6 +563,11 @@ export type Favorite = {
   group: string
   notes: string
   order: number
+  source_type: 'postcard' | 'purespot' | null
+  source_id: number | null
+  source_image_url: string | null
+  postcard_type: 'mushroom' | 'flower' | 'hidden' | null
+  decor_type: string | null
 }
 
 export type FavoriteExportItem = {
@@ -593,12 +599,14 @@ export type FavoriteImportResult = FavoriteImportPreview & {
   imported: number
 }
 
-export function listFavorites(): Promise<Favorite[]> {
-  return getJson('/api/favorites')
+export async function listFavorites(): Promise<Favorite[]> {
+  const result = await getJson<unknown>('/api/favorites')
+  return Array.isArray(result) ? result as Favorite[] : []
 }
 
-export function listFavoriteGroups(): Promise<string[]> {
-  return getJson('/api/favorites/groups')
+export async function listFavoriteGroups(): Promise<string[]> {
+  const result = await getJson<unknown>('/api/favorites/groups')
+  return Array.isArray(result) ? result.filter((value): value is string => typeof value === 'string') : []
 }
 
 export function exportFavorites(groups: string[]): Promise<FavoriteExportDocument> {
@@ -633,4 +641,108 @@ export function reorderFavorites(items: { id: string; order: number }[]): Promis
 
 export function deleteFavorite(id: string): Promise<void> {
   return deleteJson(`/api/favorites/${id}`)
+}
+
+export type PikminPostcard = {
+  id: number
+  name: string
+  type: 'mushroom' | 'flower' | 'hidden'
+  image_url: string
+  description: string
+  country: string
+  lat: number
+  lng: number
+  date: string
+  submitter: string
+  likes: number
+}
+
+export type PikminPureSpot = {
+  id: number
+  name: string
+  lat: number
+  lng: number
+  type: string
+  icon: string
+  city: string
+  district: string
+  good: number
+  user_name: string
+  update_date: string | null
+  ext: string | null
+}
+
+export type PikminPostcardPage = {
+  items: PikminPostcard[]
+  total: number
+  page: number
+  page_size: number
+  countries: string[]
+}
+
+export type PikminPureSpotType = { type: string; icon: string; count: number }
+
+export type PikminSyncStatus = {
+  status: 'idle' | 'running' | 'success' | 'error'
+  job_id: string | null
+  started_at: string | null
+  completed_at: string | null
+  last_successful_sync_at: string | null
+  counts: { postcards: number; purespots: number }
+  error: string | null
+}
+
+export function listPikminPostcards(
+  filters: { query?: string; country?: string; type?: string; page?: number; pageSize?: number },
+  signal?: AbortSignal,
+): Promise<PikminPostcardPage> {
+  const params = new URLSearchParams()
+  if (filters.query) params.set('query', filters.query)
+  if (filters.country) params.set('country', filters.country)
+  if (filters.type) params.set('type', filters.type)
+  params.set('page', String(filters.page ?? 1))
+  params.set('page_size', String(filters.pageSize ?? 20))
+  return getJson(`/api/pikmin/postcards?${params.toString()}`, signal)
+}
+
+export function pikminPostcardImageUrl(sourceId: number): string {
+  return `${API_BASE_URL}/api/pikmin/postcards/${encodeURIComponent(sourceId)}/image`
+}
+
+export async function listPikminPureSpots(
+  bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+  decorTypes: string[] = [],
+  signal?: AbortSignal,
+): Promise<PikminPureSpot[]> {
+  const params = new URLSearchParams({
+    min_lat: String(bounds.minLat),
+    min_lng: String(bounds.minLng),
+    max_lat: String(bounds.maxLat),
+    max_lng: String(bounds.maxLng),
+  })
+  decorTypes.forEach((type) => params.append('decor_type', type))
+  const result = await getJson<unknown>(`/api/pikmin/purespots?${params.toString()}`, signal)
+  return Array.isArray(result) ? result as PikminPureSpot[] : []
+}
+
+export async function listPikminPureSpotTypes(signal?: AbortSignal): Promise<PikminPureSpotType[]> {
+  const result = await getJson<unknown>('/api/pikmin/purespots/types', signal)
+  return Array.isArray(result) ? result as PikminPureSpotType[] : []
+}
+
+export function getRandomPikminPureSpot(decorType: string, signal?: AbortSignal): Promise<PikminPureSpot> {
+  const params = new URLSearchParams({ decor_type: decorType })
+  return getJson(`/api/pikmin/purespots/random?${params.toString()}`, signal)
+}
+
+export function addPikminFavorite(sourceType: 'postcard' | 'purespot', sourceId: number): Promise<Favorite> {
+  return postJsonWithResponse('/api/pikmin/favorites', { source_type: sourceType, source_id: sourceId })
+}
+
+export function getPikminSyncStatus(): Promise<PikminSyncStatus> {
+  return getJson('/api/pikmin/sync/status')
+}
+
+export function startPikminSync(): Promise<PikminSyncStatus> {
+  return postJsonWithResponse('/api/pikmin/sync', {})
 }

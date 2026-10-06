@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MultiStopPanel } from './MultiStopPanel'
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     reorderValidWaypoints: vi.fn(() => 1),
     restoreItems: vi.fn(() => 2),
     showToast: vi.fn(),
+    writeText: vi.fn(),
   }
 })
 
@@ -85,6 +86,11 @@ describe('MultiStopPanel route optimization lifecycle', () => {
     mocks.reorderValidWaypoints.mockClear()
     mocks.restoreItems.mockClear()
     mocks.showToast.mockClear()
+    mocks.writeText.mockReset().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mocks.writeText },
+    })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -137,5 +143,19 @@ describe('MultiStopPanel route optimization lifecycle', () => {
     render(<MantineProvider><MultiStopPanel {...defaultProps} deviceState="navigating" /></MantineProvider>)
 
     expect(screen.queryByRole('button', { name: 'multistop.optimize_order' })).toBeNull()
+  })
+
+  it('copies every valid waypoint in order from the export menu', async () => {
+    render(<MantineProvider><MultiStopPanel {...defaultProps} /></MantineProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'multistop.export' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'multistop.export_coordinates' }))
+
+    await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith([
+      '25.000000, 121.000000',
+      '25.020000, 121.020000',
+      '25.010000, 121.010000',
+    ].join('\n')))
+    expect(mocks.showToast).toHaveBeenCalledWith('multistop.export_coordinates_success')
   })
 })

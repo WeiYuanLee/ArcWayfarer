@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core import favorites as favorites_module
-from models.schemas import FavoriteExportDocument, FavoriteExportItem
+from models.schemas import FavoriteExportDocument, FavoriteExportItem, PikminPostcard
 
 
 class FavoriteTransferTests(unittest.TestCase):
@@ -66,6 +66,43 @@ class FavoriteTransferTests(unittest.TestCase):
         self.assertEqual(groups, ["Local", "Travel"])
         self.assertEqual(len(stored), 2)
         self.assertTrue(stored[1]["id"])
+
+    def test_source_favorites_are_local_only_and_do_not_block_regular_imports(self) -> None:
+        with tempfile.TemporaryDirectory() as path:
+            manager = self.make_manager(Path(path))
+            source = PikminPostcard(
+                id=444,
+                name="龍貓等公車",
+                type="mushroom",
+                image_url="https://pikmin.talllkai.com/uploads/postcards/example.jpg",
+                lat=3.3824,
+                lng=101.774482,
+            )
+            created = manager.add_pikmin_source(source)
+            with self.assertRaises(ValueError):
+                manager.add_pikmin_source(source)
+
+            document = FavoriteExportDocument(
+                exported_at="2026-10-06T00:00:00Z",
+                favorites=[
+                    FavoriteExportItem(
+                        name="Regular point at the same location",
+                        lat=3.3824,
+                        lng=101.774482,
+                        created_at=1,
+                        order=0,
+                    )
+                ],
+            )
+            preview = manager.preview_import(document)
+            result = manager.import_document(document)
+            exported = manager.export_document()
+
+        self.assertEqual((created.source_type, created.source_id), ("postcard", 444))
+        self.assertEqual((preview.additions, preview.duplicates), (1, 0))
+        self.assertEqual(result.imported, 1)
+        self.assertEqual([item.name for item in exported.favorites], ["Regular point at the same location"])
+        self.assertNotIn("明信片收藏", exported.groups)
 
 
 if __name__ == "__main__":

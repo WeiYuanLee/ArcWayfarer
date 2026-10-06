@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 
 from config import BOOKMARKS_FILE, FAVORITE_GROUPS_FILE
-from models.schemas import Favorite, FavoriteExportDocument, FavoriteExportItem, FavoriteImportPreview, FavoriteImportResult, FavoriteReorderItem
+from models.schemas import Favorite, FavoriteExportDocument, FavoriteExportItem, FavoriteImportPreview, FavoriteImportResult, FavoriteReorderItem, PikminPostcard, PikminPureSpot
 from services.storage import safe_load_json, safe_write_json
 
 
@@ -47,6 +47,29 @@ class FavoriteManager:
         self._save()
         return favorite
 
+    def add_pikmin_source(self, source: PikminPostcard | PikminPureSpot) -> Favorite:
+        source_type = "postcard" if isinstance(source, PikminPostcard) else "purespot"
+        if any(favorite.source_type == source_type and favorite.source_id == source.id for favorite in self._favorites):
+            raise ValueError("This Pikmin location is already in favorites.")
+        max_order = max((favorite.order for favorite in self._favorites), default=-1)
+        favorite = Favorite(
+            id=uuid.uuid4().hex,
+            name=source.name,
+            lat=source.lat,
+            lng=source.lng,
+            created_at=int(time.time()),
+            group="明信片收藏" if source_type == "postcard" else "純點收藏",
+            order=max_order + 1,
+            source_type=source_type,
+            source_id=source.id,
+            source_image_url=source.image_url if isinstance(source, PikminPostcard) else None,
+            postcard_type=source.type if isinstance(source, PikminPostcard) else None,
+            decor_type=source.type if isinstance(source, PikminPureSpot) else None,
+        )
+        self._favorites.append(favorite)
+        self._save()
+        return favorite
+
     def update(self, favorite_id: str, name: "str | None" = None, group: "str | None" = None, notes: "str | None" = None) -> Favorite:
         for favorite in self._favorites:
             if favorite.id == favorite_id:
@@ -80,10 +103,15 @@ class FavoriteManager:
         favorites = [
             favorite
             for favorite in self.list()
-            if selected_group_keys is None or favorite.group.strip().casefold() in selected_group_keys
+            if favorite.source_type is None
+            and (selected_group_keys is None or favorite.group.strip().casefold() in selected_group_keys)
         ]
-        exported_groups = self.list_groups() if selected_group_keys is None else [
-            group for group in self.list_groups() if group.casefold() in selected_group_keys
+        regular_groups = sorted(
+            set(self._groups) | {favorite.group for favorite in favorites if favorite.group},
+            key=str.casefold,
+        )
+        exported_groups = regular_groups if selected_group_keys is None else [
+            group for group in regular_groups if group.casefold() in selected_group_keys
         ]
         return FavoriteExportDocument(
             exported_at=datetime.now(UTC).isoformat(),
@@ -150,7 +178,7 @@ class FavoriteManager:
         # Validate and calculate everything before writing either file, so an
         # import never leaves behind a partially applied collection.
         self._favorites.extend(imported)
-        self._groups = self.list_groups() + groups_to_add
+        self._groups = sorted(set(self._groups + groups_to_add), key=str.casefold)
         self._save()
         self._save_groups()
         return FavoriteImportResult(
@@ -163,7 +191,9 @@ class FavoriteManager:
 
     def _partition_import_favorites(self, candidates: list[FavoriteExportItem]) -> tuple[list[FavoriteExportItem], int]:
         accepted: list[FavoriteExportItem] = []
-        comparisons: list[tuple[float, float]] = [(favorite.lat, favorite.lng) for favorite in self._favorites]
+        comparisons: list[tuple[float, float]] = [
+            (favorite.lat, favorite.lng) for favorite in self._favorites if favorite.source_type is None
+        ]
         duplicates = 0
         for item in candidates:
             if any(self._distance_meters(item.lat, item.lng, lat, lng) <= 5 for lat, lng in comparisons):
@@ -191,7 +221,7 @@ class FavoriteManager:
         return [group.strip() for group in raw if isinstance(group, str) and group.strip()]
 
     def _save_groups(self) -> None:
-        safe_write_json(FAVORITE_GROUPS_FILE, self.list_groups())
+        safe_write_json(FAVORITE_GROUPS_FILE, sorted(set(self._groups), key=str.casefold))
 
 
 favorite_manager = FavoriteManager()

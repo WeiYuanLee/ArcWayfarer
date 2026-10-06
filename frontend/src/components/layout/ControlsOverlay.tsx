@@ -1,10 +1,11 @@
-import { memo, Suspense, useState } from 'react'
+import { memo, Suspense, useEffect, useRef, useState } from 'react'
 import { ModeSelector, type Mode } from '../ModeSelector'
 import { PANEL_BY_MODE } from '../panels'
 import type { PanelProps } from '../panels/types'
 import type { Device } from '../../services/api'
 import { FloatingCard } from './FloatingCard'
 import { useT, type StringKey } from '../../i18n'
+import { usePikminMap } from '../map/PikminMapContext'
 
 type Props = {
   devices: Device[]
@@ -56,12 +57,27 @@ const MODE_LABEL_KEYS: Record<Mode, StringKey> = {
 
 export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onModeChange, panelPropsFor, modeChangeLocked = false }: Props) {
   const t = useT()
+  const pikminMap = usePikminMap()
   const [panelExpanded, setPanelExpanded] = useState(true)
+  const panelExpandedBeforeDrawer = useRef(true)
+  const drawerOpen = pikminMap.mode !== null
   const focusedMode: Mode = (focusedDeviceId && modeByDevice[focusedDeviceId]) || 'teleport'
+
+  useEffect(() => {
+    if (drawerOpen) {
+      panelExpandedBeforeDrawer.current = panelExpanded
+      setPanelExpanded(false)
+    } else {
+      setPanelExpanded(panelExpandedBeforeDrawer.current)
+    }
+    // Opening/closing the drawer is the transition boundary. User changes to
+    // the compact control while the drawer is open should not retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen])
 
   return (
     <div className="map-overlay-container">
-      {focusedDeviceId && (
+      {focusedDeviceId && !drawerOpen && (
         <div className="overlay-top-center">
           <ModeSelector value={focusedMode} disabled={modeChangeLocked} onChange={(mode) => onModeChange(focusedDeviceId, mode)} />
         </div>

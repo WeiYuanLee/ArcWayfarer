@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActionIcon, Alert, Badge, Button, FileButton, Group, SegmentedControl, Stack } from '@mantine/core'
-import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react'
+import { ActionIcon, Alert, Badge, Button, FileButton, Group, Menu, SegmentedControl, Stack } from '@mantine/core'
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconCopy, IconDownload, IconPlus, IconTrash } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
   pauseMultiStop,
@@ -665,7 +665,7 @@ export function MultiStopPanel({
     }
   }
 
-  function handleExportTemplate() {
+  function handleExportFile() {
     if (validWaypoints.length === 0) return
     const template = {
       version: '1.0',
@@ -689,6 +689,19 @@ export function MultiStopPanel({
     a.download = `multistop-route-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function handleExportCoordinates() {
+    if (validWaypoints.length === 0) return
+    const coordinates = validWaypoints
+      .map(({ lat, lng }) => `${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+      .join('\n')
+    try {
+      await navigator.clipboard.writeText(coordinates)
+      showToast(t('multistop.export_coordinates_success').replace('{count}', String(validWaypoints.length)))
+    } catch {
+      showToast(t('multistop.export_coordinates_failed'))
+    }
   }
 
   async function handleStart() {
@@ -908,7 +921,15 @@ export function MultiStopPanel({
                   e.target.value = ''
                 }}
               />}
-            <Button fullWidth size="compact-sm" variant="default" onClick={handleExportTemplate} disabled={validWaypoints.length === 0}>{t('multistop.export_template')}</Button>
+            <Menu shadow="md" width={180} position="bottom">
+              <Menu.Target>
+                <Button fullWidth size="compact-sm" variant="default" rightSection={<IconChevronDown size={14} />} disabled={validWaypoints.length === 0}>{t('multistop.export')}</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconDownload size={15} />} onClick={handleExportFile}>{t('multistop.export_file')}</Menu.Item>
+                <Menu.Item leftSection={<IconCopy size={15} />} onClick={() => void handleExportCoordinates()}>{t('multistop.export_coordinates')}</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
             <Button fullWidth size="compact-sm" variant="default" onClick={() => setPasteOpen(true)}>{t('multistop.paste_coords')}</Button>
             </Group>
 

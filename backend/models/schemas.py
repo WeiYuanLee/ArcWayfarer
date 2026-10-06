@@ -179,6 +179,16 @@ class Favorite(BaseModel):
     group: str = ""
     notes: str = ""
     order: int = 0
+    source_type: Optional[Literal["postcard", "purespot"]] = None
+    source_id: Optional[int] = None
+    source_image_url: Optional[str] = None
+    postcard_type: Optional[Literal["mushroom", "flower", "hidden"]] = None
+    decor_type: Optional[str] = None
+
+
+class PikminSourceFavoriteRequest(BaseModel):
+    source_type: Literal["postcard", "purespot"]
+    source_id: int = Field(ge=1)
 
 
 class FavoriteCreateRequest(BaseModel):
@@ -255,3 +265,32 @@ class FavoriteImportPreview(BaseModel):
 
 class FavoriteImportResult(FavoriteImportPreview):
     imported: int
+
+
+class PikminPostcard(BaseModel):
+    id: int
+    name: str
+    type: Literal["mushroom", "flower", "hidden"]
+    image_url: str
+    description: str = ""
+    country: str = ""
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    date: str = ""
+    submitter: str = ""
+    likes: int = 0
+
+
+class PikminPureSpot(BaseModel):
+    id: int
+    name: str
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    type: str
+    icon: str
+    city: str = ""
+    district: str = ""
+    good: int = 0
+    user_name: str = ""
+    update_date: Optional[str] = None
+    ext: Optional[str] = None

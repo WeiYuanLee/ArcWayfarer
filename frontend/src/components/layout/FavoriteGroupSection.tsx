@@ -4,12 +4,12 @@ import { ActionIcon, Button, Collapse, Group, Stack, Text, Tooltip } from '@mant
 import { IconChevronRight } from '@tabler/icons-react'
 import { useT } from '../../i18n'
 import type { Favorite } from '../../services/api'
-import { FavoriteItem } from './FavoriteItem'
+import { FavoriteItem, type FavoriteTeleportActions } from './FavoriteItem'
 import type { SortMode } from '../../hooks/useFavorites'
 
 type Props = { groupName: string; items: Favorite[]; sortMode: SortMode; allGroups: string[]; onSelect: (lat: number, lng: number) => void; onUpdate: (id: string, patch: { name?: string; group?: string; notes?: string }) => Promise<Favorite>; onDelete: (favorite: Favorite) => void }
 
-export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, onSelect, onUpdate, onDelete }: Props) {
+export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, onSelect, onUpdate, onDelete, ...teleportActions }: Props & FavoriteTeleportActions) {
   const t = useT()
   const [collapsed, setCollapsed] = useState(false)
   const [visibleCount, setVisibleCount] = useState(100)
@@ -29,7 +29,7 @@ export function FavoriteGroupSection({ groupName, items, sortMode, allGroups, on
       <Collapse in={!collapsed}>
         <SortableContext items={visibleItems.map((favorite) => favorite.id)} strategy={verticalListSortingStrategy}>
           <Stack gap="xs">
-            {visibleItems.map((favorite) => <FavoriteItem key={favorite.id} favorite={favorite} sortMode={sortMode} groups={allGroups} onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} />)}
+            {visibleItems.map((favorite) => <FavoriteItem key={favorite.id} favorite={favorite} sortMode={sortMode} groups={allGroups} onSelect={onSelect} onUpdate={onUpdate} onDelete={onDelete} {...teleportActions} />)}
             {visibleItems.length < items.length && (
               <Button variant="subtle" size="xs" onClick={() => setVisibleCount((count) => count + 100)}>
                 顯示更多（尚有 {items.length - visibleItems.length} 筆）

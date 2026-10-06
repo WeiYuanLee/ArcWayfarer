@@ -7,6 +7,8 @@ import { createCachedTileLayer } from './CachedTileLayer'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
 import { API_BASE_URL, authHeaders } from '../../services/api'
 import { routeArrowCount, ROUTE_ARROW_FRAME_INTERVAL_MS } from './mapPerformance'
+import type { PikminPureSpot } from '../../services/api'
+import type { PikminMapBounds } from './PikminMapContext'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -130,6 +132,18 @@ function makeSelectedPointIcon(): L.DivIcon {
   })
 }
 
+function makePikminSpotIcon(spot: PikminPureSpot, selected: boolean): L.DivIcon {
+  const element = document.createElement('div')
+  element.textContent = spot.icon || '📍'
+  element.style.cssText = `width:${selected ? 38 : 32}px;height:${selected ? 38 : 32}px;border-radius:50%;display:grid;place-items:center;background:#fff;border:${selected ? 3 : 2}px solid ${selected ? '#e64980' : '#5bb247'};box-shadow:0 2px 7px rgba(0,0,0,.35);font-size:${selected ? 22 : 18}px;cursor:pointer;`
+  return L.divIcon({
+    html: element.outerHTML,
+    className: '',
+    iconSize: selected ? [38, 38] : [32, 32],
+    iconAnchor: selected ? [19, 19] : [16, 16],
+  })
+}
+
 type FlyTarget = { lat: number; lng: number; id: number }
 
 type Props = {
@@ -143,6 +157,11 @@ type Props = {
   tileProvider?: TileProviderConfig
   initialViewport?: MapViewport | null
   onViewportChange?: (viewport: MapViewport) => void
+  onBoundsChange?: (bounds: PikminMapBounds) => void
+  minimumZoom?: number | null
+  pikminSpots?: PikminPureSpot[]
+  selectedPikminSpotId?: number | null
+  onPikminSpotSelect?: (spot: PikminPureSpot) => void
   children?: ReactNode
 }
 
@@ -157,6 +176,11 @@ export function LeafletMapView({
   tileProvider,
   initialViewport,
   onViewportChange,
+  onBoundsChange,
+  minimumZoom,
+  pikminSpots,
+  selectedPikminSpotId,
+  onPikminSpotSelect,
   children,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -166,6 +190,7 @@ export function LeafletMapView({
   const selectedPointMarkerRef = useRef<L.Marker | null>(null)
   const liveMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const liveMarkerFocusRef = useRef<Map<string, boolean>>(new Map())
+  const pikminMarkersRef = useRef<Map<number, L.Marker>>(new Map())
   const overlayMarkersRef = useRef<Map<string, L.Marker>>(new Map())
   const overlayMarkerIconKeysRef = useRef<Map<string, string>>(new Map())
   const draggingMarkerIdsRef = useRef<Set<string>>(new Set())
@@ -196,6 +221,8 @@ export function LeafletMapView({
   const initialViewportRef = useRef(initialViewport)
   const onViewportChangeRef = useRef(onViewportChange)
   onViewportChangeRef.current = onViewportChange
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  onBoundsChangeRef.current = onBoundsChange
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -238,12 +265,28 @@ export function LeafletMapView({
     map.on('moveend', () => {
       const center = map.getCenter()
       onViewportChangeRef.current?.({ lat: center.lat, lng: center.lng, zoom: map.getZoom() })
+      const bounds = map.getBounds()
+      onBoundsChangeRef.current?.({
+        minLat: bounds.getSouth(),
+        minLng: Math.max(-180, bounds.getWest()),
+        maxLat: bounds.getNorth(),
+        maxLng: Math.min(180, bounds.getEast()),
+        zoom: map.getZoom(),
+      })
     })
 
     // The engine switch mounts Leaflet into a freshly replaced container.
     // Re-measure it after layout so tiles and overlays use the new dimensions.
     const resizeFrameId = requestAnimationFrame(() => {
       map.invalidateSize({ pan: false })
+      const bounds = map.getBounds()
+      onBoundsChangeRef.current?.({
+        minLat: bounds.getSouth(),
+        minLng: Math.max(-180, bounds.getWest()),
+        maxLat: bounds.getNorth(),
+        maxLng: Math.min(180, bounds.getEast()),
+        zoom: map.getZoom(),
+      })
     })
 
     return () => {
@@ -263,6 +306,7 @@ export function LeafletMapView({
       selectedPointMarkerRef.current = null
       liveMarkersRef.current.clear()
       liveMarkerFocusRef.current.clear()
+      pikminMarkersRef.current.clear()
       overlayMarkersRef.current.clear()
       overlayMarkerIconKeysRef.current.clear()
       draggingMarkerIdsRef.current.clear()
@@ -421,6 +465,38 @@ export function LeafletMapView({
       }
     }
   }, [livePositions, focusedDeviceId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const current = new Set((pikminSpots ?? []).map((spot) => spot.id))
+    for (const [id, marker] of pikminMarkersRef.current.entries()) {
+      if (!current.has(id)) {
+        marker.remove()
+        pikminMarkersRef.current.delete(id)
+      }
+    }
+    for (const spot of pikminSpots ?? []) {
+      const selected = selectedPikminSpotId === spot.id
+      let marker = pikminMarkersRef.current.get(spot.id)
+      if (!marker) {
+        marker = L.marker([spot.lat, spot.lng], {
+          icon: makePikminSpotIcon(spot, selected),
+          zIndexOffset: selected ? 800 : 500,
+          title: `${spot.icon} ${spot.name} · ${spot.type}`,
+        }).addTo(map)
+        marker.on('click', (event: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(event)
+          onPikminSpotSelect?.(spot)
+        })
+        pikminMarkersRef.current.set(spot.id, marker)
+      } else {
+        marker.setLatLng([spot.lat, spot.lng])
+        marker.setIcon(makePikminSpotIcon(spot, selected))
+        marker.setZIndexOffset(selected ? 800 : 500)
+      }
+    }
+  }, [pikminSpots, selectedPikminSpotId, onPikminSpotSelect])
 
   useEffect(() => {
     const map = mapRef.current
@@ -816,6 +892,12 @@ export function LeafletMapView({
       map.flyTo(target, zoom, { duration: 0.6 })
     }
   }, [flyTo])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || minimumZoom === null || minimumZoom === undefined || map.getZoom() >= minimumZoom) return
+    map.flyTo(map.getCenter(), minimumZoom, { duration: 0.45 })
+  }, [minimumZoom])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>

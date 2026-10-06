@@ -10,13 +10,14 @@ import { type MapOverlay, type PanelProps } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
-import { clearLocation } from './services/api'
+import { clearLocation, pushHistory, setLocation, type Favorite } from './services/api'
 import { useHiddenDevices } from './hooks/useHiddenDevices'
 import { useDeviceNames } from './hooks/useDeviceNames'
 import { showToast } from './components/common/Toast'
 import { useT } from './i18n'
 import { normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
 import { useDevicePanelCallbacks } from './hooks/useDevicePanelCallbacks'
+import { usePikminSync } from './hooks/usePikminSync'
 
 const CommandPalette = lazy(() => import('./components/layout/CommandPalette').then((module) => ({ default: module.CommandPalette })))
 const UpdateModal = lazy(() => import('./components/common/UpdateModal').then((module) => ({ default: module.UpdateModal })))
@@ -34,6 +35,7 @@ function readWifiDiscoveryPreference(): boolean {
 }
 
 export default function App() {
+  usePikminSync()
   const t = useT()
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
   const [modeByDevice, setModeByDevice] = useState<Record<string, Mode>>({})
@@ -46,6 +48,8 @@ export default function App() {
   const [deviceManagerOpen, setDeviceManagerOpen] = useState(false)
   const [hidingDeviceId, setHidingDeviceId] = useState<string | null>(null)
   const [restoringDeviceId, setRestoringDeviceId] = useState<string | null>(null)
+  const [teleportingFavoriteId, setTeleportingFavoriteId] = useState<string | null>(null)
+  const favoriteTeleportPending = useRef(false)
   const [pendingHiddenIds, setPendingHiddenIds] = useState<Set<string>>(() => new Set())
   const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
   const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi, deviceSnapshotRevision)
@@ -144,6 +148,33 @@ export default function App() {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
   }, [focusedDeviceId, isDeviceBusy, requestFlyTo])
+  const favoriteDevice = displayDevices.find((device) => device.udid === focusedDeviceId)
+  const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
+    : favoriteDevice.status !== 'ready' ? (favoriteDevice.detail || t('panel.hint.device_not_ready'))
+    : isDeviceBusy(favoriteDevice.udid) || restoringDeviceId === favoriteDevice.udid ? t('teleport.hint.navigating')
+    : null
+  const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
+    if (!favoriteDevice || teleportDisabledReason || favoriteTeleportPending.current) return
+    const deviceId = favoriteDevice.udid
+    const deviceName = favoriteDevice.name
+    favoriteTeleportPending.current = true
+    setTeleportingFavoriteId(favorite.id)
+    try {
+      await setLocation(deviceId, favorite.lat, favorite.lng)
+      void pushHistory({ lat: favorite.lat, lng: favorite.lng, kind: 'teleport' }).catch(() => {})
+      // Keep coordinates owned by route editors intact.
+      if ((modeByDevice[deviceId] ?? 'teleport') === 'teleport') {
+        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
+      }
+      requestFlyTo(favorite.lat, favorite.lng)
+      showToast(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t('teleport.status.set_failed'))
+    } finally {
+      favoriteTeleportPending.current = false
+      setTeleportingFavoriteId(null)
+    }
+  }, [favoriteDevice, teleportDisabledReason, modeByDevice, requestFlyTo, t])
   const handleSelectedPointDragEnd = useCallback((lat: number, lng: number) => {
     if (!focusedDeviceId || isDeviceBusy(focusedDeviceId)) return
     setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
@@ -406,7 +437,7 @@ export default function App() {
             panelPropsFor={panelPropsFor}
             modeChangeLocked={isFocusedModeChangeLocked}
           />
-          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} />
+          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} onTeleportFavorite={handleFavoriteTeleport} teleportDisabledReason={teleportDisabledReason} teleportingFavoriteId={teleportingFavoriteId} teleportDeviceName={favoriteDevice?.name ?? null} />
           <div className="overlay-status-dock">
             <StatusBar
               livePosition={focusedPosition ? { lat: focusedPosition.lat, lng: focusedPosition.lng } : null}

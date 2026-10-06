@@ -3,7 +3,8 @@ import { Alert, Badge, NativeSelect, Tabs, Text } from '@mantine/core'
 import { IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
 import { MapView } from './components/map/MapView'
 import { IconRail } from './components/layout/IconRail'
-import { ToastContainer } from './components/common/Toast'
+import { ToastContainer, showToast } from './components/common/Toast'
+import { setLocation, pushHistory, type Favorite } from './services/api'
 import { PANEL_BY_MODE } from './components/panels'
 import type { Mode } from './components/ModeSelector'
 import { type MapOverlay, type PanelProps, EMPTY_OVERLAY } from './components/panels/types'
@@ -12,6 +13,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { useT } from './i18n'
 import type { StringKey } from './i18n'
 import { ColorSchemeControl } from './components/layout/ColorSchemeControl'
+import { usePikminSync } from './hooks/usePikminSync'
 
 type SheetState = 'collapsed' | 'half' | 'full'
 
@@ -24,12 +26,15 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 ]
 
 export default function MobileApp() {
+  usePikminSync()
   const t = useT()
   const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
   const { devices, refresh: refreshDevices } = useDevices(false, deviceSnapshotRevision)
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('teleport')
+  const [teleportingFavoriteId, setTeleportingFavoriteId] = useState<string | null>(null)
+  const favoriteTeleportPending = useRef(false)
   const [overlay, setOverlay] = useState<MapOverlay>(EMPTY_OVERLAY)
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
@@ -99,6 +104,33 @@ export default function MobileApp() {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
   }, [focusedDeviceId, requestFlyTo])
+
+  const favoriteDevice = devices.find((device) => device.udid === focusedDeviceId)
+  const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
+    : favoriteDevice.status !== 'ready' ? (favoriteDevice.detail || t('panel.hint.device_not_ready'))
+    : (states[favoriteDevice.udid] ?? 'idle') !== 'idle' || Boolean(activeTasks[favoriteDevice.udid]) ? t('teleport.hint.navigating')
+    : null
+  const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
+    if (!favoriteDevice || teleportDisabledReason || favoriteTeleportPending.current) return
+    const deviceId = favoriteDevice.udid
+    const deviceName = favoriteDevice.name
+    favoriteTeleportPending.current = true
+    setTeleportingFavoriteId(favorite.id)
+    try {
+      await setLocation(deviceId, favorite.lat, favorite.lng)
+      void pushHistory({ lat: favorite.lat, lng: favorite.lng, kind: 'teleport' }).catch(() => {})
+      if (mode === 'teleport') {
+        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
+      }
+      requestFlyTo(favorite.lat, favorite.lng)
+      showToast(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t('teleport.status.set_failed'))
+    } finally {
+      favoriteTeleportPending.current = false
+      setTeleportingFavoriteId(null)
+    }
+  }, [favoriteDevice, teleportDisabledReason, mode, requestFlyTo, t])
 
   const handlePlaceSelect = useCallback((lat: number, lng: number) => {
     requestFlyTo(lat, lng)
@@ -214,6 +246,10 @@ export default function MobileApp() {
             onFlyTo={requestFlyTo}
             onSelectFavorite={handleFavoriteSelect}
             onSelectPlace={handlePlaceSelect}
+            onTeleportFavorite={handleFavoriteTeleport}
+            teleportDisabledReason={teleportDisabledReason}
+            teleportingFavoriteId={teleportingFavoriteId}
+            teleportDeviceName={favoriteDevice?.name ?? null}
           />
         </MapView>
 

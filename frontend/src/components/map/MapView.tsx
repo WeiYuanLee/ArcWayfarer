@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useState, type ErrorInfo, type ReactNode } f
 import { IconStack2 } from '@tabler/icons-react'
 import type { MapOverlay } from '../panels/types'
 import type { TileProviderConfig } from '../../types/tileProvider'
+import { PikminMapProvider, usePikminMap } from './PikminMapContext'
 
 const LeafletMapView = lazy(() => import('./LeafletMapView').then((module) => ({ default: module.LeafletMapView })))
 const MapLibreMapView = lazy(() => import('./MapLibreMapView').then((module) => ({ default: module.MapLibreMapView })))
@@ -59,7 +60,12 @@ class MapErrorBoundary extends Component<MapErrorBoundaryProps, { failed: boolea
   }
 }
 
-export function MapView({ children, isEngineSwitchLocked = false, ...props }: MapViewProps) {
+export function MapView(props: MapViewProps) {
+  return <PikminMapProvider><MapViewContent {...props} /></PikminMapProvider>
+}
+
+function MapViewContent({ children, isEngineSwitchLocked = false, ...props }: MapViewProps) {
+  const pikmin = usePikminMap()
   const [engine, setEngine] = useState<MapEngine>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_MAP_ENGINE)
     return saved === 'maplibre' ? 'maplibre' : 'leaflet'
@@ -105,9 +111,27 @@ export function MapView({ children, isEngineSwitchLocked = false, ...props }: Ma
       >
         <Suspense fallback={<div className="map-engine-loading" role="status">載入地圖引擎中...</div>}>
           {engine === 'leaflet' ? (
-            <LeafletMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+            <LeafletMapView
+              {...props}
+              initialViewport={viewport}
+              onViewportChange={handleViewportChange}
+              onBoundsChange={pikmin.setBounds}
+              minimumZoom={pikmin.mode === 'purespots' ? 14 : null}
+              pikminSpots={pikmin.mode === 'purespots' ? pikmin.spots : []}
+              selectedPikminSpotId={pikmin.selectedSpot?.id ?? null}
+              onPikminSpotSelect={pikmin.setSelectedSpot}
+            />
           ) : (
-            <MapLibreMapView {...props} initialViewport={viewport} onViewportChange={handleViewportChange} />
+            <MapLibreMapView
+              {...props}
+              initialViewport={viewport}
+              onViewportChange={handleViewportChange}
+              onBoundsChange={pikmin.setBounds}
+              minimumZoom={pikmin.mode === 'purespots' ? 14 : null}
+              pikminSpots={pikmin.mode === 'purespots' ? pikmin.spots : []}
+              selectedPikminSpotId={pikmin.selectedSpot?.id ?? null}
+              onPikminSpotSelect={pikmin.setSelectedSpot}
+            />
           )}
         </Suspense>
       </MapErrorBoundary>

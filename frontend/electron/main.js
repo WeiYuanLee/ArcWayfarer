@@ -175,7 +175,11 @@ async function startTunneld() {
   await waitForPort(TUNNELD_HOST, TUNNELD_PORT)
 }
 
-function waitForBackend(url, timeoutMs = 60000) {
+// The first launch of an unsigned/local build can spend over a minute in
+// macOS security scanning while PyInstaller loads the bundled Python modules.
+// Resolve as soon as the health check succeeds, but leave enough headroom for
+// that one-time scan instead of reporting a false startup failure.
+function waitForBackend(url, timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
     const start = Date.now()
     const interval = 500

@@ -11,6 +11,9 @@ import type { MapOverlay } from '../panels/types'
 import { DEFAULT_TILE_PROVIDER, type TileProviderConfig } from '../../types/tileProvider'
 import { API_BASE_URL, authHeaders } from '../../services/api'
 import { routeArrowCount, ROUTE_ARROW_FRAME_INTERVAL_MS } from './mapPerformance'
+import type { PikminPureSpot } from '../../services/api'
+import type { PikminMapBounds } from './PikminMapContext'
+import { updatePikminSpotElement } from './pikminMarkerStyle'
 
 const DEFAULT_CENTER: [number, number] = [25.0330, 121.5654]
 const DEFAULT_ZOOM = 13
@@ -35,6 +38,11 @@ type Props = {
   tileProvider?: TileProviderConfig
   initialViewport?: MapViewport | null
   onViewportChange?: (viewport: MapViewport) => void
+  onBoundsChange?: (bounds: PikminMapBounds) => void
+  minimumZoom?: number | null
+  pikminSpots?: PikminPureSpot[]
+  selectedPikminSpotId?: number | null
+  onPikminSpotSelect?: (spot: PikminPureSpot) => void
   children?: ReactNode
 }
 
@@ -318,6 +326,11 @@ export function MapLibreMapView({
   tileProvider,
   initialViewport,
   onViewportChange,
+  onBoundsChange,
+  minimumZoom,
+  pikminSpots,
+  selectedPikminSpotId,
+  onPikminSpotSelect,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
@@ -331,6 +344,7 @@ export function MapLibreMapView({
   const isDraggingSelectedPointRef = useRef(false)
   const liveMarkersRef = useRef<Map<string, MapLibreMarker>>(new Map())
   const liveMarkerFocusRef = useRef<Map<string, boolean>>(new Map())
+  const pikminMarkersRef = useRef<Map<number, MapLibreMarker>>(new Map())
   const overlayMarkersRef = useRef<Map<string, MapLibreMarker>>(new Map())
   const overlayArrowsRef = useRef<Map<string, MapLibreMarker[]>>(new Map())
   const arrowAnimationFramesRef = useRef<Map<string, number>>(new Map())
@@ -357,6 +371,8 @@ export function MapLibreMapView({
   const viewportRef = useRef<MapViewport | null>(initialViewport ?? null)
   const onViewportChangeRef = useRef(onViewportChange)
   onViewportChangeRef.current = onViewportChange
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  onBoundsChangeRef.current = onBoundsChange
 
   // Helper to safely add or update a GeoJSON source
   const setGeoJSONSource = useCallback((sourceId: string, data: GeoJSON.GeoJSON) => {
@@ -494,6 +510,14 @@ export function MapLibreMapView({
     map.on('load', () => {
       setMapLoaded(true)
       setIsTileLoading(false)
+      const bounds = map.getBounds()
+      onBoundsChangeRef.current?.({
+        minLat: bounds.getSouth(),
+        minLng: Math.max(-180, bounds.getWest()),
+        maxLat: bounds.getNorth(),
+        maxLng: Math.min(180, bounds.getEast()),
+        zoom: map.getZoom(),
+      })
     })
     // A raster style can paint before its `load` event is observed after an
     // engine switch. `styledata` is the earlier safe point for restoring the
@@ -531,6 +555,14 @@ export function MapLibreMapView({
       const viewport = { lat: center.lat, lng: center.lng, zoom: map.getZoom() }
       viewportRef.current = viewport
       onViewportChangeRef.current?.(viewport)
+      const bounds = map.getBounds()
+      onBoundsChangeRef.current?.({
+        minLat: bounds.getSouth(),
+        minLng: Math.max(-180, bounds.getWest()),
+        maxLat: bounds.getNorth(),
+        maxLng: Math.min(180, bounds.getEast()),
+        zoom: map.getZoom(),
+      })
       setCameraRevision((revision) => revision + 1)
       setIsCameraMoving(false)
     })
@@ -565,6 +597,7 @@ export function MapLibreMapView({
         arrows.forEach((arrow) => arrow.remove())
       }
       overlayArrowsRef.current.clear()
+      pikminMarkersRef.current.clear()
       map.remove()
       mapRef.current = null
       contextLostRef.current = false
@@ -683,6 +716,40 @@ export function MapLibreMapView({
       }
     }
   }, [livePositions, focusedDeviceId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const current = new Set((pikminSpots ?? []).map((spot) => spot.id))
+    for (const [id, marker] of pikminMarkersRef.current.entries()) {
+      if (!current.has(id)) {
+        marker.remove()
+        pikminMarkersRef.current.delete(id)
+      }
+    }
+    for (const spot of pikminSpots ?? []) {
+      const selected = selectedPikminSpotId === spot.id
+      let marker = pikminMarkersRef.current.get(spot.id)
+      if (!marker) {
+        const element = document.createElement('button')
+        element.type = 'button'
+        element.textContent = spot.icon || '📍'
+        element.title = `${spot.name} · ${spot.type}`
+        element.setAttribute('aria-label', `${spot.name} · ${spot.type}`)
+        element.addEventListener('click', (event) => {
+          event.stopPropagation()
+          onPikminSpotSelect?.(spot)
+        })
+        marker = new MapLibreMarker({ element, anchor: 'center' })
+          .setLngLat([spot.lng, spot.lat])
+          .addTo(map)
+        pikminMarkersRef.current.set(spot.id, marker)
+      } else {
+        marker.setLngLat([spot.lng, spot.lat])
+      }
+      updatePikminSpotElement(marker.getElement(), selected)
+    }
+  }, [pikminSpots, selectedPikminSpotId, onPikminSpotSelect, mapLoaded])
 
   // Synchronize All Overlays (Lines, Active Legs, Circles, Waypoints)
   const syncOverlays = useCallback(() => {
@@ -1049,6 +1116,12 @@ export function MapLibreMapView({
       map.flyTo({ center: [target.lng, target.lat], zoom: targetZoom, duration: 600 })
     }
   }, [flyTo])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || minimumZoom === null || minimumZoom === undefined || map.getZoom() >= minimumZoom) return
+    map.easeTo({ zoom: minimumZoom, duration: 450 })
+  }, [mapLoaded, minimumZoom])
 
   // MapLibre markers are DOM nodes and work on all supported GPUs, but its
   // runtime GeoJSON pass is not reliably painted with the raster style on the

@@ -28,8 +28,8 @@ export function useFavorites() {
     setLoading(true)
     return Promise.all([listFavorites(), listFavoriteGroups()])
       .then(([nextFavorites, nextGroups]) => {
-        setFavorites(nextFavorites)
-        setSavedGroups(nextGroups)
+        setFavorites(Array.isArray(nextFavorites) ? nextFavorites : [])
+        setSavedGroups(Array.isArray(nextGroups) ? nextGroups : [])
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -110,6 +110,7 @@ export function useFavorites() {
 
   return {
     favorites,
+    savedGroups,
     setFavorites,
     displayed,
     allGroups,

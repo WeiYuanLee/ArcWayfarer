@@ -5,12 +5,16 @@ from pathlib import Path
 API_HOST = "0.0.0.0"
 API_PORT = int(os.environ.get("ARCWAYFARER_API_PORT", "8787"))
 
-APP_DATA_DIR = Path.home() / ".arcwayfarer"
+APP_DATA_DIR = Path(os.environ.get("ARCWAYFARER_DATA_DIR", Path.home() / ".arcwayfarer")).expanduser()
 SETTINGS_FILE = APP_DATA_DIR / "settings.json"
 BOOKMARKS_FILE = APP_DATA_DIR / "bookmarks.json"
 FAVORITE_GROUPS_FILE = APP_DATA_DIR / "favorite_groups.json"
 ROUTES_FILE = APP_DATA_DIR / "routes.json"
 HISTORY_FILE = APP_DATA_DIR / "history.json"
+PIKMIN_DATA_DIR = APP_DATA_DIR / "pikmin"
+PIKMIN_POSTCARDS_FILE = PIKMIN_DATA_DIR / "postcards.json"
+PIKMIN_PURESPOTS_FILE = PIKMIN_DATA_DIR / "purespots.json"
+PIKMIN_SYNC_METADATA_FILE = PIKMIN_DATA_DIR / "sync_metadata.json"
 
 MAX_HISTORY_ENTRIES = 30
 HISTORY_DEDUPE_DIST_M = 10.0
