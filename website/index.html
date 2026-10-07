@@ -132,13 +132,63 @@
       <p class="fine">支援 macOS（Apple Silicon／Intel）與 Windows 10／11 · iPhone USB 連線</p>
     </div>
 
-    <div class="product-window">
-      <div class="window-bar">
-        <span><i></i><i></i><i></i></span>
-        <b>ArcWayfarer</b>
-        <em><u></u> 已連接 iPhone (iOS 17+)</em>
+    <div class="hero-demo" data-hero-demo>
+      <div class="demo-desktop">
+        <div class="device-label">
+          <span><i></i>ArcWayfarer 桌面應用程式</span>
+          <small>在 Mac / PC 上控制</small>
+        </div>
+
+        <div class="product-window">
+          <div class="window-bar">
+            <span><i></i><i></i><i></i></span>
+            <b>ArcWayfarer</b>
+            <em><u></u> 已連接</em>
+          </div>
+          <div class="desktop-screen">
+            <img class="demo-shot is-active" data-demo-shot="0" src="images/ios-location-teleport.png" alt="ArcWayfarer 瞬移定位操作畫面" width="1203" height="801">
+            <span class="desktop-location-pulse" aria-hidden="true"><i></i></span>
+          </div>
+        </div>
       </div>
-      <img src="https://raw.githubusercontent.com/WeiYuanLee/ArcWayfarer/main/docs/screenshot.png" alt="ArcWayfarer 實際桌面控制台畫面" width="800" height="500">
+
+      <div class="demo-connection" aria-hidden="true">
+        <svg viewBox="0 0 100 42" preserveAspectRatio="none">
+          <path class="connection-shadow" d="M0 23 C25 36 68 7 100 21"></path>
+          <path class="connection-wire" d="M0 21 C25 34 68 5 100 19"></path>
+          <path class="connection-signal" d="M0 21 C25 34 68 5 100 19"></path>
+        </svg>
+        <i class="plug plug-left"></i>
+        <i class="plug plug-right"></i>
+      </div>
+
+      <div class="demo-phone">
+        <div class="device-label">
+          <span><i></i>你的 iPhone / iPad</span>
+          <small>無需安裝 App</small>
+        </div>
+        <div class="phone-shell">
+          <div class="phone-island"></div>
+          <div class="phone-status"><span>9:41</span><i></i></div>
+          <div class="phone-map">
+            <svg class="phone-route" viewBox="0 0 180 260" aria-hidden="true">
+              <path d="M-10 198 C34 174 28 119 72 126 S118 183 148 142 S142 66 194 42"></path>
+            </svg>
+            <span class="phone-grid" aria-hidden="true"></span>
+            <span class="phone-location-pulse" aria-hidden="true"><i></i></span>
+            <div class="phone-location-card">
+              <strong data-demo-title>一鍵瞬移</strong>
+              <span data-demo-coordinate>25.0330°N, 121.5654°E</span>
+            </div>
+          </div>
+          <div class="phone-home"><i></i></div>
+        </div>
+      </div>
+
+      <div class="demo-caption" aria-hidden="true">
+        <span data-demo-step>01</span>
+        <p data-demo-copy>在電腦上選擇目的地</p>
+      </div>
     </div>
   </section>
 
@@ -534,6 +584,73 @@
     <a href="#support">支持創作者</a>
   </div>
 </footer>
+
+<script>
+  (() => {
+    const demo = document.querySelector("[data-hero-demo]");
+    if (!demo) return;
+
+    const title = demo.querySelector("[data-demo-title]");
+    const coordinate = demo.querySelector("[data-demo-coordinate]");
+    const copy = demo.querySelector("[data-demo-copy]");
+    const step = demo.querySelector("[data-demo-step]");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const timers = [];
+
+    function later(callback, delay) {
+      timers.push(window.setTimeout(callback, delay));
+    }
+
+    function showDestination() {
+      demo.classList.remove("is-resetting", "is-transmitting");
+      demo.classList.add("is-synced");
+      demo.style.setProperty("--desktop-pin-x", "66%");
+      demo.style.setProperty("--desktop-pin-y", "45%");
+      demo.style.setProperty("--phone-pin-x", "62%");
+      demo.style.setProperty("--phone-pin-y", "38%");
+      title.textContent = "台北 101";
+      coordinate.textContent = "25.0330°N, 121.5654°E";
+      copy.textContent = "完成，iPhone 位置已同步";
+      step.textContent = "✓";
+    }
+
+    function runTeleport() {
+      timers.splice(0).forEach(window.clearTimeout);
+      demo.className = "hero-demo is-resetting";
+      demo.style.setProperty("--desktop-pin-x", "35%");
+      demo.style.setProperty("--desktop-pin-y", "62%");
+      demo.style.setProperty("--phone-pin-x", "31%");
+      demo.style.setProperty("--phone-pin-y", "66%");
+      title.textContent = "目前位置";
+      coordinate.textContent = "25.0478°N, 121.5319°E";
+      copy.textContent = "在電腦上選擇目的地";
+      step.textContent = "01";
+
+      later(() => demo.classList.remove("is-resetting"), 120);
+      later(() => {
+        demo.classList.add("is-transmitting");
+        demo.style.setProperty("--desktop-pin-x", "66%");
+        demo.style.setProperty("--desktop-pin-y", "45%");
+        copy.textContent = "一鍵傳送至台北 101";
+        step.textContent = "02";
+      }, 850);
+      later(showDestination, 2050);
+      later(runTeleport, 5200);
+    }
+
+    function startDemo() {
+      timers.splice(0).forEach(window.clearTimeout);
+      if (reducedMotion.matches) {
+        showDestination();
+        return;
+      }
+      runTeleport();
+    }
+
+    startDemo();
+    reducedMotion.addEventListener?.("change", startDemo);
+  })();
+</script>
 
 </body>
 </html>
