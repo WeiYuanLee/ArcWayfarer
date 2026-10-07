@@ -50,6 +50,7 @@
     <a href="#quick-start">第一次定位</a>
     <div class="sidebar-label">功能指南</div>
     <a href="#modes">六種移動模式</a>
+    <a href="route-art.html">圖案路線</a>
     <a href="#flower-mode">多點巡迴・種花模式</a>
     <a href="#favorites">搜尋／收藏／歷史</a>
     <a href="#routes">GPX／JSON 路線</a>
@@ -120,12 +121,14 @@
     <section class="guide-section" id="developer-mode">
       <div class="section-kicker">05 · 必要設定</div>
       <h2>開啟 Developer Mode／開發者模式</h2>
-      <p>Developer Mode 是 ArcWayfarer 使用 iOS Developer Services 模擬定位的必要條件。</p>
-      <div class="guide-cards two">
-        <article><span class="card-icon">A</span><h3>從 ArcWayfarer 協助開啟</h3><p>若裝置尚未啟用 Developer Mode，可使用 ArcWayfarer 左上角提供的開發者模式協助功能，依畫面指示進行。</p></article>
-        <article><span class="card-icon">B</span><h3>在 iPhone 手動開啟</h3><p>前往「設定 → 隱私權與安全性 → 開發者模式」。啟用後 iPhone 會重新啟動，開機後需再次確認並輸入密碼。</p></article>
+      <p>iOS 16 以上需要開啟 Developer Mode，ArcWayfarer 現在會在「裝置管理」的設定流程中檢查狀態並逐步引導。</p>
+      <div class="guide-steps compact">
+        <article><b>1</b><div><h3>從裝置管理開始設定</h3><p>以 USB 接上 iPhone，在「裝置管理」找到這台裝置，按下「設定這台 iPhone」。</p></div></article>
+        <article><b>2</b><div><h3>解鎖並信任電腦</h3><p>依畫面按下「我已解鎖，繼續」，再到 iPhone 點選「信任」並輸入手機密碼。</p></div></article>
+        <article><b>3</b><div><h3>顯示開發者模式選項</h3><p>若 ArcWayfarer 偵測到尚未開啟，按下「在 iPhone 上顯示開發者模式選項」。</p></div></article>
+        <article><b>4</b><div><h3>在 iPhone 開啟並重新檢查</h3><p>前往「設定 → 隱私權與安全性 → 開發者模式」將它開啟，依 iOS 指示重新啟動；開機後接回 USB，ArcWayfarer 會再次確認，也可按「重新檢查開發者模式」。</p></div></article>
       </div>
-      <div class="guide-callout warn"><strong>設定裡沒有「開發者模式」？</strong>先將 iPhone 接上電腦並完成信任，再使用 ArcWayfarer 左上角的 Developer Mode 協助功能，之後重新檢查 iPhone 設定。</div>
+      <div class="guide-callout warn"><strong>請注意：</strong>「在 iPhone 上顯示開發者模式選項」只會讓設定入口出現在 iPhone；你仍需要親自在手機上開啟它並完成重新啟動。</div>
     </section>
 
     <section class="guide-section featured" id="quick-start">
@@ -233,7 +236,7 @@
       <details open><summary>ArcWayfarer 找不到我的 iPhone</summary><p>確認 iPhone 已解鎖、USB 線支援資料傳輸、已選擇「信任這部電腦」。重新插拔並重啟 ArcWayfarer。Windows 另請確認已安裝 Apple 官網的傳統 64 位元 iTunes 套件。</p></details>
       <details><summary>已經按過「信任」，為什麼還是找不到？</summary><p>「信任」只代表 pairing 已完成。裝置偵測仍可能受 USB 通訊、Apple Device Driver、Developer Services、RemoteXPC 或系統權限影響。請允許 ArcWayfarer 啟動時要求的權限並重新連線。</p></details>
       <details><summary>為什麼 ArcWayfarer 啟動要系統權限？</summary><p>ArcWayfarer 需要建立與 iPhone Developer Services 的通訊環境，底層包含 pymobiledevice3 相關服務。一般使用者只需要接受系統授權，不需要自行執行指令。</p></details>
-      <details><summary>Developer Mode 找不到</summary><p>先用 USB 連接 iPhone、完成信任，再使用 ArcWayfarer 左上角的 Developer Mode 協助功能。之後回到「設定 → 隱私權與安全性」重新查看。</p></details>
+      <details><summary>Developer Mode 找不到</summary><p>以 USB 連接並解鎖 iPhone，開啟 ArcWayfarer 的「裝置管理」，在裝置卡片按「設定這台 iPhone」並完成信任。看到開發者模式步驟時，按「在 iPhone 上顯示開發者模式選項」，再回到「設定 → 隱私權與安全性」查看。</p></details>
       <details><summary>第一次 Teleport 為什麼比較久？</summary><p>第一次可能正在準備 Developer Disk Image、Developer Services 或 RemoteXPC 通道。流程由 ArcWayfarer 自動完成，不需要安裝 Xcode。</p></details>
       <details><summary>需要安裝 Xcode、Python 或 pymobiledevice3 嗎？</summary><p>不需要。ArcWayfarer 已封裝成完整 App，這些是內部實作所使用的技術元件。</p></details>
       <details><summary>定位成功，但某個 App 的位置沒有變</summary><p>先用 Apple Maps 驗證。如果 Apple Maps 已顯示模擬位置，但特定 App 沒有改變，該 App 可能有定位快取或自己的模擬位置偵測機制。</p></details>
