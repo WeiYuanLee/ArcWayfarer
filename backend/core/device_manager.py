@@ -836,7 +836,7 @@ async def _describe_device(
             status="tunnel_required",
             trusted=trusted,
             direct_paired=pairing_manager.exists(udid),
-            detail="Run 'sudo python3 -m pymobiledevice3 remote tunneld' and reconnect the device.",
+            detail="Location service is not ready. Reconnect the device and try again.",
         )
 
     return DeviceInfo(
@@ -919,9 +919,7 @@ async def get_rsd(
             return rsd
     rsd = await get_tunneld_device_by_udid(udid)
     if rsd is None:
-        raise RuntimeError(
-            "No active tunnel for this device. Run 'sudo python3 -m pymobiledevice3 remote tunneld' first."
-        )
+        raise RuntimeError("Location service is not ready. Reconnect the device and try again.")
     return rsd
 
 

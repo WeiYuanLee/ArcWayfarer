@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Group, Loader, Modal, Paper, SegmentedControl, Select, Stack, Text, TextInput, Tooltip } from '@mantine/core'
 import { IconHeart, IconLocation, IconPhotoOff, IconSearch, IconZoomIn } from '@tabler/icons-react'
 import { addPikminFavorite, getPikminSyncStatus, listPikminPostcards, pikminPostcardImageUrl, startPikminSync, type Favorite, type PikminPostcard, type PikminPostcardPage } from '../../services/api'
-import { showToast } from '../common/Toast'
+import { notify } from '../common/Toast'
 import type { FavoriteTeleportActions } from './FavoriteItem'
 import { PikminSourceAttribution } from './PikminSourceAttribution'
 
@@ -73,7 +73,7 @@ export function PikminPostcardsPanel({ favorites, onFavoritesChanged, onSelectPo
           }
         }
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '讀取明信片失敗')
+        if (!controller.signal.aborted) setError('讀取明信片失敗，請稍後再試。')
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -90,9 +90,9 @@ export function PikminPostcardsPanel({ favorites, onFavoritesChanged, onSelectPo
     try {
       await addPikminFavorite('postcard', postcard.id)
       await onFavoritesChanged()
-      showToast(`已收藏「${postcard.name}」`)
+      notify.success(`已收藏「${postcard.name}」`)
     } catch (reason) {
-      showToast(reason instanceof Error ? reason.message : '收藏失敗')
+      notify.failure(reason, '收藏失敗，請稍後再試。')
     } finally {
       setAddingId(null)
     }
@@ -110,9 +110,9 @@ export function PikminPostcardsPanel({ favorites, onFavoritesChanged, onSelectPo
       if (status.status !== 'success') throw new Error(status.error || '資料更新失敗')
       setFailedImages(new Set())
       setReloadToken((value) => value + 1)
-      showToast(`已更新來源資料，共 ${status.counts.postcards} 張明信片。`)
+      notify.success(`已更新來源資料，共 ${status.counts.postcards} 張明信片。`)
     } catch (reason) {
-      showToast(reason instanceof Error ? reason.message : '資料更新失敗')
+      notify.failure(reason, '資料更新失敗，請稍後再試。')
     } finally {
       setSyncing(false)
     }

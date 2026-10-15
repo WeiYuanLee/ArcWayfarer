@@ -1,6 +1,6 @@
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Transport = Literal["lockdown", "rsd"]
 DeviceConnectionType = Literal["usb", "wifi", "wireless_direct"]
@@ -41,6 +41,18 @@ class GoldDittoRequest(BaseModel):
     udid: str
     lat: float = Field(..., ge=-90.0, le=90.0)
     lng: float = Field(..., ge=-180.0, le=180.0)
+    origin_lat: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    origin_lng: Optional[float] = Field(None, ge=-180.0, le=180.0)
+
+    @model_validator(mode="after")
+    def validate_origin_pair(self):
+        if (self.origin_lat is None) != (self.origin_lng is None):
+            raise ValueError("origin_lat and origin_lng must be provided together")
+        return self
+
+
+class GoldDittoFinishRequest(BaseModel):
+    udid: str
 
 
 class LatLng(BaseModel):
@@ -56,7 +68,7 @@ class NavigateStartRequest(BaseModel):
     nav_mode: NavMode
     start: LatLng
     end: LatLng
-    custom_speed_kmh: Optional[float] = None
+    custom_speed_kmh: Optional[float] = Field(default=None, gt=0, le=40)
 
 
 class NavigatePreviewRequest(BaseModel):
@@ -80,7 +92,7 @@ class RouteLoopStartRequest(BaseModel):
     # Leg indexes whose endpoint is reached by an instantaneous jump rather
     # than interpolation/routing.  The last index may jump back to waypoint 0.
     jump_leg_indices: list[int] = Field(default_factory=list)
-    custom_speed_kmh: Optional[float] = None
+    custom_speed_kmh: Optional[float] = Field(default=None, gt=0, le=1000)
 
 
 class FlowerOptions(BaseModel):
@@ -116,9 +128,15 @@ class MultiStopStartRequest(BaseModel):
     jump_mode: bool = False
     jump_pre_delay: float = 0.0
     jump_post_delay: float = 0.0
-    custom_speed_kmh: Optional[float] = None
+    custom_speed_kmh: Optional[float] = Field(default=None, gt=0, le=1000)
     mode: Literal["basic", "flower"] = "basic"
     flower: Optional[FlowerOptions] = None
+
+    @model_validator(mode="after")
+    def validate_mode_speed(self):
+        if self.mode == "flower" and self.custom_speed_kmh is not None and self.custom_speed_kmh > 40:
+            raise ValueError("Flower mode speed cannot exceed 40 km/h")
+        return self
 
 
 class FlowerMultiStopStartRequest(MultiStopStartRequest):
@@ -126,6 +144,7 @@ class FlowerMultiStopStartRequest(MultiStopStartRequest):
     # MultiStopStartRequest rather than silently selecting the Flower branch.
     mode: Literal["flower"]
     flower: FlowerOptions = Field(default_factory=FlowerOptions)
+    start_index: int = Field(0, ge=0)
 
 
 class RandomWalkStartRequest(BaseModel):
@@ -136,7 +155,7 @@ class RandomWalkStartRequest(BaseModel):
     pause_enabled: bool = False
     pause_min: float = 5.0
     pause_max: float = 20.0
-    custom_speed_kmh: Optional[float] = None
+    custom_speed_kmh: Optional[float] = Field(default=None, gt=0, le=40)
     straight_line: bool = True
 
 
@@ -145,7 +164,7 @@ class JoystickStartRequest(BaseModel):
     nav_mode: NavMode
     lat: float
     lng: float
-    custom_speed_kmh: Optional[float] = None
+    custom_speed_kmh: Optional[float] = Field(default=None, gt=0, le=40)
 
 
 class JoystickStopRequest(BaseModel):
@@ -265,6 +284,64 @@ class FavoriteImportPreview(BaseModel):
 
 class FavoriteImportResult(FavoriteImportPreview):
     imported: int
+
+
+SavedRouteMode = Literal["route_loop", "multi_stop", "flower"]
+
+
+class SavedRouteWaypoint(BaseModel):
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    name: Optional[str] = Field(default=None, max_length=80)
+
+
+class SavedRouteRuntimeConfig(BaseModel):
+    """Mode-owned settings restored only when loading into the source mode."""
+
+    nav_mode: Optional[Literal["walk", "bike", "drive", "custom"]] = None
+    speed_kmh: Optional[float] = Field(default=None, gt=0, le=1000)
+    straight_line: Optional[bool] = None
+    pause_enabled: Optional[bool] = None
+    pause_min: Optional[float] = Field(default=None, ge=0, le=3600)
+    pause_max: Optional[float] = Field(default=None, ge=0, le=3600)
+    jump_mode: Optional[bool] = None
+    jump_pre_delay: Optional[float] = Field(default=None, ge=0, le=3600)
+    jump_post_delay: Optional[float] = Field(default=None, ge=0, le=3600)
+    flower_radius: Optional[float] = Field(default=None, ge=5, le=100)
+    flower_circles: Optional[float] = Field(default=None, ge=0.5, le=10)
+    flower_segments: Optional[int] = Field(default=None, ge=8, le=128)
+    flower_path_strategy: Optional[Literal["center_spiral", "perimeter"]] = None
+    flower_pre_wait: Optional[float] = Field(default=None, ge=0, le=3600)
+    flower_post_wait: Optional[float] = Field(default=None, ge=0, le=3600)
+    flower_route_type: Optional[Literal["stop_at_end", "return_to_start", "loop_forever"]] = None
+    flower_rounds: Optional[int] = Field(default=None, ge=1, le=20)
+
+
+class SavedRouteCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    source_mode: SavedRouteMode
+    waypoints: list[SavedRouteWaypoint] = Field(min_length=1, max_length=5000)
+    runtime_config: SavedRouteRuntimeConfig = Field(default_factory=SavedRouteRuntimeConfig)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_saved_route_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Saved route name cannot be empty.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_mode_speed(self):
+        if self.source_mode == "flower" and self.runtime_config.speed_kmh is not None and self.runtime_config.speed_kmh > 40:
+            raise ValueError("Flower mode speed cannot exceed 40 km/h")
+        return self
+
+
+class SavedRoute(SavedRouteCreateRequest):
+    id: str
+    created_at: int
+    updated_at: int
 
 
 class PikminPostcard(BaseModel):

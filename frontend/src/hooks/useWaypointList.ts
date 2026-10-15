@@ -91,15 +91,14 @@ export function useWaypointList(initialCount = 2) {
     setItems((prev) => prev.filter((_, i) => i !== idx))
   }, [markChanged])
 
-  const moveWaypoint = useCallback((idx: number, direction: 'up' | 'down') => {
+  const reorderWaypoint = useCallback((fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return
     markChanged()
     setItems((prev) => {
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev
+      if (fromIdx < 0 || fromIdx >= prev.length || toIdx < 0 || toIdx >= prev.length) return prev
       const next = [...prev]
-      const temp = next[idx]
-      next[idx] = next[targetIdx]
-      next[targetIdx] = temp
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
       return next
     })
   }, [markChanged])
@@ -162,7 +161,7 @@ export function useWaypointList(initialCount = 2) {
     addWaypoint,
     insertWaypointAfter,
     removeWaypoint,
-    moveWaypoint,
+    reorderWaypoint,
     clearAllWaypoints,
     setAllWaypoints,
     reverseWaypoints,

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Checkbox, FileButton, Group, Modal, Stack, Text } from '@mantine/core'
-import { IconAlertCircle, IconDownload, IconFileUpload } from '@tabler/icons-react'
+import { IconDownload, IconFileUpload } from '@tabler/icons-react'
 import { useT, type StringKey } from '../../i18n'
 import { exportFavorites, importFavorites, previewFavoriteImport, type FavoriteExportDocument, type FavoriteImportPreview } from '../../services/api'
 import { normalizeFavoriteImport } from './favoriteImport'
+import { notify } from '../common/Toast'
 
 type TransferMode = 'export' | 'import'
 
@@ -34,9 +35,7 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   const [preview, setPreview] = useState<FavoriteImportPreview | null>(null)
   const [importDocument, setImportDocument] = useState<FavoriteExportDocument | null>(null)
   const [compatibleImport, setCompatibleImport] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
-  const [success, setSuccess] = useState<string | null>(null)
   const groupList = useMemo(() => [...groups].sort((a, b) => (a || '\uffff').localeCompare(b || '\uffff')), [groups])
 
   useEffect(() => {
@@ -47,8 +46,6 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
     setPreview(null)
     setImportDocument(null)
     setCompatibleImport(false)
-    setError(null)
-    setSuccess(null)
     onClose()
   }
 
@@ -63,12 +60,12 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
 
   const handleExport = async () => {
     setWorking(true)
-    setError(null)
     try {
       download(await exportFavorites([...selectedGroups]))
+      notify.success(t('favorites.transfer.export_success'))
       close()
-    } catch {
-      setError(t('favorites.transfer.failed'))
+    } catch (error) {
+      notify.failure(error, t('favorites.transfer.failed'))
     } finally {
       setWorking(false)
     }
@@ -76,12 +73,11 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
 
   const handleFile = async (file: File | null) => {
     if (!file) return
-    setError(null)
     setPreview(null)
     setImportDocument(null)
     setCompatibleImport(false)
     if (file.size > 5 * 1024 * 1024) {
-      setError(t('favorites.transfer.invalid_file'))
+      notify.error(t('favorites.transfer.invalid_file'))
       return
     }
     try {
@@ -95,8 +91,8 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
       setImportDocument(normalized.document)
       setCompatibleImport(normalized.isCompatibleFormat)
       setPreview(nextPreview)
-    } catch {
-      setError(t('favorites.transfer.invalid_file'))
+    } catch (error) {
+      notify.failure(error, t('favorites.transfer.invalid_file'))
     } finally {
       setWorking(false)
     }
@@ -105,15 +101,13 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   const handleImport = async () => {
     if (!importDocument) return
     setWorking(true)
-    setError(null)
     try {
       const result = await importFavorites(importDocument)
       await onImported()
-      setSuccess(format(t, 'favorites.transfer.success', { count: result.imported, duplicates: result.duplicates }))
-      setPreview(null)
-      setImportDocument(null)
-    } catch {
-      setError(t('favorites.transfer.failed'))
+      notify.success(format(t, 'favorites.transfer.success', { count: result.imported, duplicates: result.duplicates }))
+      close()
+    } catch (error) {
+      notify.failure(error, t('favorites.transfer.failed'))
     } finally {
       setWorking(false)
     }
@@ -123,8 +117,6 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
   return (
     <Modal opened={mode !== null} onClose={close} title={exportMode ? t('favorites.transfer.export_title') : t('favorites.transfer.import_title')} centered>
       <Stack gap="md">
-        {error && <Alert color="red" icon={<IconAlertCircle size={16} />}>{error}</Alert>}
-        {success && <Alert color="green">{success}</Alert>}
         {exportMode ? (
           <>
             <Text size="sm">{t('favorites.transfer.select_groups')}</Text>
@@ -139,7 +131,7 @@ export function FavoriteTransferModal({ mode, groups, onClose, onImported }: Pro
           </>
         ) : (
           <>
-            {!preview && !success && <FileButton onChange={(file) => void handleFile(file)} accept="application/json,.json">{(props) => <Button {...props} leftSection={<IconFileUpload size={16} />} loading={working}>{t('favorites.transfer.choose_file')}</Button>}</FileButton>}
+            {!preview && <FileButton onChange={(file) => void handleFile(file)} accept="application/json,.json">{(props) => <Button {...props} leftSection={<IconFileUpload size={16} />} loading={working}>{t('favorites.transfer.choose_file')}</Button>}</FileButton>}
             {preview && (
               <Alert color="blue" title={t('favorites.transfer.preview')}>
                 <Stack gap="xs">

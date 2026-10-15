@@ -3,17 +3,18 @@ import { Alert, Badge, NativeSelect, Tabs, Text } from '@mantine/core'
 import { IconMapPin, IconRoute, IconRoute2, IconWand, IconWalk } from '@tabler/icons-react'
 import { MapView } from './components/map/MapView'
 import { IconRail } from './components/layout/IconRail'
-import { ToastContainer, showToast } from './components/common/Toast'
-import { setLocation, pushHistory, type Favorite } from './services/api'
+import { ToastContainer, notify } from './components/common/Toast'
+import { setLocation, pushHistory, type Favorite, type SavedRoute, type SavedRouteMode } from './services/api'
 import { PANEL_BY_MODE } from './components/panels'
 import type { Mode } from './components/ModeSelector'
-import { type MapOverlay, type PanelProps, EMPTY_OVERLAY } from './components/panels/types'
+import { type MapOverlay, type PanelProps, type SavedRouteImport, EMPTY_OVERLAY } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useT } from './i18n'
 import type { StringKey } from './i18n'
 import { ColorSchemeControl } from './components/layout/ColorSchemeControl'
 import { usePikminSync } from './hooks/usePikminSync'
+import { deviceStatusMessage } from './utils/userFacingError'
 
 type SheetState = 'collapsed' | 'half' | 'full'
 
@@ -37,6 +38,7 @@ export default function MobileApp() {
   const favoriteTeleportPending = useRef(false)
   const [overlay, setOverlay] = useState<MapOverlay>(EMPTY_OVERLAY)
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
+  const [savedRouteImports, setSavedRouteImports] = useState<Record<string, SavedRouteImport>>({})
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
   const setActiveOverlay = useCallback((nextOverlay: MapOverlay) => {
     setOverlay((current) => current === nextOverlay ? current : nextOverlay)
@@ -48,6 +50,7 @@ export default function MobileApp() {
   const dragStartState = useRef<SheetState>('half')
 
   const flyIdRef = useRef(0)
+  const savedRouteRequestIdRef = useRef(0)
   const pendingPickRef = useRef<{
     deviceId: string
     onPick: (lat: number, lng: number) => void
@@ -107,7 +110,7 @@ export default function MobileApp() {
 
   const favoriteDevice = devices.find((device) => device.udid === focusedDeviceId)
   const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
-    : favoriteDevice.status !== 'ready' ? (favoriteDevice.detail || t('panel.hint.device_not_ready'))
+    : favoriteDevice.status !== 'ready' ? deviceStatusMessage(favoriteDevice, t)
     : (states[favoriteDevice.udid] ?? 'idle') !== 'idle' || Boolean(activeTasks[favoriteDevice.udid]) ? t('teleport.hint.navigating')
     : null
   const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
@@ -123,9 +126,9 @@ export default function MobileApp() {
         setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
       }
       requestFlyTo(favorite.lat, favorite.lng)
-      showToast(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
     } catch (error) {
-      showToast(error instanceof Error ? error.message : t('teleport.status.set_failed'))
+      notify.failure(error, t('teleport.status.set_failed'), { id: `favorite:teleport:${deviceId}` })
     } finally {
       favoriteTeleportPending.current = false
       setTeleportingFavoriteId(null)
@@ -138,6 +141,27 @@ export default function MobileApp() {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
   }, [focusedDeviceId, requestFlyTo])
+
+  const requestSavedRouteLoad = useCallback((udid: string, route: SavedRoute, targetMode: SavedRouteMode) => {
+    if ((states[udid] ?? 'idle') !== 'idle' || Boolean(activeTasks[udid])) return
+    savedRouteRequestIdRef.current += 1
+    setSavedRouteImports((current) => ({
+      ...current,
+      [udid]: { requestId: savedRouteRequestIdRef.current, route, targetMode },
+    }))
+    setMode(targetMode === 'route_loop' ? 'route-loop' : 'multi-stop')
+    const first = route.waypoints[0]
+    if (first) requestFlyTo(first.lat, first.lng)
+    setSheetState('full')
+  }, [activeTasks, requestFlyTo, states])
+
+  const clearSavedRouteImport = useCallback((udid: string, requestId: number) => {
+    setSavedRouteImports((current) => {
+      if (current[udid]?.requestId !== requestId) return current
+      const { [udid]: _consumed, ...remaining } = current
+      return remaining
+    })
+  }, [])
 
   const livePositions = useMemo(() => {
     const connectedIds = new Set(devices.map((device) => device.udid))
@@ -172,6 +196,9 @@ export default function MobileApp() {
       setOverlay: setActiveOverlay,
       requestFlyTo,
       sendWs: send,
+      savedRouteImport: focusedDeviceId ? savedRouteImports[focusedDeviceId] ?? null : null,
+      requestSavedRouteLoad,
+      clearSavedRouteImport,
     }
   }
 

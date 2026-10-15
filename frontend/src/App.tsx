@@ -3,17 +3,17 @@ import { TopBar } from './components/layout/TopBar'
 import { ControlsOverlay } from './components/layout/ControlsOverlay'
 import { IconRail } from './components/layout/IconRail'
 import { StatusBar } from './components/layout/StatusBar'
-import { ToastContainer } from './components/common/Toast'
+import { ToastContainer, notify } from './components/common/Toast'
 import { MapView } from './components/map/MapView'
 import type { Mode } from './components/ModeSelector'
-import { type MapOverlay, type PanelProps } from './components/panels/types'
+import { type MapOverlay, type PanelProps, type SavedRouteImport } from './components/panels/types'
 import { useDevices } from './hooks/useDevices'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useUpdateChecker } from './hooks/useUpdateChecker'
-import { clearLocation, pushHistory, setLocation, type Favorite } from './services/api'
+import { clearLocation, pushHistory, setLocation, type Favorite, type SavedRoute, type SavedRouteMode } from './services/api'
 import { useHiddenDevices } from './hooks/useHiddenDevices'
 import { useDeviceNames } from './hooks/useDeviceNames'
-import { showToast } from './components/common/Toast'
+import { deviceStatusMessage } from './utils/userFacingError'
 import { useT } from './i18n'
 import { normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
 import { useDevicePanelCallbacks } from './hooks/useDevicePanelCallbacks'
@@ -41,6 +41,7 @@ export default function App() {
   const [modeByDevice, setModeByDevice] = useState<Record<string, Mode>>({})
   const [overlaysByDevice, setOverlaysByDevice] = useState<Record<string, MapOverlay>>({})
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
+  const [savedRouteImports, setSavedRouteImports] = useState<Record<string, SavedRouteImport>>({})
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; id: number } | null>(null)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [loadedDialogs, setLoadedDialogs] = useState({ command: false, update: false, devices: false })
@@ -123,6 +124,7 @@ export default function App() {
     onPick: (lat: number, lng: number) => void
   } | null>(null)
   const flyIdRef = useRef(0)
+  const savedRouteRequestIdRef = useRef(0)
   const requestPointForDevice = useCallback((deviceId: string, onPick: (lat: number, lng: number) => void) => {
     pendingPickRef.current = { deviceId, onPick }
   }, [])
@@ -150,7 +152,7 @@ export default function App() {
   }, [focusedDeviceId, isDeviceBusy, requestFlyTo])
   const favoriteDevice = displayDevices.find((device) => device.udid === focusedDeviceId)
   const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
-    : favoriteDevice.status !== 'ready' ? (favoriteDevice.detail || t('panel.hint.device_not_ready'))
+    : favoriteDevice.status !== 'ready' ? deviceStatusMessage(favoriteDevice, t)
     : isDeviceBusy(favoriteDevice.udid) || restoringDeviceId === favoriteDevice.udid ? t('teleport.hint.navigating')
     : null
   const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
@@ -167,9 +169,9 @@ export default function App() {
         setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
       }
       requestFlyTo(favorite.lat, favorite.lng)
-      showToast(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
     } catch (error) {
-      showToast(error instanceof Error ? error.message : t('teleport.status.set_failed'))
+      notify.failure(error, t('teleport.status.set_failed'), { id: `favorite:teleport:${deviceId}` })
     } finally {
       favoriteTeleportPending.current = false
       setTeleportingFavoriteId(null)
@@ -238,7 +240,7 @@ export default function App() {
     // as well as in the selector so command-palette and programmatic callers
     // cannot switch a busy device into another workflow.
     if (isDeviceBusy(udid)) {
-      showToast(t('mode.locked_running'))
+      notify.warning(t('mode.locked_running'))
       return
     }
     // A mode owns its temporary map input.  Clear it here rather than relying on
@@ -253,6 +255,29 @@ export default function App() {
       if (!(udid in prev)) return prev
       const { [udid]: _clearedOverlay, ...remainingOverlays } = prev
       return remainingOverlays
+    })
+  }
+
+  function requestSavedRouteLoad(udid: string, route: SavedRoute, targetMode: SavedRouteMode) {
+    if (isDeviceBusy(udid)) {
+      notify.warning(t('mode.locked_running'))
+      return
+    }
+    savedRouteRequestIdRef.current += 1
+    setSavedRouteImports((current) => ({
+      ...current,
+      [udid]: { requestId: savedRouteRequestIdRef.current, route, targetMode },
+    }))
+    handleModeChange(udid, targetMode === 'route_loop' ? 'route-loop' : 'multi-stop')
+    const first = route.waypoints[0]
+    if (first) requestFlyTo(first.lat, first.lng)
+  }
+
+  function clearSavedRouteImport(udid: string, requestId: number) {
+    setSavedRouteImports((current) => {
+      if (current[udid]?.requestId !== requestId) return current
+      const { [udid]: _consumed, ...remaining } = current
+      return remaining
     })
   }
 
@@ -349,6 +374,9 @@ export default function App() {
       requestFlyTo,
       sendWs: send,
       restoreAll: visibleDevices.length > 1 ? restoreAll : undefined,
+      savedRouteImport: savedRouteImports[udid] ?? null,
+      requestSavedRouteLoad,
+      clearSavedRouteImport,
     }
   }
 
@@ -361,7 +389,7 @@ export default function App() {
 
   const handleHideDevice = useCallback(async (device: typeof discoveredDevices[number]) => {
     if ((states[device.udid] ?? 'idle') !== 'idle') {
-      showToast(t('device.manager.running'))
+      notify.warning(t('device.manager.running'))
       return
     }
     setHidingDeviceId(device.udid)
@@ -370,9 +398,9 @@ export default function App() {
     try {
       await clearLocation(device.udid)
       hideDevice(device)
-      showToast(t('device.manager.hide_success'))
+      notify.success(t('device.manager.hide_success'))
     } catch {
-      showToast(t('device.manager.hide_failed'))
+      notify.error(t('device.manager.hide_failed'))
     } finally {
       setPendingHiddenIds((current) => {
         const next = new Set(current)
@@ -389,9 +417,9 @@ export default function App() {
     setRestoringDeviceId(udid)
     try {
       await clearLocation(udid)
-      showToast('已停止背景任務並還原真實定位。')
+      notify.success('已停止背景任務並還原真實定位。')
     } catch {
-      showToast('停止背景任務或還原定位失敗。')
+      notify.error('停止背景任務或還原定位失敗。')
     } finally {
       setRestoringDeviceId(null)
     }

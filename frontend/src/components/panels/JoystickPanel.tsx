@@ -9,11 +9,12 @@ import { JoystickPad } from './JoystickPad'
 import { useJoystickKeyboard } from '../../hooks/useJoystickKeyboard'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
-import { showToast } from '../common/Toast'
+import { notify, showToast } from '../common/Toast'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 import { useT } from '../../i18n'
 import { ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 
-type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type Status = { kind: 'idle' | 'busy' }
 type SubTab = 'basic' | 'dynamic'
 const DYNAMIC_MAX_SPEED_KMH = 60
 
@@ -120,7 +121,9 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
       pushHistory({ lat: startPoint.lat, lng: startPoint.lng, kind: 'joystick' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('joystick.status.failed_start') })
+      const message = t('joystick.status.failed_start')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `joystick:start:${deviceId}` })
     }
   }
 
@@ -131,7 +134,9 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
       await stopJoystick(deviceId)
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('joystick.status.failed_stop') })
+      const message = t('joystick.status.failed_stop')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `joystick:stop:${deviceId}` })
     }
   }
 
@@ -142,7 +147,7 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
         headerAction={<ModeInfoTooltip description={t('joystick.description')} />}
         notices={<>
           {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
-          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device ? deviceStatusMessage(device, t) : t('panel.hint.device_not_ready')}</PanelNotice>}
           {deviceId && deviceReady && !isActive && !startPoint && <PanelNotice tone="warning">{t('joystick.hint.need_anchor')}</PanelNotice>}
         </>}
         footer={<PanelFooter justify="flex-end">
@@ -150,7 +155,7 @@ export function JoystickPanel({ deviceId, device, deviceState, point, livePositi
             ? <Button disabled={!canStart} loading={isBusy} onClick={handleStart}>{t('joystick.action.start')}</Button>
             : <Button color="red" disabled={isBusy} loading={isBusy} onClick={handleStop}>{t('joystick.action.stop')}</Button>}
         </PanelFooter>}
-        status={status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} /> : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : isActive ? <PanelStatus state="success" message={t('joystick.status.active')} /> : undefined}
+        status={isActive ? <PanelStatus state="success" message={t('joystick.status.active')} /> : undefined}
       >
         <PanelSection>
           <SegmentedControl

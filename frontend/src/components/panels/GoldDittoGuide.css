@@ -1,0 +1,308 @@
+.gold-guide {
+  --gold-accent: var(--mantine-color-yellow-6);
+  --gold-accent-soft: color-mix(in srgb, var(--gold-accent) 16%, transparent);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--gold-accent) 35%, var(--mantine-color-default-border));
+  border-radius: var(--mantine-radius-lg);
+  background:
+    radial-gradient(circle at 82% 8%, var(--gold-accent-soft), transparent 42%),
+    var(--mantine-color-body);
+}
+
+.gold-guide__steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  background: color-mix(in srgb, var(--mantine-color-default-hover) 55%, transparent);
+}
+
+.gold-guide__step {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--mantine-color-dimmed);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.gold-guide__step:not(:last-child)::after {
+  position: absolute;
+  top: 10px;
+  right: 2px;
+  left: calc(100% - 6px);
+  height: 1px;
+  background: var(--mantine-color-default-border);
+  content: '';
+}
+
+.gold-guide__step[data-active],
+.gold-guide__step[data-done] {
+  color: var(--mantine-color-text);
+}
+
+.gold-guide__step-dot {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 50%;
+  background: var(--mantine-color-body);
+}
+
+.gold-guide__step[data-active] .gold-guide__step-dot {
+  border-color: var(--gold-accent);
+  background: var(--gold-accent);
+  color: var(--mantine-color-dark-9);
+  box-shadow: 0 0 0 4px var(--gold-accent-soft);
+}
+
+.gold-guide__step[data-done] .gold-guide__step-dot {
+  border-color: var(--mantine-color-green-6);
+  background: var(--mantine-color-green-6);
+  color: white;
+}
+
+.gold-guide__scene {
+  display: grid;
+  min-height: 184px;
+  place-items: center;
+  align-content: center;
+  padding: 18px 18px 20px;
+  text-align: center;
+  animation: gold-scene-in 320ms ease both;
+}
+
+.gold-guide__scene h3 {
+  margin: 12px 0 4px;
+  font-size: var(--mantine-font-size-md);
+  line-height: 1.25;
+}
+
+.gold-guide__scene p {
+  max-width: 310px;
+  margin: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.55;
+}
+
+.gold-guide__route {
+  display: flex;
+  width: min(220px, 82%);
+  align-items: center;
+  color: var(--gold-accent);
+}
+
+.gold-guide__origin,
+.gold-guide__flower {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold-accent-soft);
+}
+
+.gold-guide__route-line {
+  position: relative;
+  height: 2px;
+  flex: 1;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, var(--gold-accent) 0 6px, transparent 6px 11px);
+}
+
+.gold-guide__route-line i {
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold-accent);
+  box-shadow: 0 0 10px var(--gold-accent);
+  animation: gold-travel 1.8s ease-in-out infinite;
+}
+
+.gold-guide__form {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+  margin-top: 16px;
+  text-align: left;
+}
+
+.gold-guide__field {
+  display: grid;
+  gap: 7px;
+}
+
+.gold-guide__field + .gold-guide__field {
+  padding-top: 12px;
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.gold-guide__field-help {
+  color: var(--mantine-color-dimmed);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.gold-guide__phone {
+  position: relative;
+  display: grid;
+  width: 82px;
+  height: 112px;
+  place-items: center;
+  border: 3px solid var(--mantine-color-text);
+  border-radius: 18px;
+  color: var(--gold-accent);
+}
+
+.gold-guide__phone::before {
+  position: absolute;
+  top: 5px;
+  width: 24px;
+  height: 3px;
+  border-radius: 4px;
+  background: var(--mantine-color-dimmed);
+  content: '';
+}
+
+.gold-guide__pulse {
+  position: absolute;
+  width: 54px;
+  height: 54px;
+  border: 2px solid var(--gold-accent);
+  border-radius: 50%;
+  animation: gold-pulse 1.8s ease-out infinite;
+}
+
+.gold-guide__pulse--two {
+  animation-delay: 900ms;
+}
+
+.gold-guide__pull {
+  position: relative;
+  width: 126px;
+  height: 112px;
+  color: var(--gold-accent);
+}
+
+.gold-guide__pull strong {
+  position: absolute;
+  top: 20px;
+  right: -8px;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold-accent);
+  color: var(--mantine-color-dark-9);
+  font-size: 24px;
+  box-shadow: 0 0 0 7px var(--gold-accent-soft);
+}
+
+.gold-guide__pull-flower {
+  position: absolute;
+  top: 2px;
+  left: 14px;
+}
+
+.gold-guide__pull-track {
+  position: absolute;
+  top: 42px;
+  left: 34px;
+  width: 2px;
+  height: 58px;
+  background: linear-gradient(var(--gold-accent), transparent);
+}
+
+.gold-guide__pull-hand {
+  position: absolute;
+  top: 34px;
+  left: 17px;
+  color: var(--mantine-color-text);
+  animation: gold-pull 1s ease-in-out infinite;
+}
+
+.gold-guide__pull-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid color-mix(in srgb, var(--mantine-color-dark-9) 25%, transparent);
+  border-top-color: var(--mantine-color-dark-9);
+  border-radius: 50%;
+  animation: gold-spin 750ms linear infinite;
+}
+
+.gold-guide__complete {
+  position: relative;
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mantine-color-green-6) 18%, transparent);
+  color: var(--mantine-color-green-6);
+  animation: gold-complete 450ms cubic-bezier(.2, .9, .25, 1.25) both;
+}
+
+.gold-guide__sparkle {
+  position: absolute;
+  top: -5px;
+  right: -8px;
+  color: var(--gold-accent);
+  animation: gold-sparkle 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes gold-scene-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gold-travel {
+  0%, 10% { left: 0; opacity: 0; }
+  25% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { left: calc(100% - 8px); opacity: 0; }
+}
+
+@keyframes gold-pulse {
+  from { opacity: .8; transform: scale(.62); }
+  to { opacity: 0; transform: scale(1.45); }
+}
+
+@keyframes gold-pull {
+  0%, 20% { transform: translateY(0); }
+  75%, 100% { transform: translateY(45px); }
+}
+
+@keyframes gold-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gold-complete {
+  from { opacity: 0; transform: scale(.55); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes gold-sparkle {
+  from { opacity: .45; transform: rotate(-8deg) scale(.8); }
+  to { opacity: 1; transform: rotate(8deg) scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gold-guide *,
+  .gold-guide *::before,
+  .gold-guide *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

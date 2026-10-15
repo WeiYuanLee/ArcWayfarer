@@ -24,6 +24,7 @@ export type ActiveTaskConfig = {
   jump_pre_delay?: number
   jump_post_delay?: number
   custom_speed_kmh?: number | null
+  start_index?: number
   flower?: {
     radius_m: number
     circles: number
@@ -46,6 +47,7 @@ export type ActiveTask = {
 type DeviceState =
   | 'idle'
   | 'teleporting'
+  | 'gold_ditto'
   | 'navigating'
   | 'looping'
   | 'random_walk'

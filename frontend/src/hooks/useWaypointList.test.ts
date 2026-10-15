@@ -53,6 +53,23 @@ describe('useWaypointList addWaypoint', () => {
 })
 
 describe('useWaypointList route ordering', () => {
+  it('moves a waypoint directly to a distant position', () => {
+    const { result } = renderHook(() => useWaypointList(2))
+    act(() => result.current.updateWaypoint(0, { lat: 25.01, lng: 121.01 }))
+    act(() => result.current.updateWaypoint(1, { lat: 25.02, lng: 121.02 }))
+    act(() => result.current.addWaypoint({ lat: 25.03, lng: 121.03 }))
+    const firstId = result.current.items[0].id
+
+    act(() => result.current.reorderWaypoint(0, 2))
+
+    expect(result.current.items.map((item) => item.point)).toEqual([
+      { lat: 25.02, lng: 121.02 },
+      { lat: 25.03, lng: 121.03 },
+      { lat: 25.01, lng: 121.01 },
+    ])
+    expect(result.current.items[2].id).toBe(firstId)
+  })
+
   it('preserves item IDs while moving invalid rows after optimized coordinates', () => {
     const { result } = renderHook(() => useWaypointList(2))
 

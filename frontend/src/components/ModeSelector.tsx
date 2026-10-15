@@ -1,7 +1,7 @@
 import { useT } from '../i18n'
 import type { ReactNode } from 'react'
 import type { StringKey } from '../i18n'
-import { SegmentedControl } from '@mantine/core'
+import { SegmentedControl, Tooltip } from '@mantine/core'
 import { IconDeviceGamepad2, IconDice5, IconLocation, IconRepeat, IconRoute, IconRoute2 } from '@tabler/icons-react'
 
 export type Mode = 'teleport' | 'navigate' | 'route-loop' | 'multi-stop' | 'random-walk' | 'joystick'
@@ -38,7 +38,20 @@ export function ModeSelector({ value, onChange, disabled = false }: Props) {
         value={value}
         disabled={disabled}
         onChange={(next) => onChange(next as Mode)}
-        data={MODES.map((mode) => ({ value: mode.id, label: <span className="mode-switcher-item">{icons[mode.id]}<span>{t(mode.labelKey)}</span></span> }))}
+        data={MODES.map((mode) => {
+          const label = t(mode.labelKey)
+          return {
+            value: mode.id,
+            label: (
+              <Tooltip label={label} position="bottom" openDelay={350}>
+                <span className="mode-switcher-item">
+                  {icons[mode.id]}
+                  <span className="mode-switcher-sr-label">{label}</span>
+                </span>
+              </Tooltip>
+            ),
+          }
+        })}
       />
     </div>
   )

@@ -20,7 +20,7 @@ export function UpdateModal({ isOpen, onClose, checkResult, loading, onRecheck }
       <Stack gap="md">
         <Group justify="space-between"><Text size="sm" c="dimmed">{t('version.current')}: <Text span fw={600}>v{currentVersion}</Text></Text><Badge variant="light" color="gray">{envLabels[currentEnv]}</Badge></Group>
         {loading && <Group justify="center" py="xl"><Loader size="sm" /><Text size="sm">{t('version.checking')}</Text></Group>}
-        {!loading && checkResult?.error && <Alert color="red" icon={<IconAlertCircle size={16} />}>{checkResult.error}</Alert>}
+        {!loading && checkResult?.error && <Alert color="red" icon={<IconAlertCircle size={16} />}>{t('version.check_failed')}</Alert>}
         {!loading && !checkResult?.error && latestRelease && checkResult.hasUpdate && (
           <>
             <Paper withBorder p="sm" bg="var(--aw-surface-raised)">

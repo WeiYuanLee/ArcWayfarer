@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearQuickReconnectRecord,
   getQuickReconnectRecords,
   saveQuickReconnectRecord,
+  startFlower,
   type QuickReconnectRecord,
 } from './api'
 
@@ -47,5 +48,39 @@ describe('Wireless Direct quick reconnect history', () => {
     saveQuickReconnectRecord(second)
 
     expect(saveQuickReconnectRecord(moved)).toEqual([moved, second])
+  })
+})
+
+describe('Flower start position', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('sends the selected zero-based flower index', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'ok', route: [], legs: [] }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await startFlower(
+      'device-1',
+      'walk',
+      [{ lat: 25, lng: 121 }, { lat: 25.01, lng: 121.01 }],
+      {
+        radius_m: 30,
+        circles: 1,
+        segments: 16,
+        path_strategy: 'center_spiral',
+        inner_radius_m: null,
+        jitter_m: 1.5,
+        pre_wait_seconds: 0,
+        post_wait_seconds: 2,
+        route_type: 'stop_at_end',
+        rounds: 1,
+      },
+      { startIndex: 1 },
+    )
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    expect(JSON.parse(request.body as string)).toMatchObject({ mode: 'flower', start_index: 1 })
   })
 })

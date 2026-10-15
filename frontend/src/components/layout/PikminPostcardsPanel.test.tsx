@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   listPikminPostcards: vi.fn(),
   getPikminSyncStatus: vi.fn(),
   startPikminSync: vi.fn(),
-  showToast: vi.fn(),
+  notify: { success: vi.fn(), failure: vi.fn() },
 }))
 
 vi.mock('../../services/api', () => ({
@@ -18,7 +18,7 @@ vi.mock('../../services/api', () => ({
   pikminPostcardImageUrl: (id: number) => `http://127.0.0.1/postcards/${id}/image`,
   startPikminSync: mocks.startPikminSync,
 }))
-vi.mock('../common/Toast', () => ({ showToast: mocks.showToast }))
+vi.mock('../common/Toast', () => ({ notify: mocks.notify }))
 
 const result = {
   items: [{
@@ -49,7 +49,8 @@ describe('PikminPostcardsPanel source refresh', () => {
       counts: { postcards: 539, purespots: 6616 },
       error: null,
     })
-    mocks.showToast.mockReset()
+    mocks.notify.success.mockReset()
+    mocks.notify.failure.mockReset()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -93,6 +94,6 @@ describe('PikminPostcardsPanel source refresh', () => {
     await waitFor(() => expect(mocks.startPikminSync).toHaveBeenCalledOnce(), { timeout: 2500 })
     await waitFor(() => expect(mocks.getPikminSyncStatus).toHaveBeenCalledOnce(), { timeout: 2500 })
     await waitFor(() => expect(mocks.listPikminPostcards).toHaveBeenCalledTimes(2), { timeout: 2500 })
-    expect(mocks.showToast).toHaveBeenCalledWith('已更新來源資料，共 539 張明信片。')
+    expect(mocks.notify.success).toHaveBeenCalledWith('已更新來源資料，共 539 張明信片。')
   })
 })

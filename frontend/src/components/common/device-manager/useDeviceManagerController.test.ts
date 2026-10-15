@@ -21,7 +21,9 @@ vi.mock('../../../services/api', async (loadOriginal) => {
     trustDeviceForSetup: vi.fn(), amfiRevealDeveloperMode: vi.fn(), clearWirelessDirectAddress: vi.fn(),
   }
 })
-vi.mock('../Toast', () => ({ showToast: vi.fn() }))
+vi.mock('../Toast', () => ({
+  notify: { success: vi.fn(), warning: vi.fn(), failure: vi.fn() },
+}))
 
 const directDevice: Device = {
   udid: 'phone-a', name: 'Lence', ios_version: '18.0', transport: 'rsd', status: 'ready', detail: null,
@@ -69,7 +71,7 @@ describe('useDeviceManagerController', () => {
       await result.current.executeConnect({ targetUdid: 'phone-a', targetIp: '192.168.1.184', targetName: 'Lence', fallbackBonjour: true, port: 49152 })
     })
     expect(result.current.view).toBe('connecting')
-    expect(result.current.connectingState).toMatchObject({ status: 'error', errorMessage: '授權已失效' })
+    expect(result.current.connectingState).toMatchObject({ status: 'error', errorMessage: '連線失敗，請檢查手機 Wi-Fi 與配對狀態。' })
     expect(onRefreshDevices).toHaveBeenCalledWith()
     expect(onUnhideDevice).not.toHaveBeenCalled()
     expect(onHideDevice).not.toHaveBeenCalled()

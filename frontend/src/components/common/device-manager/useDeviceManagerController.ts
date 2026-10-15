@@ -14,7 +14,8 @@ import {
   type WirelessDirectEndpoint,
 } from '../../../services/api'
 import type { HiddenDevice } from '../../../hooks/useHiddenDevices'
-import { showToast } from '../Toast'
+import { notify } from '../Toast'
+import { toUserFacingError } from '../../../utils/userFacingError'
 import type { DeviceManagerController, DirectConnectRequest, ManagedDevice } from './types'
 
 export const DEVICE_MANAGER_CAPACITY = 3
@@ -107,11 +108,11 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       const result = await pairWirelessDirect(device.udid)
       await options.onRefreshDevices?.(result.revision)
       setSetupState({ step: 'complete', device })
-      showToast('已完成一般 Wi-Fi 連線授權。拔線後將自動尋找這台 iPhone。')
+      notify.success('已完成一般 Wi-Fi 連線授權。拔線後將自動尋找這台 iPhone。')
     } catch (error) {
       setSetupState({
         step: 'error', device, retryTarget: 'trust',
-        errorMessage: error instanceof Error ? error.message : '無法完成 Wi-Fi 連線授權，請保持 USB 連線後重試。',
+        errorMessage: toUserFacingError(error, '無法完成 Wi-Fi 連線授權，請保持 USB 連線後重試。'),
       })
     }
   }, [options.onRefreshDevices])
@@ -131,7 +132,7 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
     } catch (error) {
       setSetupState({
         step: 'error', device, retryTarget: 'trust',
-        errorMessage: error instanceof Error ? error.message : '無法確認 iPhone 的信任狀態，請解鎖手機後重試。',
+        errorMessage: toUserFacingError(error, '無法確認 iPhone 的信任狀態，請解鎖手機後重試。'),
       })
     }
   }, [authorizeWifi, options.onRefreshDevices, setupState?.device])
@@ -162,7 +163,7 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
     } catch (error) {
       setSetupState({
         step: 'error', device, retryTarget: 'reveal',
-        errorMessage: error instanceof Error ? error.message : '暫時無法顯示開發者模式選項，請保持 USB 連線後重試。',
+        errorMessage: toUserFacingError(error, '暫時無法顯示開發者模式選項，請保持 USB 連線後重試。'),
       })
     }
   }, [setupState?.device])
@@ -219,9 +220,9 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       setQuickReconnects(saveQuickReconnectRecord(record))
       if (allDevices.some((item) => item.udid === udid && item.isActive) || activeCount < DEVICE_MANAGER_CAPACITY) {
         options.onUnhideDevice(udid)
-        showToast(`Wireless Direct 已連線並啟用「${name}」`)
+        notify.success(`Wireless Direct 已連線並啟用「${name}」`)
       } else {
-        showToast(`Wireless Direct 已連線至「${name}」（席位已滿 3 台，請先在清單關閉其他裝置後再啟用）`)
+        notify.warning(`Wireless Direct 已連線至「${name}」（席位已滿 3 台，請先在清單關閉其他裝置後再啟用）`)
       }
       // The command revision prevents a scan started before this connect from
       // replacing the newly selected Wireless Direct route.
@@ -232,7 +233,7 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       setConnectingState((current) => ({
         ...current,
         status: 'error',
-        errorMessage: error instanceof Error ? error.message : '連線失敗，請檢查手機 Wi-Fi 與配對狀態。',
+        errorMessage: toUserFacingError(error, '連線失敗，請檢查手機 Wi-Fi 與配對狀態。'),
       }))
     }
   }, [activeCount, allDevices, options.onRefreshDevices, options.onUnhideDevice])
@@ -261,11 +262,11 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
   const handleToggle = useCallback(async (item: ManagedDevice, checked: boolean) => {
     if (checked) {
       if (activeCount >= DEVICE_MANAGER_CAPACITY) {
-        showToast(`已達最大同時控制數量（${DEVICE_MANAGER_CAPACITY} 台），請先關閉其他裝置。`)
+        notify.warning(`已達最大同時控制數量（${DEVICE_MANAGER_CAPACITY} 台），請先關閉其他裝置。`)
         return
       }
       options.onUnhideDevice(item.udid)
-      showToast(`已啟用裝置「${item.name}」`)
+      notify.success(`已啟用裝置「${item.name}」`)
       await options.onRefreshDevices?.()
     } else if (item.device) {
       await options.onHideDevice(item.device)
@@ -277,12 +278,12 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       const ids = [...new Set(quickReconnects.map((item) => item.udid).filter(Boolean))] as string[]
       await Promise.all(ids.map(clearWirelessDirectAddress))
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '清除後端連線紀錄失敗，請稍後重試。')
+      notify.failure(error, '清除後端連線紀錄失敗，請稍後重試。')
       return
     }
     clearQuickReconnectRecord()
     setQuickReconnects([])
-    showToast('已清除快速復連歷史紀錄')
+    notify.success('已清除快速復連歷史紀錄')
   }, [quickReconnects])
 
   return { view, setView, allDevices, activeCount, endpoints, isScanning, lastScanTime,

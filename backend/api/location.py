@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from core import joystick, teleport
 from models.schemas import (
     ClearLocationRequest,
+    GoldDittoFinishRequest,
     GoldDittoRequest,
     JoystickStartRequest,
     JoystickStopRequest,
@@ -60,9 +61,24 @@ async def post_clear_location(body: ClearLocationRequest) -> dict:
 @router.post("/gold-ditto")
 async def post_gold_ditto(body: GoldDittoRequest) -> dict:
     try:
-        await teleport.gold_ditto(body.udid, body.lat, body.lng)
+        origin = None
+        if body.origin_lat is not None and body.origin_lng is not None:
+            origin = (body.origin_lat, body.origin_lng)
+        await teleport.gold_ditto(body.udid, body.lat, body.lng, origin=origin)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001 - surface device/tunnel errors to the UI
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"status": "ok"}
+
+
+@router.post("/gold-ditto/finish")
+async def post_finish_gold_ditto(body: GoldDittoFinishRequest) -> dict:
+    try:
+        await teleport.finish_gold_ditto(body.udid)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 - surface device/tunnel errors to the UI
+        logger.exception("Error finishing gold_ditto for udid=%s: %s", body.udid, e)
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"status": "ok"}

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 from api import multi_stop as multi_stop_api
 from models.schemas import FlowerMultiStopStartRequest, MultiStopStartRequest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 
 class MultiStopModeIsolationTests(unittest.IsolatedAsyncioTestCase):
@@ -32,13 +32,31 @@ class MultiStopModeIsolationTests(unittest.IsolatedAsyncioTestCase):
         request = FlowerMultiStopStartRequest(
             udid="device-1", nav_mode="walk", mode="flower",
             waypoints=[{"lat": 25.0, "lng": 121.0}],
+            start_index=0,
         )
         with patch.object(multi_stop_api.multi_stop, "start_multi_stop", new=AsyncMock()) as basic, \
              patch.object(multi_stop_api.flower, "start_flower", new=AsyncMock(return_value=[(25.0, 121.0)])) as flower:
             await multi_stop_api.post_start(request)
 
-        flower.assert_awaited_once()
+        flower.assert_awaited_once_with(
+            "device-1", "walk", [(25.0, 121.0)], request.flower,
+            straight_line=False, jump_mode=False, custom_speed_kmh=None, start_index=0,
+        )
         basic.assert_not_awaited()
+
+    def test_basic_mode_accepts_turbo_speed(self) -> None:
+        request = MultiStopStartRequest(
+            udid="device-1", nav_mode="drive", custom_speed_kmh=1000,
+            waypoints=[{"lat": 25.0, "lng": 121.0}, {"lat": 25.1, "lng": 121.1}],
+        )
+        self.assertEqual(request.custom_speed_kmh, 1000)
+
+    def test_flower_mode_rejects_turbo_speed(self) -> None:
+        with self.assertRaises(ValidationError):
+            FlowerMultiStopStartRequest(
+                udid="device-1", nav_mode="walk", mode="flower", custom_speed_kmh=100,
+                waypoints=[{"lat": 25.0, "lng": 121.0}],
+            )
 
 
 if __name__ == "__main__":

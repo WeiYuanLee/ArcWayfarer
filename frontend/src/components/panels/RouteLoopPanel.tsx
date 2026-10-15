@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionIcon, Badge, Button, Group, SegmentedControl, SimpleGrid, Stack, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core'
-import { IconArrowDown, IconArrowUp, IconCircle, IconHeart, IconInfinity, IconPlus, IconRefresh, IconSquare, IconStar, IconTrash, IconTriangle, IconTypography } from '@tabler/icons-react'
+import { IconCircle, IconHeart, IconInfinity, IconPlus, IconRefresh, IconSquare, IconStar, IconTrash, IconTriangle, IconTypography } from '@tabler/icons-react'
 import { pauseRouteLoop, pushHistory, resumeRouteLoop, setLocation, startRouteLoop, stopRouteLoop, type NavMode } from '../../services/api'
 import type { LatLng, PanelProps } from './types'
 import { EMPTY_OVERLAY } from './types'
@@ -15,9 +15,12 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
 import { PasteCoordinatesModal } from '../common/PasteCoordinatesModal'
-import { showToast } from '../common/Toast'
+import { notify, showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
+import { SortableWaypointList } from './SortableWaypointList'
+import { RouteLibraryButton } from './RouteLibraryButton'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
 import {
@@ -27,16 +30,15 @@ import {
   PanelFooter,
   PanelNotice,
   PanelSection,
-  PanelStatus,
   ValidatedNumberInput,
 } from './ui'
 
-type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type Status = { kind: 'idle' | 'busy' }
 type SubMode = 'manual' | 'pattern'
 
 const WAYPOINT_COLOR = '#4a9af0'
 
-export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay, requestFlyTo }: PanelProps) {
+export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay, requestFlyTo, savedRouteImport, requestSavedRouteLoad, clearSavedRouteImport }: PanelProps) {
   const t = useT()
   const [subMode, setSubMode] = useState<SubMode>('manual')
   const {
@@ -46,7 +48,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     handleTextChange,
     addWaypoint,
     removeWaypoint,
-    moveWaypoint,
+    reorderWaypoint,
     clearAllWaypoints,
     setAllWaypoints,
     reverseWaypoints,
@@ -78,7 +80,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   const [straightLine, setStraightLine] = useState(true)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
-  const [importMessage, setImportMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
@@ -163,12 +164,12 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   function processPasteSubmit() {
     const { points, invalidCount } = parsePastedPoints(pasteText)
     if (points.length === 0) {
-      setImportMessage({ kind: 'error', text: t('multistop.paste_empty') })
+      notify.error(t('multistop.paste_empty'))
       return
     }
     setAllWaypoints(points)
     requestFlyTo(points[0].lat, points[0].lng)
-    setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
+    if (invalidCount > 0) notify.warning(t('multistop.import_partial'))
     setPasteOpen(false)
     setPasteText('')
   }
@@ -190,6 +191,34 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   useEffect(() => {
     return () => setOverlay(EMPTY_OVERLAY)
   }, [setOverlay])
+
+  useEffect(() => {
+    const pending = savedRouteImport
+    if (!pending || pending.targetMode !== 'route_loop' || !deviceId) return
+    const route = pending.route
+    setSubMode('manual')
+    setAllWaypoints(route.waypoints)
+    if (route.source_mode === 'route_loop') {
+      const config = route.runtime_config
+      if (config.nav_mode) setNavMode(config.nav_mode)
+      if (typeof config.speed_kmh === 'number') setSpeedKmh(config.speed_kmh)
+      if (typeof config.straight_line === 'boolean') setStraightLine(config.straight_line)
+      if (typeof config.pause_enabled === 'boolean') setPauseEnabled(config.pause_enabled)
+      if (typeof config.pause_min === 'number') setPauseMin(config.pause_min)
+      if (typeof config.pause_max === 'number') setPauseMax(config.pause_max)
+      notify.success(t('route_library.loaded_full').replace('{name}', route.name), {
+        id: `route-load:${deviceId}`,
+      })
+    } else {
+      notify.warning(
+        t('route_library.loaded_coordinates')
+          .replace('{name}', route.name)
+          .replace('{source}', t(`route_library.mode.${route.source_mode}`)),
+        { id: `route-load:${deviceId}` },
+      )
+    }
+    clearSavedRouteImport?.(deviceId, pending.requestId)
+  }, [clearSavedRouteImport, deviceId, savedRouteImport, setAllWaypoints, t])
 
   // Auto fill circle center with live position if empty
   useEffect(() => {
@@ -256,7 +285,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             setTextJumpLegIndices([])
             setTextPatternError(error instanceof Error && error.message === TEXT_PATTERN_FONT_LOAD_ERROR
               ? t('routeloop.pattern.error.font_load_failed')
-              : error instanceof Error ? error.message : t('routeloop.pattern.error.generation_failed'))
+              : t('routeloop.pattern.error.generation_failed'))
           }
         }), 180)
         return () => {
@@ -308,7 +337,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                           try {
                             await setLocation(deviceId, item.point.lat, item.point.lng)
                           } catch (e) {
-                            setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                            notify.failure(e, t('teleport.status.set_failed'), { id: `route-loop:teleport:${deviceId}` })
                           }
                         },
                       },
@@ -389,7 +418,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 try {
                   await setLocation(deviceId, lat, lng)
                 } catch (e) {
-                  setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                  notify.failure(e, t('teleport.status.set_failed'), { id: `route-loop:teleport:${deviceId}` })
                 }
               },
             },
@@ -439,7 +468,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'route_loop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('routeloop.status.failed_start') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('routeloop.status.failed_start'), { id: `route-loop:start:${deviceId}` })
     }
   }
 
@@ -452,7 +482,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       setRouteLegs([])
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('routeloop.status.failed_stop') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('routeloop.status.failed_stop'), { id: `route-loop:stop:${deviceId}` })
     }
   }
 
@@ -467,7 +498,8 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       }
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('routeloop.status.failed_update') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('routeloop.status.failed_update'), { id: `route-loop:update:${deviceId}` })
     }
   }
 
@@ -475,7 +507,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
     <>
       {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
       {deviceId && !deviceReady && (
-        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+        <PanelNotice tone="warning">{device ? deviceStatusMessage(device, t) : t('panel.hint.device_not_ready')}</PanelNotice>
       )}
       {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
     </>
@@ -496,7 +528,29 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       <ModePanelLayout
         title={t('routeloop.title')}
         titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
-        headerAction={<ModeInfoTooltip description={t('routeloop.description')} />}
+        headerAction={(
+          <Group gap={4} wrap="nowrap">
+            <ModeInfoTooltip description={t('routeloop.description')} />
+            <RouteLibraryButton
+              deviceId={deviceId}
+              currentMode="route_loop"
+              waypoints={validWaypoints}
+              runtimeConfig={{
+                nav_mode: navMode,
+                speed_kmh: speedKmh,
+                straight_line: straightLine,
+                pause_enabled: pauseEnabled,
+                pause_min: pauseMin,
+                pause_max: pauseMax,
+              }}
+              anchor={livePosition}
+              disabled={isActive || isBusy}
+              onLoad={(route, targetMode) => {
+                if (deviceId) requestSavedRouteLoad?.(deviceId, route, targetMode)
+              }}
+            />
+          </Group>
+        )}
         notices={!isActive ? notices : undefined}
         scrollable={!isPattern}
         footer={!isActive ? (
@@ -512,9 +566,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             />
           </PanelFooter>
         ) : undefined}
-        status={status.kind === 'busy'
-          ? <PanelStatus state="busy" message={t('generic.working')} />
-          : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined}
       >
       {isActive ? (
         <ActiveFlightHUD
@@ -544,35 +595,20 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
             }} data={[{ label: t('routeloop.mode.manual'), value: 'manual' }, { label: t('routeloop.mode.circle'), value: 'pattern' }]} />
 
           </PanelSection>
-
           {subMode === 'manual' ? (
             <PanelSection>
-                <Stack gap="xs" className="route-loop-waypoint-list">
-                  {items.map((item, idx) => (
-                    <Group className="route-loop-waypoint-row" key={item.id} wrap="nowrap" gap="xs" ref={idx === items.length - 1 ? lastWaypointRef : undefined}>
-                      <Badge variant="light" color="gray" circle>{idx + 1}</Badge>
-                      <CoordinateField
-                        size="xs"
-                        placeholder="lat, lng or URL"
-                        value={item.rawText}
-                        style={{ flex: 1 }}
-                        onFocus={() => {
-                          requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
-                        }}
-                        onChange={(value) => handleTextChange(idx, value)}
-                      />
-                      <Group gap={2} wrap="nowrap">
-                        <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
-                        <ActionIcon color="red" variant="subtle"
-                          disabled={isLocked || items.length <= 2}
-                          onClick={() => removeWaypoint(idx)}
-                          title={t('panel.remove_waypoint')}
-                        aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
-                      </Group>
-                    </Group>
-                  ))}
-                </Stack>
+                <SortableWaypointList
+                  items={items}
+                  badgeColor="gray"
+                  disabled={isLocked}
+                  minimumItems={2}
+                  lastItemRef={lastWaypointRef}
+                  requestPoint={requestPoint}
+                  updateWaypoint={updateWaypoint}
+                  handleTextChange={handleTextChange}
+                  removeWaypoint={removeWaypoint}
+                  reorderWaypoint={reorderWaypoint}
+                />
 
                 <Group gap="xs" wrap="nowrap">
                   <Button size="xs" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button>
@@ -588,7 +624,6 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                     </ActionIcon>
                   </Tooltip>
                 </Group>
-                {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
             </PanelSection>
           ) : (
             <Stack gap="lg">
@@ -659,6 +694,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                   onChange={setSpeedKmh}
                   onNavModeChange={setNavMode}
                   disabled={isActive}
+                  allowTurbo
                 />
               </PanelSection>
             </Stack>
@@ -701,6 +737,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
                 onChange={setSpeedKmh}
                 onNavModeChange={setNavMode}
                 disabled={isActive}
+                allowTurbo
               />
             </PanelSection>
           </>}

@@ -306,8 +306,18 @@ export function clearLocation(udid: string): Promise<void> {
   return postJson('/api/location/clear', { udid })
 }
 
-export function goldDitto(udid: string, lat: number, lng: number): Promise<void> {
-  return postJson('/api/location/gold-ditto', { udid, lat, lng })
+export function goldDitto(udid: string, lat: number, lng: number, origin?: LatLng | null): Promise<void> {
+  return postJson('/api/location/gold-ditto', {
+    udid,
+    lat,
+    lng,
+    origin_lat: origin?.lat ?? null,
+    origin_lng: origin?.lng ?? null,
+  })
+}
+
+export function finishGoldDitto(udid: string): Promise<void> {
+  return postJson('/api/location/gold-ditto/finish', { udid })
 }
 
 export type NavMode = 'walk' | 'bike' | 'drive'
@@ -448,7 +458,7 @@ export function startFlower(
   navMode: NavMode,
   waypoints: LatLng[],
   flower: FlowerOptions,
-  options: Pick<MultiStopOptions, 'straightLine' | 'jumpMode' | 'customSpeedKmh'> = {},
+  options: Pick<MultiStopOptions, 'straightLine' | 'jumpMode' | 'customSpeedKmh'> & { startIndex?: number } = {},
 ): Promise<{ status: string; route: LatLng[]; legs: LatLng[][] }> {
   return postJsonWithResponse('/api/multi-stop/start', {
     udid,
@@ -459,6 +469,7 @@ export function startFlower(
     straight_line: options.straightLine ?? false,
     jump_mode: options.jumpMode ?? false,
     custom_speed_kmh: options.customSpeedKmh ?? null,
+    start_index: options.startIndex ?? 0,
   })
 }
 
@@ -641,6 +652,60 @@ export function reorderFavorites(items: { id: string; order: number }[]): Promis
 
 export function deleteFavorite(id: string): Promise<void> {
   return deleteJson(`/api/favorites/${id}`)
+}
+
+export type SavedRouteMode = 'route_loop' | 'multi_stop' | 'flower'
+
+export type SavedRouteWaypoint = {
+  lat: number
+  lng: number
+  name?: string | null
+}
+
+export type SavedRouteRuntimeConfig = {
+  nav_mode?: NavMode | null
+  speed_kmh?: number | null
+  straight_line?: boolean | null
+  pause_enabled?: boolean | null
+  pause_min?: number | null
+  pause_max?: number | null
+  jump_mode?: boolean | null
+  jump_pre_delay?: number | null
+  jump_post_delay?: number | null
+  flower_radius?: number | null
+  flower_circles?: number | null
+  flower_segments?: number | null
+  flower_path_strategy?: 'center_spiral' | 'perimeter' | null
+  flower_pre_wait?: number | null
+  flower_post_wait?: number | null
+  flower_route_type?: 'stop_at_end' | 'return_to_start' | 'loop_forever' | null
+  flower_rounds?: number | null
+}
+
+export type SavedRouteInput = {
+  name: string
+  source_mode: SavedRouteMode
+  waypoints: SavedRouteWaypoint[]
+  runtime_config: SavedRouteRuntimeConfig
+}
+
+export type SavedRoute = SavedRouteInput & {
+  id: string
+  created_at: number
+  updated_at: number
+}
+
+export async function listSavedRoutes(): Promise<SavedRoute[]> {
+  const result = await getJson<unknown>('/api/saved-routes')
+  return Array.isArray(result) ? result as SavedRoute[] : []
+}
+
+export function createSavedRoute(input: SavedRouteInput): Promise<SavedRoute> {
+  return postJsonWithResponse('/api/saved-routes', input)
+}
+
+export function deleteSavedRoute(id: string): Promise<void> {
+  return deleteJson(`/api/saved-routes/${encodeURIComponent(id)}`)
 }
 
 export type PikminPostcard = {

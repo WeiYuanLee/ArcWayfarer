@@ -40,6 +40,17 @@ class FlowerGeometryTests(unittest.TestCase):
 
         self.assertEqual(waited_seconds - base_seconds, 36)
 
+    def test_eta_estimate_can_begin_at_a_later_flower(self) -> None:
+        flowers = [self.center, (25.0342, 121.5650), (25.0350, 121.5660)]
+        options = FlowerOptions(route_type="stop_at_end")
+
+        full = _estimate_seconds(flowers, options, speed=5 / 3.6, rounds=1, jump_mode=False)
+        resumed = _estimate_seconds(
+            flowers, options, speed=5 / 3.6, rounds=1, jump_mode=False, start_index=1,
+        )
+
+        self.assertLess(resumed, full)
+
     def test_infinite_loop_rounds_iterator_increments(self) -> None:
         import itertools
         options = FlowerOptions(route_type="loop_forever")

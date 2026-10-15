@@ -17,12 +17,11 @@ export function MobileRemoteModal({ isOpen, onClose }: { isOpen: boolean; onClos
       setRemainingSeconds(nextPairing.expires_in)
     }
     catch (cause) {
-      const message = cause instanceof Error ? cause.message : '無法產生 QR Code'
-      setError(
-        message === 'Request failed (404)' || message === 'Not Found'
-          ? '手機遙控後端尚未載入。請完全關閉 ArcWayfarer，再重新啟動後重試。'
-          : message,
-      )
+      const isUnavailable = cause instanceof Error
+        && (cause.message === 'Request failed (404)' || cause.message === 'Not Found')
+      setError(isUnavailable
+        ? '手機遙控服務尚未載入。請完全關閉 ArcWayfarer，再重新啟動後重試。'
+        : '無法產生 QR Code，請稍後再試。')
     }
     finally { setBusy(false) }
   }

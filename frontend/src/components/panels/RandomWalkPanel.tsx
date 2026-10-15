@@ -9,11 +9,12 @@ import { PlaybackControls } from './PlaybackControls'
 import { SwitchBar } from '../common/SwitchBar'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
-import { showToast } from '../common/Toast'
+import { notify, showToast } from '../common/Toast'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 import { useT } from '../../i18n'
 import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus, ValidatedNumberInput } from './ui'
 
-type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type Status = { kind: 'idle' | 'busy' }
 
 const CENTER_COLOR = '#4a9af0'
 
@@ -75,7 +76,11 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
               onClick: async () => {
                 if (!deviceId) return
                 try { await setLocation(deviceId, lat, lng) }
-                catch (e) { setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('randomwalk.status.failed_start') }) }
+                catch (e) {
+                  const message = t('teleport.status.set_failed')
+                  setStatus({ kind: 'idle' })
+                  notify.failure(e, message, { id: `random-walk:teleport:${deviceId}` })
+                }
               },
             },
             {
@@ -111,7 +116,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
       pushHistory({ lat: center.lat, lng: center.lng, kind: 'random_walk' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('randomwalk.status.failed_start') })
+      const message = t('randomwalk.status.failed_start')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `random-walk:start:${deviceId}` })
     }
   }
 
@@ -122,7 +129,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
       await stopRandomWalk(deviceId)
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('randomwalk.status.failed_stop') })
+      const message = t('randomwalk.status.failed_stop')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `random-walk:stop:${deviceId}` })
     }
   }
 
@@ -137,7 +146,9 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
       }
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('randomwalk.status.failed_update') })
+      const message = t('randomwalk.status.failed_update')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `random-walk:update:${deviceId}` })
     }
   }
 
@@ -148,16 +159,14 @@ export function RandomWalkPanel({ deviceId, device, deviceState, livePosition, r
         headerAction={<ModeInfoTooltip description={t('randomwalk.description')} />}
         notices={<>
           {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
-          {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+          {deviceId && !deviceReady && <PanelNotice tone="warning">{device ? deviceStatusMessage(device, t) : t('panel.hint.device_not_ready')}</PanelNotice>}
           {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
         </>}
         footer={<PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter>}
         status={
-          status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
-            : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
-              : isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
-                : isRunning ? <PanelStatus state="success" message={t('randomwalk.status.wandering')} />
-                  : undefined
+          isPaused ? <PanelNotice tone="warning">{t('panel.paused')}</PanelNotice>
+            : isRunning ? <PanelStatus state="success" message={t('randomwalk.status.wandering')} />
+              : undefined
         }
       >
         <PanelSection>

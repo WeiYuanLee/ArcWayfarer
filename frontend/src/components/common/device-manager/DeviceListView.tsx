@@ -6,9 +6,10 @@ import { DEVICE_MANAGER_CAPACITY, normalizeDeviceId } from './useDeviceManagerCo
 import type { DirectConnectRequest, ManagedDevice } from './types'
 import { QuickReconnectList } from './QuickReconnectList'
 import type { QuickReconnectRecord } from '../../../services/api'
+import { deviceStatusMessage } from '../../../utils/userFacingError'
 
 const stateLabels: Record<DeviceState, string> = {
-  idle: '待命', teleporting: '瞬移中', navigating: '導航中', looping: '循環中', random_walk: '漫遊中', joystick: '搖桿中', paused: '已暫停',
+  idle: '待命', teleporting: '瞬移中', gold_ditto: '等待拉盆', navigating: '導航中', looping: '循環中', random_walk: '漫遊中', joystick: '搖桿中', paused: '已暫停',
   'paused:navigating': '導航已暫停', 'paused:looping': '循環已暫停', 'paused:random_walk': '漫遊已暫停', 'paused:joystick': '搖桿已暫停',
 }
 
@@ -94,8 +95,8 @@ export function DeviceListView(props: Props) {
                     {item.device && item.connection_type === 'usb' && (
                       <Button size="compact-xs" variant="subtle" color="blue" mt={4} onClick={() => props.onSetup(item)}>{item.direct_paired ? '重新設定 Wi-Fi 連線' : '設定這台 iPhone'}</Button>
                     )}
-                    {item.device?.detail && item.status !== 'ready' && (
-                      <Text size="xs" c="dimmed" mt={3}>{item.device.detail}</Text>
+                    {item.device && item.status !== 'ready' && (
+                      <Text size="xs" c="dimmed" mt={3}>{deviceStatusMessage(item.device, t)}</Text>
                     )}
                   </div>
                 </Group>

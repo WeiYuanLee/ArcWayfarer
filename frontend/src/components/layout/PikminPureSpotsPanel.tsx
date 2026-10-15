@@ -3,7 +3,7 @@ import { Badge, Button, Group, Loader, Paper, Select, Stack, Text } from '@manti
 import { IconHeart, IconLocation } from '@tabler/icons-react'
 import { addPikminFavorite, getPikminSyncStatus, getRandomPikminPureSpot, listPikminPureSpots, listPikminPureSpotTypes, type Favorite, type PikminPureSpot, type PikminPureSpotType } from '../../services/api'
 import { usePikminMap } from '../map/PikminMapContext'
-import { showToast } from '../common/Toast'
+import { notify } from '../common/Toast'
 import type { FavoriteTeleportActions } from './FavoriteItem'
 import { PikminSourceAttribution } from './PikminSourceAttribution'
 
@@ -67,7 +67,7 @@ export function PikminPureSpotsPanel({ favorites, onFavoritesChanged, onSelectPo
           if (sync.status === 'running') setError('首次資料同步中，完成後移動一下地圖即可載入。')
         }
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '讀取純點失敗')
+        if (!controller.signal.aborted) setError('讀取純點失敗，請稍後再試。')
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -84,9 +84,9 @@ export function PikminPureSpotsPanel({ favorites, onFavoritesChanged, onSelectPo
     try {
       await addPikminFavorite('purespot', spot.id)
       await onFavoritesChanged()
-      showToast(`已收藏「${spot.name}」`)
+      notify.success(`已收藏「${spot.name}」`)
     } catch (reason) {
-      showToast(reason instanceof Error ? reason.message : '收藏失敗')
+      notify.failure(reason, '收藏失敗，請稍後再試。')
     } finally {
       setAddingId(null)
     }
@@ -110,7 +110,7 @@ export function PikminPureSpotsPanel({ favorites, onFavoritesChanged, onSelectPo
       focusSpot(spot)
     } catch (reason) {
       if (typeSelectionRequestRef.current === requestId) {
-        setError(reason instanceof Error ? reason.message : '找不到這個種類的純點')
+        setError('找不到這個種類的純點，請稍後再試。')
       }
     } finally {
       if (typeSelectionRequestRef.current === requestId) setLoading(false)

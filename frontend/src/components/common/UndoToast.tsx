@@ -1,6 +1,7 @@
-import { createPortal } from 'react-dom'
+import { useEffect, useRef } from 'react'
 import { useT } from '../../i18n'
 import type { Favorite } from '../../services/api'
+import { notify } from './Toast'
 
 type Props = {
   pendingDeletes: Map<string, { favorite: Favorite }>
@@ -9,22 +10,30 @@ type Props = {
 
 export function UndoToast({ pendingDeletes, onUndo }: Props) {
   const t = useT()
-  const items = Array.from(pendingDeletes.entries())
-  if (items.length === 0) return null
+  const shownIdsRef = useRef<Set<string>>(new Set())
 
-  return createPortal(
-    <div className="undo-toast-stack">
-      {items.map(([id, { favorite }]) => (
-        <div key={id} className="undo-toast">
-          <span className="undo-toast-label">
-            {t('favorites.undo_delete')}: <strong>{favorite.name}</strong>
-          </span>
-          <button className="undo-toast-btn" onClick={() => onUndo(id)}>
-            {t('favorites.undo')}
-          </button>
-        </div>
-      ))}
-    </div>,
-    document.body,
-  )
+  useEffect(() => {
+    const nextIds = new Set(pendingDeletes.keys())
+    for (const id of shownIdsRef.current) {
+      if (!nextIds.has(id)) notify.hide(`favorite-delete:${id}`)
+    }
+    for (const [id, { favorite }] of pendingDeletes) {
+      if (shownIdsRef.current.has(id)) continue
+      notify.action({
+        id: `favorite-delete:${id}`,
+        message: `${t('favorites.undo_delete')}: ${favorite.name}`,
+        actionLabel: t('favorites.undo'),
+        onAction: () => onUndo(id),
+        tone: 'warning',
+        autoClose: false,
+      })
+    }
+    shownIdsRef.current = nextIds
+  }, [onUndo, pendingDeletes, t])
+
+  useEffect(() => () => {
+    for (const id of shownIdsRef.current) notify.hide(`favorite-delete:${id}`)
+  }, [])
+
+  return null
 }

@@ -18,13 +18,19 @@ const mocks = vi.hoisted(() => {
     optimizeRouteOrder: vi.fn(),
     reorderValidWaypoints: vi.fn(() => 1),
     restoreItems: vi.fn(() => 2),
+    setAllWaypoints: vi.fn(),
+    notify: {
+      action: vi.fn(), error: vi.fn(), failure: vi.fn(), hide: vi.fn(),
+      info: vi.fn(), success: vi.fn(), warning: vi.fn(),
+    },
     showToast: vi.fn(),
     writeText: vi.fn(),
+    translate: (key: string) => key,
   }
 })
 
-vi.mock('../../i18n', () => ({ useT: () => (key: string) => key }))
-vi.mock('../common/Toast', () => ({ showToast: mocks.showToast }))
+vi.mock('../../i18n', () => ({ useT: () => mocks.translate }))
+vi.mock('../common/Toast', () => ({ notify: mocks.notify, showToast: mocks.showToast }))
 vi.mock('./routeOptimizer', () => ({
   MAX_OPTIMIZABLE_POINTS: 500,
   optimizeRouteOrder: mocks.optimizeRouteOrder,
@@ -39,9 +45,9 @@ vi.mock('../../hooks/useWaypointList', () => ({
     addWaypoint: vi.fn(),
     insertWaypointAfter: vi.fn(),
     removeWaypoint: vi.fn(),
-    moveWaypoint: vi.fn(),
+    reorderWaypoint: vi.fn(),
     clearAllWaypoints: vi.fn(),
-    setAllWaypoints: vi.fn(),
+    setAllWaypoints: mocks.setAllWaypoints,
     reorderValidWaypoints: mocks.reorderValidWaypoints,
     restoreItems: mocks.restoreItems,
   }),
@@ -85,7 +91,9 @@ describe('MultiStopPanel route optimization lifecycle', () => {
     mocks.optimizeRouteOrder.mockReset()
     mocks.reorderValidWaypoints.mockClear()
     mocks.restoreItems.mockClear()
+    mocks.setAllWaypoints.mockClear()
     mocks.showToast.mockClear()
+    Object.values(mocks.notify).forEach((mock) => mock.mockClear())
     mocks.writeText.mockReset().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -118,11 +126,11 @@ describe('MultiStopPanel route optimization lifecycle', () => {
     render(<MantineProvider><MultiStopPanel {...defaultProps} /></MantineProvider>)
 
     fireEvent.click(screen.getByRole('button', { name: 'multistop.optimize_order' }))
-    expect(screen.getByRole('button', { name: 'multistop.undo_optimize' })).toBeDefined()
+    expect(mocks.notify.action).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole('button', { name: 'multistop.optimize_order' }))
-    expect(screen.getByRole('button', { name: 'multistop.undo_optimize' })).toBeDefined()
-    expect(mocks.showToast).toHaveBeenCalledWith('multistop.optimize_no_change')
+    expect(mocks.notify.action).toHaveBeenCalledOnce()
+    expect(mocks.notify.info).toHaveBeenCalledWith('multistop.optimize_no_change')
   })
 
   it('clears Undo when the editor mode or Flower route type changes', () => {
@@ -131,12 +139,12 @@ describe('MultiStopPanel route optimization lifecycle', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'multistop.optimize_order' }))
     fireEvent.click(screen.getByText('種花模式'))
-    expect(screen.queryByRole('button', { name: 'multistop.undo_optimize' })).toBeNull()
+    expect(mocks.notify.hide).toHaveBeenCalledWith('route-optimize:dev-1')
 
     fireEvent.click(screen.getByRole('button', { name: 'multistop.optimize_order' }))
-    expect(screen.getByRole('button', { name: 'multistop.undo_optimize' })).toBeDefined()
+    expect(mocks.notify.action).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByText('回到起點'))
-    expect(screen.queryByRole('button', { name: 'multistop.undo_optimize' })).toBeNull()
+    expect(mocks.notify.hide).toHaveBeenLastCalledWith('route-optimize:dev-1')
   })
 
   it('does not render optimization controls while a route is active', () => {
@@ -156,6 +164,36 @@ describe('MultiStopPanel route optimization lifecycle', () => {
       '25.020000, 121.020000',
       '25.010000, 121.010000',
     ].join('\n')))
-    expect(mocks.showToast).toHaveBeenCalledWith('multistop.export_coordinates_success')
+    expect(mocks.notify.success).toHaveBeenCalledWith('multistop.export_coordinates_success')
+  })
+
+  it('loads only coordinates and switches submode for a cross-mode Flower import', async () => {
+    const clearSavedRouteImport = vi.fn()
+    const route = {
+      id: 'route-1',
+      name: '公園循環',
+      source_mode: 'route_loop' as const,
+      waypoints: [{ lat: 25.03, lng: 121.53 }, { lat: 25.04, lng: 121.54 }],
+      runtime_config: { speed_kmh: 12 },
+      created_at: 1,
+      updated_at: 1,
+    }
+    render(
+      <MantineProvider>
+        <MultiStopPanel
+          {...defaultProps}
+          savedRouteImport={{ requestId: 7, route, targetMode: 'flower' }}
+          clearSavedRouteImport={clearSavedRouteImport}
+        />
+      </MantineProvider>,
+    )
+
+    await waitFor(() => expect(mocks.setAllWaypoints).toHaveBeenCalledWith(route.waypoints))
+    expect(clearSavedRouteImport).toHaveBeenCalledWith('dev-1', 7)
+    expect(mocks.notify.warning).toHaveBeenCalledWith(
+      'route_library.loaded_coordinates',
+      { id: 'route-load:dev-1' },
+    )
+    expect(screen.getAllByText('種花模式').length).toBeGreaterThan(0)
   })
 })

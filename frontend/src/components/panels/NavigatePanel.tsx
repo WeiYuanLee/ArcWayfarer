@@ -10,12 +10,13 @@ import { ActiveFlightHUD } from './ActiveFlightHUD'
 import { FavoriteButton } from './FavoriteButton'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
-import { showToast } from '../common/Toast'
+import { notify, showToast } from '../common/Toast'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 import { useT } from '../../i18n'
 import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSection, PanelStatus } from './ui'
 import { limitDisplayPath } from '../../utils/pathGeometry'
 
-type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
+type Status = { kind: 'idle' | 'busy' }
 type PreviewStatus = { kind: 'idle' | 'loading' | 'ready' | 'error' }
 
 export function NavigatePanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveEtaSeconds, liveStopIndex, connected, requestPoint, setOverlay }: PanelProps) {
@@ -113,7 +114,11 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
               onClick: async () => {
                 if (!deviceId) return
                 try { await setLocation(deviceId, lat, lng) }
-                catch (e) { setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_start') }) }
+                catch (e) {
+                  const message = t('teleport.status.set_failed')
+                  setStatus({ kind: 'idle' })
+                  notify.failure(e, message, { id: `navigate:teleport:${deviceId}` })
+                }
               },
             },
             {
@@ -137,7 +142,9 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       pushHistory({ lat: start.lat, lng: start.lng, kind: 'navigate' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_start') })
+      const message = t('navigate.status.failed_start')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `navigate:start:${deviceId}` })
     }
   }
 
@@ -148,7 +155,9 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       await stopNavigate(deviceId)
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_stop') })
+      const message = t('navigate.status.failed_stop')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `navigate:stop:${deviceId}` })
     }
   }
 
@@ -163,7 +172,9 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
       }
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('navigate.status.failed_update') })
+      const message = t('navigate.status.failed_update')
+      setStatus({ kind: 'idle' })
+      notify.failure(e, message, { id: `navigate:update:${deviceId}` })
     }
   }
 
@@ -199,7 +210,7 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
   const durationMin = distanceKm !== null ? estimateDurationMinutes(distanceKm, speedKmh) : null
   const notices = <>
     {!deviceId && <PanelNotice>{t('panel.hint.select_device')}</PanelNotice>}
-    {deviceId && !deviceReady && <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>}
+    {deviceId && !deviceReady && <PanelNotice tone="warning">{device ? deviceStatusMessage(device, t) : t('panel.hint.device_not_ready')}</PanelNotice>}
     {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
   </>
 
@@ -212,14 +223,12 @@ export function NavigatePanel({ deviceId, device, deviceState, livePosition, liv
         notices={!isActive ? notices : undefined}
         footer={!isActive ? <PanelFooter><PlaybackControls canStart={canStart} isActive={isActive} isPaused={isPaused} isBusy={isBusy} onStart={handleStart} onPauseResume={handlePauseResume} onStop={handleStop} /></PanelFooter> : undefined}
         status={
-          status.kind === 'busy' ? <PanelStatus state="busy" message={t('generic.working')} />
-            : status.kind === 'error' ? <PanelStatus state="error" message={status.message} />
-              : previewStatus.kind === 'loading' ? <PanelStatus state="busy" message={t('navigate.preview.planning')} />
-                : previewStatus.kind === 'error' ? <Stack gap="xs">
-                  <PanelStatus state="error" message={t('navigate.preview.failed')} />
-                  <Button size="compact-sm" variant="default" onClick={() => setPreviewRevision((value) => value + 1)}>{t('navigate.preview.retry')}</Button>
-                </Stack>
-                  : undefined
+          previewStatus.kind === 'loading' ? <PanelStatus state="busy" message={t('navigate.preview.planning')} />
+            : previewStatus.kind === 'error' ? <Stack gap="xs">
+              <PanelStatus state="error" message={t('navigate.preview.failed')} />
+              <Button size="compact-sm" variant="default" onClick={() => setPreviewRevision((value) => value + 1)}>{t('navigate.preview.retry')}</Button>
+            </Stack>
+              : undefined
         }
       >
         {isActive ? <ActiveFlightHUD isRunning={isRunning} isPaused={isPaused} isBusy={isBusy} currentIndex={liveStopIndex ?? 1} totalPoints={2} liveSpeedMps={liveSpeedMps ?? null} liveEtaSeconds={liveEtaSeconds} livePosition={livePosition} routePath={routePath} waypoints={[start, end]} legLabel={t('navigate.active_leg')} connected={connected} onPauseResume={handlePauseResume} onStop={handleStop} /> : <>

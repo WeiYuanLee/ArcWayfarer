@@ -1,4 +1,4 @@
-import type { Device } from '../../services/api'
+import type { Device, SavedRoute, SavedRouteMode } from '../../services/api'
 import type { ActiveTask, FlowerProgress } from '../../hooks/useWebSocket'
 
 export type LatLng = { lat: number; lng: number }
@@ -6,6 +6,7 @@ export type LatLng = { lat: number; lng: number }
 export type DeviceState =
   | 'idle'
   | 'teleporting'
+  | 'gold_ditto'
   | 'navigating'
   | 'looping'
   | 'random_walk'
@@ -71,6 +72,12 @@ export type MapOverlay = {
 
 export const EMPTY_OVERLAY: MapOverlay = { markers: [], path: [], circle: null, circles: [], links: [] }
 
+export type SavedRouteImport = {
+  requestId: number
+  route: SavedRoute
+  targetMode: SavedRouteMode
+}
+
 export type PanelProps = {
   deviceId: string | null
   device: Device | null
@@ -93,4 +100,7 @@ export type PanelProps = {
   requestFlyTo: (lat: number, lng: number) => void
   sendWs: (type: string, data: unknown, udid?: string) => void
   restoreAll?: () => Promise<{ restored: number; failed: number }>
+  savedRouteImport?: SavedRouteImport | null
+  requestSavedRouteLoad?: (udid: string, route: SavedRoute, targetMode: SavedRouteMode) => void
+  clearSavedRouteImport?: (udid: string, requestId: number) => void
 }

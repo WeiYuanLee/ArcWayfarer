@@ -211,6 +211,82 @@ class LocationRestoreTests(unittest.IsolatedAsyncioTestCase):
         emit_position.assert_awaited_once_with("device-4", None, None)
         emit_restored.assert_awaited_once_with("device-4")
 
+    async def test_gold_ditto_holds_at_target_until_user_finishes(self) -> None:
+        async def run_now(_udid: str, operation):
+            return await operation()
+
+        session = simulation_engine.get_navigation_session("gold-start")
+        session.state = simulation_engine.SimulationState.IDLE
+        session.gold_ditto_origin = None
+        with (
+            patch.object(simulation_engine, "run_exclusive", side_effect=run_now),
+            patch.object(simulation_engine, "set_state", AsyncMock()) as set_state,
+            patch.object(device_session, "set_location", AsyncMock()) as set_location,
+            patch.object(device_session, "clear_location", AsyncMock()) as clear_location,
+            patch.object(events, "emit_position", AsyncMock()) as emit_position,
+        ):
+            await teleport.gold_ditto("gold-start", 22.018622, 120.850098, origin=(25.04, 121.52))
+
+        set_location.assert_awaited_once_with("gold-start", 22.018622, 120.850098)
+        clear_location.assert_not_awaited()
+        emit_position.assert_awaited_once_with("gold-start", 22.018622, 120.850098)
+        self.assertEqual(
+            [call.args for call in set_state.await_args_list],
+            [
+                ("gold-start", simulation_engine.SimulationState.TELEPORTING),
+                ("gold-start", simulation_engine.SimulationState.GOLD_DITTO),
+            ],
+        )
+        self.assertEqual(session.gold_ditto_origin, (25.04, 121.52))
+        simulation_engine._sessions.pop("gold-start", None)
+
+    async def test_gold_ditto_finish_returns_to_origin_then_clears_same_session(self) -> None:
+        session = simulation_engine.get_navigation_session("gold-finish")
+        session.state = simulation_engine.SimulationState.GOLD_DITTO
+        session.gold_ditto_origin = (25.04, 121.52)
+        command_order: list[str] = []
+        with (
+            patch.object(simulation_engine, "set_state", AsyncMock()) as set_state,
+            patch.object(
+                device_session,
+                "set_location",
+                AsyncMock(side_effect=lambda *_: command_order.append("origin")),
+            ) as set_location,
+            patch.object(
+                device_session,
+                "clear_location",
+                AsyncMock(side_effect=lambda *_, **__: command_order.append("clear")),
+            ) as clear_location,
+            patch.object(events, "emit_position", AsyncMock()) as emit_position,
+            patch.object(events, "emit_restored", AsyncMock()) as emit_restored,
+        ):
+            await teleport.finish_gold_ditto("gold-finish")
+
+        self.assertEqual(command_order, ["origin", "clear"])
+        set_location.assert_awaited_once_with("gold-finish", 25.04, 121.52)
+        clear_location.assert_awaited_once_with(
+            "gold-finish",
+            settle_seconds=0,
+            delivery_attempts=1,
+        )
+        self.assertEqual(
+            [call.args for call in emit_position.await_args_list],
+            [("gold-finish", 25.04, 121.52), ("gold-finish", None, None)],
+        )
+        emit_restored.assert_awaited_once_with("gold-finish")
+        set_state.assert_awaited_once_with("gold-finish", simulation_engine.SimulationState.IDLE)
+        self.assertIsNone(session.gold_ditto_origin)
+        simulation_engine._sessions.pop("gold-finish", None)
+
+    async def test_gold_ditto_finish_requires_waiting_state(self) -> None:
+        session = simulation_engine.get_navigation_session("gold-idle")
+        session.state = simulation_engine.SimulationState.IDLE
+
+        with self.assertRaisesRegex(ValueError, "not waiting"):
+            await teleport.finish_gold_ditto("gold-idle")
+
+        simulation_engine._sessions.pop("gold-idle", None)
+
 
 if __name__ == "__main__":
     unittest.main()

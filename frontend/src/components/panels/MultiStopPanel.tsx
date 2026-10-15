@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActionIcon, Alert, Badge, Button, FileButton, Group, Menu, SegmentedControl, Stack } from '@mantine/core'
-import { IconArrowDown, IconArrowUp, IconChevronDown, IconCopy, IconDownload, IconPlus, IconTrash } from '@tabler/icons-react'
+import { ActionIcon, Badge, Button, FileButton, Group, Menu, SegmentedControl, Stack, Text } from '@mantine/core'
+import { IconChevronDown, IconCopy, IconDownload, IconPlus } from '@tabler/icons-react'
 import { parseGpx } from './gpx'
 import {
   pauseMultiStop,
@@ -27,9 +27,12 @@ import { ModeInfoTooltip } from '../common/ModeInfoTooltip'
 import { ContextMenu, type ContextMenuItem } from '../common/ContextMenu'
 import { ConfirmModal } from '../common/ConfirmModal'
 import { PasteCoordinatesModal } from '../common/PasteCoordinatesModal'
-import { showToast } from '../common/Toast'
+import { notify, showToast } from '../common/Toast'
 import { useT } from '../../i18n'
 import { limitDisplayLegs, limitDisplayPath } from '../../utils/pathGeometry'
+import { SortableWaypointList } from './SortableWaypointList'
+import { RouteLibraryButton } from './RouteLibraryButton'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 
 import { useWaypointList } from '../../hooks/useWaypointList'
 import type { WayPointItem } from '../../hooks/useWaypointList'
@@ -40,13 +43,10 @@ import {
   PanelFooter,
   PanelNotice,
   PanelSection,
-  PanelStatus,
   ValidatedNumberInput,
 } from './ui'
 
-type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'error'; message: string }
-type ImportMessage = { kind: 'ok' | 'error'; text: string }
-
+type Status = { kind: 'idle' | 'busy' }
 const MULTI_STOP_DRAFT_PREFIX = 'arcwayfarer.multistop-draft.v1:'
 export const MULTI_STOP_DRAFT_TTL_MS = 30 * 60 * 1000
 
@@ -59,6 +59,7 @@ type MultiStopDraft = {
   pauseMax: number
   straightLine: boolean
   speedKmh: number
+  flowerSpeedKmh?: number
   jumpMode: boolean
   jumpPreDelay: number
   jumpPostDelay: number
@@ -71,6 +72,7 @@ type MultiStopDraft = {
   flowerPostWait: number
   flowerRouteType: 'stop_at_end' | 'return_to_start' | 'loop_forever'
   flowerRounds: number
+  flowerStart: number
 }
 
 export function readMultiStopDraft(deviceId: string | null): MultiStopDraft | null {
@@ -174,6 +176,9 @@ export function MultiStopPanel({
   cancelPointRequest,
   requestFlyTo,
   setOverlay,
+  savedRouteImport,
+  requestSavedRouteLoad,
+  clearSavedRouteImport,
 }: PanelProps) {
   const t = useT()
   const {
@@ -185,7 +190,7 @@ export function MultiStopPanel({
     addWaypoint,
     insertWaypointAfter,
     removeWaypoint,
-    moveWaypoint,
+    reorderWaypoint,
     clearAllWaypoints,
     setAllWaypoints,
     reorderValidWaypoints,
@@ -200,6 +205,7 @@ export function MultiStopPanel({
   const [pauseMax, setPauseMax] = useState(20)
   const [straightLine, setStraightLine] = useState(true)
   const [speedKmh, setSpeedKmh] = useState(5)
+  const [flowerSpeedKmh, setFlowerSpeedKmh] = useState(5)
   const [jumpMode, setJumpMode] = useState(false)
   const [jumpPreDelay, setJumpPreDelay] = useState(0)
   const [jumpPostDelay, setJumpPostDelay] = useState(2)
@@ -212,6 +218,7 @@ export function MultiStopPanel({
   const [flowerPostWait, setFlowerPostWait] = useState(2)
   const [flowerRouteType, setFlowerRouteType] = useState<'stop_at_end' | 'return_to_start' | 'loop_forever'>('stop_at_end')
   const [flowerRounds, setFlowerRounds] = useState(1)
+  const [flowerStart, setFlowerStart] = useState(1)
   const [numericValidity, setNumericValidity] = useState({
     jumpPreDelay: true,
     jumpPostDelay: true,
@@ -222,16 +229,16 @@ export function MultiStopPanel({
     flowerPreWait: true,
     flowerPostWait: true,
     flowerRounds: true,
+    flowerStart: true,
   })
   const [fruitOffsetOpen, setFruitOffsetOpen] = useState(false)
   const [optimizationUndo, setOptimizationUndo] = useState<{
     previousItems: WayPointItem[]
     expectedRevision: number
-    message: string
   } | null>(null)
+  const optimizationNoticeId = `route-optimize:${deviceId ?? 'none'}`
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
-  const [importMessage, setImportMessage] = useState<ImportMessage | null>(null)
   const [gpxFileName, setGpxFileName] = useState<string | null>(null)
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean
@@ -262,7 +269,7 @@ export function MultiStopPanel({
     : null
   const numericInputsValid = isFlower
     ? numericValidity.flowerRadius && numericValidity.flowerCircles && numericValidity.flowerPreWait && numericValidity.flowerPostWait
-      && (flowerRouteType !== 'return_to_start' || numericValidity.flowerRounds)
+      && numericValidity.flowerStart && (flowerRouteType !== 'return_to_start' || numericValidity.flowerRounds)
     : jumpMode
       ? numericValidity.jumpPreDelay && numericValidity.jumpPostDelay
       : !pauseEnabled || (numericValidity.pauseMin && numericValidity.pauseMax)
@@ -293,9 +300,10 @@ export function MultiStopPanel({
       if (typeof config.jump_mode === 'boolean') setJumpMode(config.jump_mode)
       if (typeof config.jump_pre_delay === 'number') setJumpPreDelay(config.jump_pre_delay)
       if (typeof config.jump_post_delay === 'number') setJumpPostDelay(config.jump_post_delay)
-      if (typeof config.custom_speed_kmh === 'number') setSpeedKmh(config.custom_speed_kmh)
       if (activeTask?.kind === 'flower') {
+        if (typeof config.custom_speed_kmh === 'number') setFlowerSpeedKmh(config.custom_speed_kmh)
         const flower = config.flower
+        if (typeof config.start_index === 'number') setFlowerStart(config.start_index + 1)
         if (flower) {
           setFlowerRadius(flower.radius_m)
           setFlowerCircles(flower.circles)
@@ -307,6 +315,7 @@ export function MultiStopPanel({
           if (typeof flower.rounds === 'number') setFlowerRounds(flower.rounds)
         }
       } else if (activeTask?.kind === 'multi_stop') {
+        if (typeof config.custom_speed_kmh === 'number') setSpeedKmh(config.custom_speed_kmh)
         setRoutePath(limitDisplayPath(activeTask.path))
       }
     } else if (draft) {
@@ -316,6 +325,7 @@ export function MultiStopPanel({
       setPauseMax(draft.pauseMax)
       setStraightLine(draft.straightLine)
       setSpeedKmh(draft.speedKmh)
+      setFlowerSpeedKmh(draft.flowerSpeedKmh ?? Math.min(draft.speedKmh, 40))
       setJumpMode(draft.jumpMode)
       setJumpPreDelay(draft.jumpPreDelay)
       setJumpPostDelay(draft.jumpPostDelay)
@@ -328,6 +338,7 @@ export function MultiStopPanel({
       setFlowerPostWait(draft.flowerPostWait)
       setFlowerRouteType(draft.flowerRouteType)
       setFlowerRounds(draft.flowerRounds)
+      if (typeof draft.flowerStart === 'number') setFlowerStart(draft.flowerStart)
     }
     hydratedSourceRef.current = source
   }, [activeTask, deviceId, setAllWaypoints])
@@ -337,16 +348,68 @@ export function MultiStopPanel({
     const draft: MultiStopDraft = {
       savedAt: Date.now(),
       waypoints: validWaypoints, navMode, pauseEnabled, pauseMin, pauseMax,
-      straightLine, speedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab,
+      straightLine, speedKmh, flowerSpeedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab,
       flowerRadius, flowerCircles, flowerSegments, flowerPathStrategy,
-      flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds,
+      flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds, flowerStart,
     }
     try {
       window.localStorage.setItem(`${MULTI_STOP_DRAFT_PREFIX}${deviceId.toLowerCase()}`, JSON.stringify(draft))
     } catch {
       // Draft persistence is best-effort; the backend task remains authoritative.
     }
-  }, [deviceId, validWaypoints, navMode, pauseEnabled, pauseMin, pauseMax, straightLine, speedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab, flowerRadius, flowerCircles, flowerSegments, flowerPathStrategy, flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds])
+  }, [deviceId, validWaypoints, navMode, pauseEnabled, pauseMin, pauseMax, straightLine, speedKmh, flowerSpeedKmh, jumpMode, jumpPreDelay, jumpPostDelay, subtab, flowerRadius, flowerCircles, flowerSegments, flowerPathStrategy, flowerPreWait, flowerPostWait, flowerRouteType, flowerRounds, flowerStart])
+
+  useEffect(() => {
+    const pending = savedRouteImport
+    if (!pending || !deviceId || (pending.targetMode !== 'multi_stop' && pending.targetMode !== 'flower')) return
+    const route = pending.route
+    const targetSubtab = pending.targetMode === 'flower' ? 'flower' : 'multi'
+    setSubtab(targetSubtab)
+    setAllWaypoints(route.waypoints)
+    if (route.source_mode === pending.targetMode) {
+      const config = route.runtime_config
+      if (config.nav_mode) setNavMode(config.nav_mode)
+      if (typeof config.speed_kmh === 'number') {
+        if (pending.targetMode === 'flower') setFlowerSpeedKmh(config.speed_kmh)
+        else setSpeedKmh(config.speed_kmh)
+      }
+      if (typeof config.straight_line === 'boolean') setStraightLine(config.straight_line)
+      if (pending.targetMode === 'multi_stop') {
+        if (typeof config.pause_enabled === 'boolean') setPauseEnabled(config.pause_enabled)
+        if (typeof config.pause_min === 'number') setPauseMin(config.pause_min)
+        if (typeof config.pause_max === 'number') setPauseMax(config.pause_max)
+        if (typeof config.jump_mode === 'boolean') setJumpMode(config.jump_mode)
+        if (typeof config.jump_pre_delay === 'number') setJumpPreDelay(config.jump_pre_delay)
+        if (typeof config.jump_post_delay === 'number') setJumpPostDelay(config.jump_post_delay)
+      } else {
+        if (typeof config.flower_radius === 'number') setFlowerRadius(config.flower_radius)
+        if (typeof config.flower_circles === 'number') setFlowerCircles(config.flower_circles)
+        if (typeof config.flower_segments === 'number') setFlowerSegments(config.flower_segments)
+        if (config.flower_path_strategy) setFlowerPathStrategy(config.flower_path_strategy)
+        if (typeof config.flower_pre_wait === 'number') setFlowerPreWait(config.flower_pre_wait)
+        if (typeof config.flower_post_wait === 'number') setFlowerPostWait(config.flower_post_wait)
+        if (config.flower_route_type) setFlowerRouteType(config.flower_route_type)
+        if (typeof config.flower_rounds === 'number') setFlowerRounds(config.flower_rounds)
+      }
+      notify.success(t('route_library.loaded_full').replace('{name}', route.name), {
+        id: `route-load:${deviceId}`,
+      })
+    } else {
+      notify.warning(
+        t('route_library.loaded_coordinates')
+          .replace('{name}', route.name)
+          .replace('{source}', t(`route_library.mode.${route.source_mode}`)),
+        { id: `route-load:${deviceId}` },
+      )
+    }
+    clearSavedRouteImport?.(deviceId, pending.requestId)
+  }, [clearSavedRouteImport, deviceId, savedRouteImport, setAllWaypoints, t])
+
+  useEffect(() => {
+    if (validWaypoints.length > 0) {
+      setFlowerStart((current) => Math.min(current, validWaypoints.length))
+    }
+  }, [validWaypoints.length])
 
   // Auto fill waypoint 1 with live position if empty
   useEffect(() => {
@@ -386,8 +449,9 @@ export function MultiStopPanel({
   useEffect(() => {
     if (optimizationUndo && revision !== optimizationUndo.expectedRevision) {
       setOptimizationUndo(null)
+      notify.hide(optimizationNoticeId)
     }
-  }, [optimizationUndo, revision])
+  }, [optimizationNoticeId, optimizationUndo, revision])
 
   function handleAddWaypoint() {
     focusNewWaypointRef.current = true
@@ -400,7 +464,7 @@ export function MultiStopPanel({
       isClosedLoop: isFlower && flowerRouteType !== 'stop_at_end',
     })
     if (result.wasLimited) {
-      showToast(t('multistop.optimize_too_many'))
+      notify.warning(t('multistop.optimize_too_many'))
       return
     }
     const orderChanged = result.order.some((originalIndex, position) => originalIndex !== position)
@@ -408,10 +472,11 @@ export function MultiStopPanel({
       item.point === null && items.slice(index + 1).some((laterItem) => laterItem.point !== null),
     )
     if (!orderChanged && !hasInvalidBeforeValid) {
-      showToast(t('multistop.optimize_no_change'))
+      notify.info(t('multistop.optimize_no_change'))
       return
     }
 
+    const previousItems = items.map((item) => ({ ...item }))
     const expectedRevision = reorderValidWaypoints(result.order)
     const hasMeaningfulSaving = result.savedDistance >= 1
     const savedText = result.savedDistance >= 1000
@@ -429,16 +494,18 @@ export function MultiStopPanel({
             : 0))
         : t('multistop.optimize_reordered')
     setOptimizationUndo({
-      previousItems: items.map((item) => ({ ...item })),
+      previousItems,
       expectedRevision,
-      message,
     })
-  }
-
-  function handleUndoOptimization() {
-    if (!optimizationUndo || revision !== optimizationUndo.expectedRevision) return
-    restoreItems(optimizationUndo.previousItems)
-    setOptimizationUndo(null)
+    notify.action({
+      id: optimizationNoticeId,
+      message,
+      actionLabel: t('multistop.undo_optimize'),
+      onAction: () => {
+        restoreItems(previousItems)
+        setOptimizationUndo(null)
+      },
+    })
   }
 
   const [contextMenu, setContextMenu] = useState<{
@@ -487,7 +554,8 @@ export function MultiStopPanel({
                           try {
                             await setLocation(deviceId, item.point.lat, item.point.lng)
                           } catch (e) {
-                            setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                            setStatus({ kind: 'idle' })
+                            notify.failure(e, t('teleport.status.set_failed'), { id: `multi-stop:teleport:${deviceId}` })
                           }
                         },
                       },
@@ -551,7 +619,8 @@ export function MultiStopPanel({
                 try {
                   await setLocation(deviceId, lat, lng)
                 } catch (e) {
-                  setStatus({ kind: 'error', message: e instanceof Error ? e.message : 'Teleport failed' })
+                  setStatus({ kind: 'idle' })
+                  notify.failure(e, t('teleport.status.set_failed'), { id: `multi-stop:teleport:${deviceId}` })
                 }
               },
             },
@@ -577,13 +646,11 @@ export function MultiStopPanel({
       onConfirm: () => {
         clearAllWaypoints()
         setGpxFileName(null)
-        setImportMessage(null)
       },
     })
   }
 
   async function processUnifiedImportFile(file: File) {
-    setImportMessage(null)
     const isJson = file.name.toLowerCase().endsWith('.json')
     try {
       const text = await file.text()
@@ -592,7 +659,10 @@ export function MultiStopPanel({
           const data = JSON.parse(text)
           if (Array.isArray(data.waypoints) && data.waypoints.length > 0) {
             setAllWaypoints(data.waypoints)
-            if (typeof data.speedKmh === 'number') setSpeedKmh(data.speedKmh)
+            if (typeof data.speedKmh === 'number') {
+              if (isFlower) setFlowerSpeedKmh(Math.min(data.speedKmh, 40))
+              else setSpeedKmh(data.speedKmh)
+            }
             if (data.navMode) setNavMode(data.navMode)
             if (typeof data.straightLine === 'boolean') setStraightLine(data.straightLine)
             if (typeof data.jumpMode === 'boolean') setJumpMode(data.jumpMode)
@@ -602,7 +672,7 @@ export function MultiStopPanel({
             if (typeof data.pauseMin === 'number') setPauseMin(data.pauseMin)
             if (typeof data.pauseMax === 'number') setPauseMax(data.pauseMax)
             requestFlyTo(data.waypoints[0].lat, data.waypoints[0].lng)
-            setImportMessage({ kind: 'ok', text: t('multistop.import_template_success') })
+            notify.success(t('multistop.import_template_success'))
             return
           }
         } catch {
@@ -616,13 +686,13 @@ export function MultiStopPanel({
         setAllWaypoints(points)
         setGpxFileName(file.name)
         requestFlyTo(points[0].lat, points[0].lng)
-        setImportMessage({ kind: 'ok', text: t('multistop.import_gpx_success') })
+        notify.success(t('multistop.import_gpx_success'))
         return
       }
 
-      setImportMessage({ kind: 'error', text: t('multistop.import_unrecognized_file') })
+      notify.error(t('multistop.import_unrecognized_file'))
     } catch {
-      setImportMessage({ kind: 'error', text: t('multistop.import_file_failed') })
+      notify.error(t('multistop.import_file_failed'))
     }
   }
 
@@ -642,12 +712,12 @@ export function MultiStopPanel({
   function processPasteSubmit() {
     const { points, invalidCount } = parsePastedPoints(pasteText)
     if (points.length === 0) {
-      setImportMessage({ kind: 'error', text: t('multistop.paste_empty') })
+      notify.error(t('multistop.paste_empty'))
       return
     }
     setAllWaypoints(points)
     requestFlyTo(points[0].lat, points[0].lng)
-    setImportMessage(invalidCount > 0 ? { kind: 'ok', text: t('multistop.import_partial') } : null)
+    if (invalidCount > 0) notify.warning(t('multistop.import_partial'))
     setPasteOpen(false)
     setPasteText('')
   }
@@ -671,7 +741,7 @@ export function MultiStopPanel({
       version: '1.0',
       kind: 'multi_stop',
       name: `MultiStop_Route_${new Date().toISOString().slice(0, 10)}`,
-      speedKmh,
+      speedKmh: isFlower ? flowerSpeedKmh : speedKmh,
       navMode,
       straightLine,
       jumpMode,
@@ -698,9 +768,9 @@ export function MultiStopPanel({
       .join('\n')
     try {
       await navigator.clipboard.writeText(coordinates)
-      showToast(t('multistop.export_coordinates_success').replace('{count}', String(validWaypoints.length)))
+      notify.success(t('multistop.export_coordinates_success').replace('{count}', String(validWaypoints.length)))
     } catch {
-      showToast(t('multistop.export_coordinates_failed'))
+      notify.error(t('multistop.export_coordinates_failed'))
     }
   }
 
@@ -710,6 +780,7 @@ export function MultiStopPanel({
     // route must disarm its pending map pick before the user changes device.
     cancelPointRequest?.()
     setOptimizationUndo(null)
+    notify.hide(optimizationNoticeId)
     setStatus({ kind: 'busy' })
     try {
       if (isFlower) {
@@ -725,10 +796,16 @@ export function MultiStopPanel({
           route_type: flowerRouteType,
           rounds: flowerRouteType === 'return_to_start' ? flowerRounds : flowerRouteType === 'loop_forever' ? 'infinite' : 1,
         }
-        const result = await startFlower(deviceId, navMode, validWaypoints, flower, { straightLine, jumpMode, customSpeedKmh: speedKmh })
+        const result = await startFlower(deviceId, navMode, validWaypoints, flower, {
+          straightLine,
+          jumpMode,
+          customSpeedKmh: flowerSpeedKmh,
+          startIndex: flowerStart - 1,
+        })
         setRoutePath([])
         setRouteLegs(limitDisplayLegs(result.legs))
-        pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'multi_stop' }).catch(() => {})
+        const startingFlower = validWaypoints[flowerStart - 1]
+        pushHistory({ lat: startingFlower.lat, lng: startingFlower.lng, kind: 'multi_stop' }).catch(() => {})
         setStatus({ kind: 'idle' })
         return
       }
@@ -744,20 +821,26 @@ export function MultiStopPanel({
       pushHistory({ lat: validWaypoints[0].lat, lng: validWaypoints[0].lng, kind: 'multi_stop' }).catch(() => {})
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('multistop.status.failed_start') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('multistop.status.failed_start'), { id: `multi-stop:start:${deviceId}` })
     }
   }
 
   async function handleStop() {
     if (!deviceId) return
+    const stoppedFlower = isFlower && flowerProgress
+      ? Math.min(Math.max(1, flowerProgress.flowerIndex), Math.max(1, validWaypoints.length))
+      : null
     setStatus({ kind: 'busy' })
     try {
       await stopMultiStop(deviceId)
+      if (stoppedFlower !== null) setFlowerStart(stoppedFlower)
       setRoutePath([])
       setRouteLegs([])
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('multistop.status.failed_stop') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('multistop.status.failed_stop'), { id: `multi-stop:stop:${deviceId}` })
     }
   }
 
@@ -772,7 +855,8 @@ export function MultiStopPanel({
       }
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : t('multistop.status.failed_update') })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('multistop.status.failed_update'), { id: `multi-stop:update:${deviceId}` })
     }
   }
 
@@ -783,7 +867,8 @@ export function MultiStopPanel({
       await skipFlower(deviceId)
       setStatus({ kind: 'idle' })
     } catch (e) {
-      setStatus({ kind: 'error', message: e instanceof Error ? e.message : '跳過此花失敗。' })
+      setStatus({ kind: 'idle' })
+      notify.failure(e, t('multistop.status.failed_skip_flower'), { id: `flower:skip:${deviceId}` })
     }
   }
 
@@ -791,27 +876,78 @@ export function MultiStopPanel({
     <>
       {!deviceId && <PanelNotice tone="info">{t('panel.hint.select_device')}</PanelNotice>}
       {deviceId && !deviceReady && (
-        <PanelNotice tone="warning">{device?.detail ?? t('panel.hint.device_not_ready')}</PanelNotice>
+        <PanelNotice tone="warning">{device ? deviceStatusMessage(device, t) : t('panel.hint.device_not_ready')}</PanelNotice>
       )}
       {deviceState === 'teleporting' && <PanelNotice tone="warning">{t('panel.hint.teleporting')}</PanelNotice>}
     </>
   )
-
-  const statusMessage = status.kind === 'busy'
-    ? <PanelStatus state="busy" message={t('generic.working')} />
-    : status.kind === 'error' ? <PanelStatus state="error" message={status.message} /> : undefined
 
   return (
     <div className={`panel${isActive ? ' multistop-panel--active' : ' multistop-panel--editor'}`}>
       <ModePanelLayout
         title={isFlower ? '種花模式' : t('multistop.title')}
         titleStatus={isActive ? <Badge size="sm" variant="light" color={isPaused ? 'yellow' : 'green'}>{isPaused ? t('panel.paused') : t('generic.working')}</Badge> : undefined}
-        headerAction={<ModeInfoTooltip description={t('multistop.description')} />}
+        headerAction={(
+          <Group gap={4} wrap="nowrap">
+            <ModeInfoTooltip description={t('multistop.description')} />
+            <RouteLibraryButton
+              deviceId={deviceId}
+              currentMode={isFlower ? 'flower' : 'multi_stop'}
+              waypoints={validWaypoints}
+              runtimeConfig={isFlower ? {
+                nav_mode: navMode,
+                speed_kmh: flowerSpeedKmh,
+                straight_line: straightLine,
+                jump_mode: jumpMode,
+                flower_radius: flowerRadius,
+                flower_circles: flowerCircles,
+                flower_segments: flowerSegments,
+                flower_path_strategy: flowerPathStrategy,
+                flower_pre_wait: flowerPreWait,
+                flower_post_wait: flowerPostWait,
+                flower_route_type: flowerRouteType,
+                flower_rounds: flowerRounds,
+              } : {
+                nav_mode: navMode,
+                speed_kmh: speedKmh,
+                straight_line: straightLine,
+                pause_enabled: pauseEnabled,
+                pause_min: pauseMin,
+                pause_max: pauseMax,
+                jump_mode: jumpMode,
+                jump_pre_delay: jumpPreDelay,
+                jump_post_delay: jumpPostDelay,
+              }}
+              anchor={livePosition}
+              disabled={isActive || isBusy}
+              onLoad={(route, targetMode) => {
+                if (deviceId) requestSavedRouteLoad?.(deviceId, route, targetMode)
+              }}
+            />
+          </Group>
+        )}
         alwaysShowScrollbar={!isActive}
         constrainBody={!isActive}
         notices={!isActive ? notices : undefined}
         footer={!isActive ? (
           <PanelFooter>
+            {isFlower && (
+              <Group gap="xs" wrap="nowrap" w="100%">
+                <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>從第</Text>
+                <ValidatedNumberInput
+                  aria-label="起始花朵"
+                  size="xs"
+                  min={1}
+                  max={Math.max(1, validWaypoints.length)}
+                  value={flowerStart}
+                  onChange={(value) => setFlowerStart(Math.trunc(value))}
+                  onValidityChange={(valid) => setNumericFieldValidity('flowerStart', valid)}
+                  style={{ width: 82 }}
+                />
+                <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>朵開始</Text>
+                <Text size="xs" c="dimmed" ml="auto">共 {validWaypoints.length} 朵</Text>
+              </Group>
+            )}
             <PlaybackControls
               canStart={canStart}
               isActive={isActive}
@@ -823,7 +959,6 @@ export function MultiStopPanel({
             />
           </PanelFooter>
         ) : undefined}
-        status={statusMessage}
       >
       {!isActive && (
         <SegmentedControl
@@ -833,6 +968,7 @@ export function MultiStopPanel({
           onChange={(value) => {
             setSubtab(value as 'multi' | 'flower')
             setOptimizationUndo(null)
+            notify.hide(optimizationNoticeId)
           }}
           data={[
             { label: '基礎模式', value: 'multi' },
@@ -877,31 +1013,18 @@ export function MultiStopPanel({
               </Group>
             )}
 
-            <Stack gap="xs" className="route-loop-waypoint-list">
-              {items.map((item, idx) => (
-                <Group className="route-loop-waypoint-row" key={item.id} wrap="nowrap" gap="xs" ref={idx === items.length - 1 ? lastWaypointRef : undefined}>
-                    <Badge variant="light" color={isFlower ? 'pink' : 'gray'} circle>{idx + 1}</Badge>
-                  <CoordinateField size="xs"
-                    placeholder="lat, lng or URL"
-                    value={item.rawText}
-                    style={{ flex: 1 }}
-                    onFocus={() => {
-                      requestPoint((lat, lng) => updateWaypoint(idx, { lat, lng }))
-                    }}
-                    onChange={(value) => handleTextChange(idx, value)}
-                  />
-                  <Group gap={2} wrap="nowrap">
-                    <ActionIcon variant="subtle" disabled={idx === 0} onClick={() => moveWaypoint(idx, 'up')} aria-label="Move Up"><IconArrowUp size={16} /></ActionIcon>
-                    <ActionIcon variant="subtle" disabled={idx === items.length - 1} onClick={() => moveWaypoint(idx, 'down')} aria-label="Move Down"><IconArrowDown size={16} /></ActionIcon>
-                    <ActionIcon color="red" variant="subtle"
-                      disabled={isLocked || items.length <= (isFlower ? 1 : 2)}
-                      onClick={() => removeWaypoint(idx)}
-                      title={t('panel.remove_waypoint')}
-                    aria-label={t('panel.remove_waypoint')}><IconTrash size={16} /></ActionIcon>
-                  </Group>
-                </Group>
-              ))}
-            </Stack>
+            <SortableWaypointList
+              items={items}
+              badgeColor={isFlower ? 'pink' : 'gray'}
+              disabled={isLocked}
+              minimumItems={isFlower ? 1 : 2}
+              lastItemRef={lastWaypointRef}
+              requestPoint={requestPoint}
+              updateWaypoint={updateWaypoint}
+              handleTextChange={handleTextChange}
+              removeWaypoint={removeWaypoint}
+              reorderWaypoint={reorderWaypoint}
+            />
 
             <Group grow gap="xs"><Button fullWidth size="compact-sm" variant="default" leftSection={<IconPlus size={14} />} onClick={handleAddWaypoint}>{t('panel.add_waypoint')}</Button><Button fullWidth size="compact-sm" color="red" variant="default" onClick={handleClearAllWaypoints}>{t('multistop.action.clear_all')}</Button></Group>
             <Group grow gap="xs">
@@ -933,7 +1056,6 @@ export function MultiStopPanel({
             <Button fullWidth size="compact-sm" variant="default" onClick={() => setPasteOpen(true)}>{t('multistop.paste_coords')}</Button>
             </Group>
 
-            {importMessage && <PanelStatus state={importMessage.kind === 'error' ? 'error' : 'success'} message={importMessage.text} />}
             <Button
               fullWidth
               size="compact-sm"
@@ -948,16 +1070,6 @@ export function MultiStopPanel({
             </Button>
             {validWaypoints.length > MAX_OPTIMIZABLE_POINTS && (
               <PanelNotice tone="warning">{t('multistop.optimize_too_many')}</PanelNotice>
-            )}
-            {optimizationUndo && (
-              <Alert color="green" variant="light" py="xs">
-                <Group justify="space-between" wrap="nowrap" gap="xs">
-                  <span>{optimizationUndo.message}</span>
-                  <Button size="compact-xs" variant="subtle" onClick={handleUndoOptimization}>
-                    {t('multistop.undo_optimize')}
-                  </Button>
-                </Group>
-              </Alert>
             )}
             {isFlower && <Button fullWidth size="compact-sm" variant="default" onClick={() => setFruitOffsetOpen(true)} disabled={!validWaypoints.length}>產生建議領果座標</Button>}
           </PanelSection>
@@ -1013,11 +1125,12 @@ export function MultiStopPanel({
           {(!jumpMode || isFlower) && (
             <PanelSection>
               <SpeedSlider
-                valueKmh={speedKmh}
+                valueKmh={isFlower ? flowerSpeedKmh : speedKmh}
                 navMode={navMode}
-                onChange={setSpeedKmh}
+                onChange={isFlower ? setFlowerSpeedKmh : setSpeedKmh}
                 onNavModeChange={setNavMode}
                 disabled={isActive}
+                allowTurbo={!isFlower}
               />
             </PanelSection>
           )}
@@ -1041,6 +1154,7 @@ export function MultiStopPanel({
               <SegmentedControl fullWidth size="xs" value={flowerRouteType} onChange={(v) => {
                 setFlowerRouteType(v as 'stop_at_end' | 'return_to_start' | 'loop_forever')
                 setOptimizationUndo(null)
+                notify.hide(optimizationNoticeId)
               }} data={[{ label: '停在終點', value: 'stop_at_end' }, { label: '回到起點', value: 'return_to_start' }, { label: '持續循環', value: 'loop_forever' }]} />
               {flowerRouteType === 'return_to_start' && <ValidatedNumberInput label="巡迴輪數" min={1} max={20} value={flowerRounds} onChange={setFlowerRounds} onValidityChange={(valid) => setNumericFieldValidity('flowerRounds', valid)} />}
             </PanelSection>

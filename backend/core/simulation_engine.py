@@ -15,11 +15,16 @@ logger = logging.getLogger(__name__)
 class SimulationState(str, Enum):
     IDLE = "idle"
     TELEPORTING = "teleporting"
+    GOLD_DITTO = "gold_ditto"
     NAVIGATING = "navigating"
     LOOPING = "looping"
     RANDOM_WALK = "random_walk"
     JOYSTICK = "joystick"
     PAUSED = "paused"
+
+
+class SimulationStateError(ValueError):
+    """Raised when a command is only valid from a different device state."""
 
 
 NextLegFn = Callable[[Optional[tuple[float, float]]], Awaitable[Optional[tuple[list[tuple[float, float]], float]]]]
@@ -40,6 +45,7 @@ class NavigationSession:
         self.paused_from: Optional[SimulationState] = None
         self.joystick_input: Optional[dict] = None
         self.joystick_position: Optional[tuple[float, float]] = None
+        self.gold_ditto_origin: Optional[tuple[float, float]] = None
         # A mobile controller may connect after a task has already started.
         # Keep a display-only task snapshot so it can show the active route.
         self.active_path: list[tuple[float, float]] = []
@@ -97,7 +103,10 @@ def get_active_task_snapshots() -> list[dict]:
     """Return display-only active task data for newly connected controllers."""
     snapshots = []
     for session in _sessions.values():
-        if session.state == SimulationState.IDLE:
+        # Gold Ditto is a persistent control state, not a navigation task. Its
+        # state is already carried by the websocket state snapshot; exposing it
+        # here would make clients render a fake route task after reconnecting.
+        if session.state in (SimulationState.IDLE, SimulationState.GOLD_DITTO):
             continue
         state = session.state.value
         if session.state == SimulationState.PAUSED and session.paused_from:
@@ -346,7 +355,13 @@ async def ensure_stopped(udid: str) -> None:
             await set_state(udid, SimulationState.IDLE)
 
 
-async def run_exclusive(udid: str, operation: Callable[[], Awaitable[T]]) -> T:
+async def run_exclusive(
+    udid: str,
+    operation: Callable[[], Awaitable[T]],
+    *,
+    required_state: SimulationState | None = None,
+    reset_state: bool = True,
+) -> T:
     """Run a location-changing command after the previous simulation is gone.
 
     Holding the navigation lock through the operation prevents a newly scheduled
@@ -354,8 +369,10 @@ async def run_exclusive(udid: str, operation: Callable[[], Awaitable[T]]) -> T:
     """
     session = get_navigation_session(udid)
     async with session.lock:
+        if required_state is not None and session.state != required_state:
+            raise SimulationStateError(f"Device must be in {required_state.value} state.")
         await _stop_task_and_wait(session)
-        if session.state != SimulationState.IDLE:
+        if reset_state and session.state != SimulationState.IDLE:
             await set_state(udid, SimulationState.IDLE)
         return await operation()
 

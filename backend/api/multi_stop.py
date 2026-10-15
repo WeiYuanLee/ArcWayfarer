@@ -15,6 +15,7 @@ async def post_start(body: FlowerMultiStopStartRequest | MultiStopStartRequest) 
             route_points = await flower.start_flower(
                 body.udid, body.nav_mode, [(wp.lat, wp.lng) for wp in body.waypoints], body.flower,
                 straight_line=body.straight_line, jump_mode=body.jump_mode, custom_speed_kmh=body.custom_speed_kmh,
+                start_index=body.start_index,
             )
             route_legs = []
         else:

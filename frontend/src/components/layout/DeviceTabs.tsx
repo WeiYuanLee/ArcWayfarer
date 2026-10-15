@@ -7,9 +7,10 @@ import type { Mode } from '../ModeSelector'
 import type { LivePosition } from '../../hooks/useWebSocket'
 import { useT, type StringKey } from '../../i18n'
 import { calculateRouteProgressPct, formatEta } from '../panels/coords'
-import { showToast } from '../common/Toast'
+import { notify } from '../common/Toast'
+import { deviceStatusMessage } from '../../utils/userFacingError'
 
-const RUNNING_STATES: DeviceState[] = ['teleporting', 'navigating', 'looping', 'random_walk', 'joystick']
+const RUNNING_STATES: DeviceState[] = ['teleporting', 'gold_ditto', 'navigating', 'looping', 'random_walk', 'joystick']
 
 const MODE_LABEL_KEYS: Record<Mode, StringKey> = {
   'teleport': 'mode.teleport',
@@ -49,6 +50,7 @@ function statusColor(device: Device, state: DeviceState | undefined): string {
 
 function getStateLabel(state: DeviceState | undefined, mode: Mode | undefined, t: (key: StringKey) => string): string {
   if (!state || state === 'idle') return t('statusbar.standby')
+  if (state === 'gold_ditto') return t('teleport.goldditto.state')
   if (state === 'paused') return t('panel.paused')
   if (state === 'looping') return t('routeloop.status.looping')
   if (state === 'random_walk') return t('randomwalk.status.wandering')
@@ -101,9 +103,9 @@ export function DeviceTabs({
     ].join('\n')
     try {
       await navigator.clipboard.writeText(report)
-      showToast(t('device.diagnostic.copied'))
+      notify.success(t('device.diagnostic.copied'))
     } catch {
-      showToast(t('device.diagnostic.copy_failed'))
+      notify.error(t('device.diagnostic.copy_failed'))
     }
   }
 
@@ -201,7 +203,7 @@ export function DeviceTabs({
                   ) : null}
                 </div>
                 <div className="hover-card-device-meta">
-                  {device.detail && <span>{device.detail}</span>}
+                  {device.status !== 'ready' && <span>{deviceStatusMessage(device, t)}</span>}
                   <span>UDID: {device.udid}</span>
                 </div>
               </div>
