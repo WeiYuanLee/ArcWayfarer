@@ -14,10 +14,11 @@ import type { FavoriteTeleportActions } from './FavoriteItem'
 import { PikminPostcardsPanel } from './PikminPostcardsPanel'
 import { PikminPureSpotsPanel } from './PikminPureSpotsPanel'
 import { usePikminMap, type PikminDrawerMode } from '../map/PikminMapContext'
+import { TeleportDevicePicker, type TeleportDeviceSelection } from '../common/TeleportDevicePicker'
 
 type Props = { isOpen: boolean; onClose: () => void; onSelectFavorite: (lat: number, lng: number) => void }
 
-export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite, ...teleportActions }: Props & FavoriteTeleportActions) {
+export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite, teleportDevices, teleportDeviceId, onTeleportDeviceChange, ...teleportActions }: Props & FavoriteTeleportActions & TeleportDeviceSelection) {
   const t = useT()
   const pikminMap = usePikminMap()
   const { favorites, savedGroups, displayed, groups, loading, sortMode, setSortMode, search, setSearch, pendingDeletes, requestDelete, undoDelete, handleUpdate, handleCreateGroup, handleReorder, refresh } = useFavorites()
@@ -79,7 +80,11 @@ export function FavoritesDrawer({ isOpen, onClose, onSelectFavorite, ...teleport
       aria-label={t('favorites.title')}
     >
       <Stack gap="md" h="100%">
-        <Text size="xs" c="dimmed">{teleportActions.teleportDeviceName ? `${t('favorites.teleport_device')}：${teleportActions.teleportDeviceName}` : t('panel.hint.select_device')}</Text>
+        <TeleportDevicePicker
+          teleportDevices={teleportDevices}
+          teleportDeviceId={teleportDeviceId}
+          onTeleportDeviceChange={onTeleportDeviceChange}
+        />
         <Tabs value={mode} onChange={(value) => setMode((value as Exclude<PikminDrawerMode, null>) ?? 'favorites')} keepMounted={false}>
           <Tabs.List grow>
             <Tabs.Tab value="favorites" leftSection={<IconHeart size={14} />}>我的最愛</Tabs.Tab>

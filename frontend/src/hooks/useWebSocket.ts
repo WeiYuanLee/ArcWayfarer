@@ -23,6 +23,7 @@ export type ActiveTaskConfig = {
   jump_mode?: boolean
   jump_pre_delay?: number
   jump_post_delay?: number
+  jump_leg_indices?: number[]
   custom_speed_kmh?: number | null
   start_index?: number
   flower?: {
@@ -97,7 +98,6 @@ export function useWebSocket() {
   const [connected, setConnected] = useState(false)
   const [positions, setPositions] = useState<Record<string, LivePosition>>({})
   const [states, setStates] = useState<Record<string, DeviceState>>({})
-  const [restoredAt, setRestoredAt] = useState<Record<string, number>>({})
   const [flowerProgress, setFlowerProgress] = useState<Record<string, FlowerProgress>>({})
   const [activeTasks, setActiveTasks] = useState<Record<string, ActiveTask>>({})
   const [deviceSnapshotRevision, setDeviceSnapshotRevision] = useState(0)
@@ -243,8 +243,6 @@ export function useWebSocket() {
               setDeviceSnapshotRevision((current) => Math.max(current, message.device_revision!))
             }
             scheduleTelemetryFlush()
-          } else if (message.type === 'restored') {
-            setRestoredAt((prev) => ({ ...prev, [message.udid]: Date.now() }))
           } else if (message.type === 'device_snapshot') {
             setDeviceSnapshotRevision((current) => Math.max(current, message.revision))
           } else if (message.type === 'flower_progress') {
@@ -284,5 +282,5 @@ export function useWebSocket() {
     socketRef.current?.send(JSON.stringify({ type, data, udid }))
   }, [])
 
-  return { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send }
+  return { connected, positions, states, flowerProgress, activeTasks, deviceSnapshotRevision, send }
 }

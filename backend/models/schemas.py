@@ -25,6 +25,12 @@ class DeviceInfo(BaseModel):
     # P1 migration fields. Older clients safely ignore them.
     revision: int = 0
     selected_route: Optional[DeviceConnectionType] = None
+    # Discovery and an already-open location session are separate facts.  An
+    # active RSD/DVT session can remain usable after its original USB row is no
+    # longer observable; keep that device visible without inventing a Wi-Fi
+    # route that discovery did not actually prove.
+    session_active: bool = False
+    route_observed: bool = True
 
 
 class SetLocationRequest(BaseModel):

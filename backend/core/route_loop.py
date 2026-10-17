@@ -67,11 +67,22 @@ async def start_route_loop(
     await device_manager.get_device(udid)  # raises ValueError before we schedule anything
     await simulation_engine.ensure_stopped(udid)
     speed_mps = (custom_speed_kmh / 3.6) if custom_speed_kmh else NAV_MODE_SPEED_MPS[nav_mode]
+    active_jump_legs = frozenset(index for index in (jump_leg_indices or []) if 0 <= index < len(waypoints))
     playback_points, station_indices, stop_at, leg_playbacks = await _build_loop_playback(
         nav_mode, waypoints, speed_mps, NAVIGATE_TICK_SECONDS, straight_line,
-        frozenset(index for index in (jump_leg_indices or []) if 0 <= index < len(waypoints)),
+        active_jump_legs,
     )
     pause_range = (pause_min, pause_max) if pause_enabled else (0.0, 0.0)
+    task_config = {
+        "waypoints": [{"lat": lat, "lng": lng} for lat, lng in waypoints],
+        "nav_mode": nav_mode,
+        "pause_enabled": pause_enabled,
+        "pause_min": pause_min,
+        "pause_max": pause_max,
+        "straight_line": straight_line,
+        "jump_leg_indices": sorted(active_jump_legs),
+        "custom_speed_kmh": custom_speed_kmh,
+    }
     simulation_engine.start(
         udid,
         playback_points,
@@ -82,6 +93,7 @@ async def start_route_loop(
         station_pause_range=pause_range,
         stop_at=stop_at,
         task_kind="route_loop",
+        task_config=task_config,
     )
     return playback_points, leg_playbacks
 

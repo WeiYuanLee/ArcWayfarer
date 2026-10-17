@@ -4,6 +4,8 @@ import { IconHeart, IconHistory, IconSearch } from '@tabler/icons-react'
 import { useT } from '../../i18n'
 import { MapControlButton } from '../map/MapControlButton'
 import type { FavoriteTeleportActions } from './FavoriteItem'
+import type { PlaceTeleportTarget } from '../map/PlaceSearchDrawer'
+import type { TeleportDeviceSelection } from '../common/TeleportDevicePicker'
 
 let favoritesDrawerPromise: Promise<typeof import('./FavoritesDrawer')> | null = null
 let historyDrawerPromise: Promise<typeof import('./HistoryDrawer')> | null = null
@@ -41,11 +43,21 @@ type Props = {
   onFlyTo: (lat: number, lng: number) => void
   onSelectFavorite: (lat: number, lng: number) => void
   onSelectPlace: (lat: number, lng: number, placeName: string) => void
+  onTeleportPlace: (target: PlaceTeleportTarget) => Promise<void>
 }
 
 type ActiveDrawer = 'history' | 'favorites' | 'search' | null
 
-export const IconRail = memo(function IconRail({ onFlyTo, onSelectFavorite, onSelectPlace, ...teleportActions }: Props & FavoriteTeleportActions) {
+export const IconRail = memo(function IconRail({
+  onFlyTo,
+  onSelectFavorite,
+  onSelectPlace,
+  onTeleportPlace,
+  teleportDevices,
+  teleportDeviceId,
+  onTeleportDeviceChange,
+  ...teleportActions
+}: Props & FavoriteTeleportActions & TeleportDeviceSelection) {
   const t = useT()
   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>(null)
   const [loadedDrawers, setLoadedDrawers] = useState({ history: false, favorites: false, search: false })
@@ -110,10 +122,10 @@ export const IconRail = memo(function IconRail({ onFlyTo, onSelectFavorite, onSe
         {loadedDrawers.history && <HistoryDrawer isOpen={activeDrawer === 'history'} onClose={() => closeDrawer('history')} onFlyTo={onFlyTo} />}
       </Suspense>
       <Suspense fallback={null}>
-        {loadedDrawers.favorites && <FavoritesDrawer isOpen={activeDrawer === 'favorites'} onClose={() => closeDrawer('favorites')} onSelectFavorite={onSelectFavorite} {...teleportActions} />}
+        {loadedDrawers.favorites && <FavoritesDrawer isOpen={activeDrawer === 'favorites'} onClose={() => closeDrawer('favorites')} onSelectFavorite={onSelectFavorite} teleportDevices={teleportDevices} teleportDeviceId={teleportDeviceId} onTeleportDeviceChange={onTeleportDeviceChange} {...teleportActions} />}
       </Suspense>
       <Suspense fallback={null}>
-        {loadedDrawers.search && <PlaceSearchDrawer isOpen={activeDrawer === 'search'} onClose={() => closeDrawer('search')} onSelectPlace={onSelectPlace} />}
+        {loadedDrawers.search && <PlaceSearchDrawer isOpen={activeDrawer === 'search'} onClose={() => closeDrawer('search')} onSelectPlace={onSelectPlace} onTeleportPlace={onTeleportPlace} teleportDisabledReason={teleportActions.teleportDisabledReason} teleportingPlaceId={teleportActions.teleportingFavoriteId} teleportDeviceName={teleportActions.teleportDeviceName} teleportDevices={teleportDevices} teleportDeviceId={teleportDeviceId} onTeleportDeviceChange={onTeleportDeviceChange} />}
       </Suspense>
     </>
   )

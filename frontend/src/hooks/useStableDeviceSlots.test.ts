@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Device } from '../services/api'
-import { reconcileDeviceSlots } from './useStableDeviceSlots'
+import { includeKnownActiveDevices, mergeDiscoveredAndRetainedDevices, reconcileDeviceSlots } from './useStableDeviceSlots'
 
 const devices = ['A', 'B', 'C', 'D'].map((udid) => ({
   udid, name: udid, ios_version: '18.0', transport: 'rsd', connection_type: 'usb', status: 'ready',
@@ -21,5 +21,17 @@ describe('reconcileDeviceSlots', () => {
 
   it('uses the prior queue order when a slot becomes available', () => {
     expect(reconcileDeviceSlots([...devices].reverse(), ['b', 'c', 'd', 'a'], new Set(['b']), new Set(), 3)).toEqual(['c', 'd', 'a'])
+  })
+
+  it('retains a known active device through a transient discovery omission', () => {
+    const known = new Map(devices.map((device) => [device.udid.toLowerCase(), device]))
+    expect(includeKnownActiveDevices([devices[1]], known, new Set(['a']))).toEqual([devices[1], devices[0]])
+  })
+
+  it('adds a background-running device to the device manager without duplicating discovered devices', () => {
+    expect(mergeDiscoveredAndRetainedDevices(
+      [devices[1]],
+      [devices[0], devices[1]],
+    )).toEqual([devices[1], devices[0]])
   })
 })

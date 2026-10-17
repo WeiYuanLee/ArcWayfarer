@@ -75,9 +75,10 @@ export function DeviceListView(props: Props) {
         <Paper withBorder p="xl" radius="md" style={{ textAlign: 'center' }}><Text size="sm" c="dimmed">目前尚未偵測到任何裝置。請以 USB 接上手機並於螢幕點擊「信任這台電腦」。</Text></Paper>
       ) : (
         <ScrollArea.Autosize mah={320}><Stack gap="xs">{props.devices.map((item) => {
-          const busy = normalizeDeviceId(props.hidingDeviceId || '') === normalizeDeviceId(item.udid)
-            || normalizeDeviceId(props.restoringDeviceId || '') === normalizeDeviceId(item.udid)
           const state = props.deviceStates[item.udid] || 'idle'
+          const busy = state !== 'idle'
+            || normalizeDeviceId(props.hidingDeviceId || '') === normalizeDeviceId(item.udid)
+            || normalizeDeviceId(props.restoringDeviceId || '') === normalizeDeviceId(item.udid)
           return (
             <Paper key={item.udid} withBorder p="sm" radius="md" className={`device-manager-card${item.isActive ? ' is-active' : ''}`}>
               <Group justify="space-between" wrap="nowrap" gap="sm">
@@ -87,12 +88,13 @@ export function DeviceListView(props: Props) {
                     <Group gap="xs" wrap="nowrap"><Text fw={600} size="sm" className="device-manager-device-name">{item.name}</Text><Tooltip label="自訂裝置名稱" withArrow><ActionIcon variant="subtle" color="gray" size="xs" onClick={() => props.onRename(item)}><IconPencil size={13} /></ActionIcon></Tooltip></Group>
                     <Group gap={6} mt={2} wrap="nowrap">
                       <Text size="xs" c="dimmed">{item.model}{item.ios_version ? ` · iOS ${item.ios_version}` : ''}</Text>
-                      {item.connection_type === 'usb' && <Badge size="xs" variant="light" color="teal" tt="none" className="device-manager-connection-badge" leftSection={<IconUsb size={10} />}>USB</Badge>}
-                      {item.connection_type === 'wireless_direct' && <Badge size="xs" variant="light" color="arcBlue" tt="none" className="device-manager-connection-badge" leftSection={<IconWifi size={10} />}>Wireless Direct</Badge>}
-                      {item.connection_type === 'wifi' && <Badge size="xs" variant="light" color="cyan" tt="none" className="device-manager-connection-badge" leftSection={<IconWifi size={10} />}>Wi-Fi</Badge>}
+                      {!item.isRetained && item.connection_type === 'usb' && <Badge size="xs" variant="light" color="teal" tt="none" className="device-manager-connection-badge" leftSection={<IconUsb size={10} />}>USB</Badge>}
+                      {!item.isRetained && item.connection_type === 'wireless_direct' && <Badge size="xs" variant="light" color="arcBlue" tt="none" className="device-manager-connection-badge" leftSection={<IconWifi size={10} />}>Wireless Direct</Badge>}
+                      {!item.isRetained && item.connection_type === 'wifi' && <Badge size="xs" variant="light" color="cyan" tt="none" className="device-manager-connection-badge" leftSection={<IconWifi size={10} />}>Wi-Fi</Badge>}
+                      {item.isRetained && <Badge size="xs" variant="light" color="orange">背景控制中</Badge>}
                       {state !== 'idle' && <Badge size="xs" variant="filled" color="green">{stateLabels[state]}</Badge>}
                     </Group>
-                    {item.device && item.connection_type === 'usb' && (
+                    {item.device && !item.isRetained && item.connection_type === 'usb' && (
                       <Button size="compact-xs" variant="subtle" color="blue" mt={4} onClick={() => props.onSetup(item)}>{item.direct_paired ? '重新設定 Wi-Fi 連線' : '設定這台 iPhone'}</Button>
                     )}
                     {item.device && item.status !== 'ready' && (

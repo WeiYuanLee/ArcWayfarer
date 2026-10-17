@@ -26,6 +26,10 @@ export type Device = {
   trusted?: boolean | null
   revision?: number
   selected_route?: 'usb' | 'wifi' | 'wireless_direct' | null
+  /** True when an already-open location channel owns this row. */
+  session_active?: boolean
+  /** False when the session is alive but discovery no longer sees its bound route. */
+  route_observed?: boolean
 }
 
 export type DeviceSnapshot = {

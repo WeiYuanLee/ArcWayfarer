@@ -89,7 +89,6 @@ export type PanelProps = {
   liveStopIndex: number | null
   flowerProgress?: FlowerProgress | null
   activeTask?: ActiveTask | null
-  restoredAt?: number
   connected?: boolean
   setPoint: (point: LatLng | null) => void
   requestPoint: (onPick: (lat: number, lng: number) => void) => void

@@ -230,6 +230,53 @@ class ShadowRegistryTests(unittest.TestCase):
         ))
         self.assertEqual(self.registry.projected_snapshot().devices, ())
 
+    def test_active_usb_session_remains_visible_when_cable_disappears(self) -> None:
+        first = self.ledger.capture()
+        self.registry.publish_discovery(DiscoverySnapshot(
+            devices=(device("PHONE-A", "usb"),),
+            sources={
+                "usb": DiscoverySourceResult("success"),
+                "system_wifi": DiscoverySourceResult("success"),
+            },
+            snapshot_revision=first.snapshot_revision,
+            device_revisions=first.device_revisions,
+        ))
+        revision = self.ledger.bump("PHONE-A")
+        self.registry.record_session(
+            "PHONE-A",
+            SessionState.ACTIVE,
+            bound_route="usb",
+            revision=revision,
+            legacy_route="usb",
+        )
+
+        unplugged = self.ledger.capture()
+        self.registry.publish_discovery(DiscoverySnapshot(
+            devices=(),
+            sources={
+                "usb": DiscoverySourceResult("success"),
+                "system_wifi": DiscoverySourceResult("success"),
+            },
+            snapshot_revision=unplugged.snapshot_revision,
+            device_revisions=unplugged.device_revisions,
+        ))
+
+        projected = self.registry.projected_snapshot().devices
+        self.assertEqual(len(projected), 1)
+        self.assertEqual(projected[0].udid, "PHONE-A")
+        self.assertEqual(projected[0].selected_route, "usb")
+        self.assertTrue(projected[0].session_active)
+        self.assertFalse(projected[0].route_observed)
+
+        revision = self.ledger.bump("PHONE-A")
+        self.registry.record_session(
+            "PHONE-A",
+            SessionState.IDLE,
+            revision=revision,
+            compare_legacy=False,
+        )
+        self.assertEqual(self.registry.projected_snapshot().devices, ())
+
     def test_one_hundred_old_scan_completion_orders_are_deterministic(self) -> None:
         for complete_old_scan_first in (index % 2 == 0 for index in range(100)):
             ledger = DeviceRevisionLedger()
@@ -375,6 +422,31 @@ class UsbPresenceRegistryTests(unittest.TestCase):
         self.assertTrue(registry.publish_usb_presence(()))
         fallback = registry.projected_snapshot().devices[0]
         self.assertEqual(fallback.connection_type, "wifi")
+
+    def test_fast_usb_disconnect_keeps_active_session_row(self) -> None:
+        ledger = DeviceRevisionLedger()
+        registry = DeviceRegistry(ledger)
+        capture = ledger.capture()
+        registry.publish_discovery(DiscoverySnapshot(
+            devices=(device("PHONE-A", "usb"),),
+            sources={"usb": DiscoverySourceResult("success")},
+            snapshot_revision=capture.snapshot_revision,
+            device_revisions=capture.device_revisions,
+        ))
+        revision = ledger.bump("PHONE-A")
+        registry.record_session(
+            "PHONE-A",
+            SessionState.ACTIVE,
+            bound_route="usb",
+            revision=revision,
+            legacy_route="usb",
+        )
+
+        self.assertTrue(registry.publish_usb_presence(()))
+        retained = registry.projected_snapshot().devices[0]
+        self.assertEqual(retained.udid, "PHONE-A")
+        self.assertTrue(retained.session_active)
+        self.assertFalse(retained.route_observed)
 
 
 if __name__ == "__main__":

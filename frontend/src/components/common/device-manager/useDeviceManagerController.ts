@@ -33,6 +33,7 @@ function currentTimestamp() {
 type Options = {
   isOpen: boolean
   devices: Device[]
+  retainedDeviceIds?: readonly string[] | ReadonlySet<string>
   hiddenDevices: HiddenDevice[]
   hiddenUdids?: readonly string[] | ReadonlySet<string>
   usableDeviceIds?: readonly string[] | ReadonlySet<string>
@@ -72,6 +73,10 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
     () => options.usableDeviceIds ? new Set([...options.usableDeviceIds].map(normalizeDeviceId)) : null,
     [options.usableDeviceIds],
   )
+  const retainedKeys = useMemo(
+    () => new Set([...(options.retainedDeviceIds ?? [])].map(normalizeDeviceId)),
+    [options.retainedDeviceIds],
+  )
 
   const allDevices = useMemo<ManagedDevice[]>(() => options.devices.map((device) => {
     const key = normalizeDeviceId(device.udid)
@@ -90,8 +95,9 @@ export function useDeviceManagerController(options: Options): DeviceManagerContr
       trusted: device.trusted,
       device,
       isActive: !hiddenKeys.has(key) && (!usableKeys || usableKeys.has(key)),
+      isRetained: retainedKeys.has(key) || Boolean(device.session_active && device.route_observed === false),
     }
-  }), [options.devices, options.deviceNames, hiddenKeys, usableKeys])
+  }), [options.devices, options.deviceNames, hiddenKeys, retainedKeys, usableKeys])
 
   const activeCount = useMemo(() => allDevices.filter((item) => item.isActive).length, [allDevices])
 

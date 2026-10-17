@@ -46,6 +46,22 @@ describe('Device Manager views', () => {
     expect(screen.queryByText('Wi-Fi')).toBeNull()
   })
 
+  it('shows a background-running retained device and prevents disabling it mid-task', () => {
+    const onToggle = vi.fn()
+    render(<MantineProvider><I18nProvider><DeviceListView
+      devices={[{ ...direct, name: 'Pin', isRetained: true }]} activeCount={1} deviceStates={{ 'phone-a': 'looping' }} quickReconnects={[]}
+      includeWifi={false} devicesLoading={false}
+      onClose={vi.fn()} onOpenDirect={vi.fn()} onRename={vi.fn()} onToggle={onToggle} onSetup={vi.fn()}
+      onRefresh={vi.fn()} onIncludeWifiChange={vi.fn()}
+      onQuickConnect={vi.fn()} onClearQuickReconnects={vi.fn()}
+    /></I18nProvider></MantineProvider>)
+
+    expect(screen.getByText('背景控制中')).toBeTruthy()
+    expect(screen.getByText('循環中')).toBeTruthy()
+    expect((screen.getByRole('switch', { name: '切換 Pin 啟用狀態' }) as HTMLInputElement).disabled).toBe(true)
+    expect(onToggle).not.toHaveBeenCalled()
+  })
+
   it('keeps Wi-Fi discovery and device refresh beside the Device Manager close action', () => {
     const onIncludeWifiChange = vi.fn()
     const onRefresh = vi.fn()

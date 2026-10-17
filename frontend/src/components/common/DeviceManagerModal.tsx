@@ -14,6 +14,7 @@ type Props = {
   isOpen: boolean
   onClose: () => void
   devices: Device[]
+  retainedDeviceIds?: readonly string[] | ReadonlySet<string>
   hiddenDevices?: HiddenDevice[]
   hiddenUdids?: readonly string[] | ReadonlySet<string>
   usableDeviceIds?: readonly string[] | ReadonlySet<string>
@@ -37,6 +38,7 @@ export function DeviceManagerModal(props: Props) {
   const controller = useDeviceManagerController({
     isOpen: props.isOpen,
     devices: props.devices,
+    retainedDeviceIds: props.retainedDeviceIds,
     hiddenDevices: props.hiddenDevices ?? [],
     hiddenUdids: props.hiddenUdids,
     usableDeviceIds: props.usableDeviceIds,

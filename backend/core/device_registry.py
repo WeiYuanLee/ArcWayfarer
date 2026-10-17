@@ -66,6 +66,21 @@ class DeviceRegistry:
         return udid.strip().lower()
 
     @staticmethod
+    def _session_owns_route(aggregate: DeviceAggregate, route: DeviceConnectionType) -> bool:
+        return (
+            aggregate.session.state in {SessionState.ACTIVE, SessionState.STOPPING}
+            and aggregate.session.bound_route == route
+        )
+
+    @staticmethod
+    def _route_is_observed(aggregate: DeviceAggregate, route: DeviceConnectionType) -> bool:
+        if route == "usb":
+            return aggregate.availability.usb == Availability.AVAILABLE
+        if route == "wifi":
+            return aggregate.availability.system_wifi == Availability.AVAILABLE
+        return aggregate.direct_runtime == DirectRuntimeState.READY
+
+    @staticmethod
     def _classify_difference(
         candidate: DeviceAggregate,
         legacy_route: DeviceConnectionType | None,
@@ -147,13 +162,19 @@ class DeviceRegistry:
         for key in sorted(known_usb | set(rows)):
             row = rows.get(key)
             current = self._devices.get(key, DeviceAggregate(udid=row.udid if row is not None else key))
+            usb_device = row
+            if row is None and self._session_owns_route(current, "usb"):
+                # Losing the discovery row does not invalidate an already-open
+                # location channel.  Keep its descriptive metadata until the
+                # session itself ends or reports an I/O failure.
+                usb_device = current.usb_device
             candidate = replace(
                 current,
                 availability=replace(
                     current.availability,
                     usb=Availability.AVAILABLE if row is not None else Availability.UNAVAILABLE,
                 ),
-                usb_device=row,
+                usb_device=usb_device,
             )
             candidate = replace(candidate, selected_route=decide_route(candidate).selected_route)
             if candidate == current:
@@ -186,6 +207,8 @@ class DeviceRegistry:
                 "connection_type": route,
                 "selected_route": route,
                 "revision": aggregate.revision,
+                "session_active": aggregate.session.state in {SessionState.ACTIVE, SessionState.STOPPING},
+                "route_observed": self._route_is_observed(aggregate, route),
             }))
         return DiscoverySnapshot(
             devices=tuple(devices),
@@ -223,9 +246,9 @@ class DeviceRegistry:
             wifi_device = row
         elif row is not None and row.connection_type == "wireless_direct":
             direct_device = row
-        if usb_success and usb is False:
+        if usb_success and usb is False and not self._session_owns_route(current, "usb"):
             usb_device = None
-        if wifi_success and system_wifi is False:
+        if wifi_success and system_wifi is False and not self._session_owns_route(current, "wifi"):
             wifi_device = None
         return replace(
             current,

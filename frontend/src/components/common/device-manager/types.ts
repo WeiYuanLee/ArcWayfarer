@@ -14,6 +14,8 @@ export type ManagedDevice = {
   trusted?: boolean | null
   device?: Device
   isActive: boolean
+  /** Still controlled by an active backend task but absent from the latest discovery scan. */
+  isRetained?: boolean
 }
 
 export type DeviceSetupStep =

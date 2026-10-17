@@ -39,6 +39,7 @@ describe('useDeviceManagerController', () => {
     vi.mocked(trustDeviceForSetup).mockReset()
     vi.mocked(amfiRevealDeveloperMode).mockReset()
   })
+
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
   function setup(devices: Device[] = []) {
@@ -51,6 +52,18 @@ describe('useDeviceManagerController', () => {
     return { result, onRefreshDevices, onUnhideDevice, onHideDevice }
   }
 
+  it('marks a live session with an unobserved route as background-controlled', () => {
+    const sessionOnly = {
+      ...directDevice,
+      connection_type: 'usb' as const,
+      session_active: true,
+      route_observed: false,
+    }
+    const { result } = setup([sessionOnly])
+
+    expect(result.current.allDevices[0].isRetained).toBe(true)
+  })
+
   it('publishes the command revision and records the confirmed endpoint after a successful connect', async () => {
     vi.mocked(connectWirelessDirect).mockResolvedValue(directDevice)
     const { result, onRefreshDevices, onUnhideDevice } = setup()
@@ -61,6 +74,24 @@ describe('useDeviceManagerController', () => {
     expect(onUnhideDevice).toHaveBeenCalledWith('phone-a')
     expect(result.current.view).toBe('list')
     expect(getQuickReconnectRecords()[0]).toMatchObject({ udid: 'phone-a', endpoint: '192.168.1.184:49152' })
+  })
+
+  it('marks a task-retained device as active even when discovery omitted it', () => {
+    const onRefreshDevices = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDeviceManagerController({
+      isOpen: true,
+      devices: [directDevice],
+      retainedDeviceIds: ['PHONE-A'],
+      usableDeviceIds: ['phone-a'],
+      hiddenDevices: [],
+      deviceNames: {},
+      onHideDevice: vi.fn(),
+      onUnhideDevice: vi.fn(),
+      onRefreshDevices,
+    }))
+
+    expect(result.current.activeCount).toBe(1)
+    expect(result.current.allDevices[0]).toMatchObject({ udid: 'phone-a', isActive: true, isRetained: true })
   })
 
   it('keeps a failed command in the error flow and does not alter another device', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Device } from '../services/api'
 
 export const DEVICE_SLOTS_STORAGE_KEY = 'arcwayfarer.device-slots.v1'
@@ -45,6 +45,31 @@ function reconcileDeviceOrder(
   return [...active, ...stable, ...newcomers]
 }
 
+export function includeKnownActiveDevices(
+  devices: Device[],
+  knownDevices: ReadonlyMap<string, Device>,
+  activeIds: ReadonlySet<string>,
+): Device[] {
+  const currentIds = new Set(devices.map((device) => normalizeDeviceId(device.udid)))
+  const retained = [...activeIds]
+    .filter((id) => !currentIds.has(id))
+    .map((id) => knownDevices.get(id))
+    .filter((device): device is Device => Boolean(device))
+  return [...devices, ...retained]
+}
+
+/** Adds task-retained devices that a fresh discovery scan temporarily omitted. */
+export function mergeDiscoveredAndRetainedDevices(
+  discoveredDevices: Device[],
+  retainedDevices: Device[],
+): Device[] {
+  const discoveredIds = new Set(discoveredDevices.map((device) => normalizeDeviceId(device.udid)))
+  return [
+    ...discoveredDevices,
+    ...retainedDevices.filter((device) => !discoveredIds.has(normalizeDeviceId(device.udid))),
+  ]
+}
+
 /** Keeps operational device admission stable across discovery reordering. */
 export function useStableDeviceSlots(
   devices: Device[],
@@ -53,9 +78,15 @@ export function useStableDeviceSlots(
   maxSlots: number,
 ) {
   const [deviceOrderIds, setDeviceOrderIds] = useState<string[]>(readStoredSlots)
+  const knownDevicesRef = useRef<Map<string, Device>>(new Map())
+  for (const device of devices) knownDevicesRef.current.set(normalizeDeviceId(device.udid), device)
+  const operationalDevices = useMemo(
+    () => includeKnownActiveDevices(devices, knownDevicesRef.current, activeIds),
+    [activeIds, devices],
+  )
   const reconciledOrder = useMemo(
-    () => reconcileDeviceOrder(devices, deviceOrderIds, hiddenIds, activeIds),
-    [activeIds, devices, deviceOrderIds, hiddenIds],
+    () => reconcileDeviceOrder(operationalDevices, deviceOrderIds, hiddenIds, activeIds),
+    [activeIds, operationalDevices, deviceOrderIds, hiddenIds],
   )
 
   useEffect(() => {
@@ -68,6 +99,6 @@ export function useStableDeviceSlots(
     }
   }, [deviceOrderIds, reconciledOrder])
 
-  const byId = new Map(devices.map((device) => [normalizeDeviceId(device.udid), device]))
+  const byId = new Map(operationalDevices.map((device) => [normalizeDeviceId(device.udid), device]))
   return reconciledOrder.slice(0, maxSlots).map((id) => byId.get(id)).filter((device): device is Device => Boolean(device))
 }

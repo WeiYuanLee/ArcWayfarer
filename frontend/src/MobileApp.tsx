@@ -14,7 +14,8 @@ import { useT } from './i18n'
 import type { StringKey } from './i18n'
 import { ColorSchemeControl } from './components/layout/ColorSchemeControl'
 import { usePikminSync } from './hooks/usePikminSync'
-import { deviceStatusMessage } from './utils/userFacingError'
+import type { PlaceTeleportTarget } from './components/map/PlaceSearchDrawer'
+import { getAvailableTeleportDeviceOptions } from './components/common/TeleportDevicePicker'
 
 type SheetState = 'collapsed' | 'half' | 'full'
 
@@ -29,13 +30,23 @@ const MOBILE_MODES: { id: Mode; labelKey: StringKey; icon: typeof IconMapPin }[]
 export default function MobileApp() {
   usePikminSync()
   const t = useT()
-  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
+  const { connected, positions, states, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
   const { devices, refresh: refreshDevices } = useDevices(false, deviceSnapshotRevision)
 
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
+  const [preferredTeleportDeviceId, setPreferredTeleportDeviceId] = useState<string | null>(null)
   const [mode, setMode] = useState<Mode>('teleport')
   const [teleportingFavoriteId, setTeleportingFavoriteId] = useState<string | null>(null)
   const favoriteTeleportPending = useRef(false)
+  const teleportDeviceOptions = useMemo(() => getAvailableTeleportDeviceOptions(
+    devices,
+    (deviceId) => (states[deviceId] ?? 'idle') !== 'idle' || Boolean(activeTasks[deviceId]),
+  ), [activeTasks, devices, states])
+  const teleportDeviceId = teleportDeviceOptions.some((device) => device.value === preferredTeleportDeviceId)
+    ? preferredTeleportDeviceId
+    : teleportDeviceOptions.some((device) => device.value === focusedDeviceId)
+      ? focusedDeviceId
+      : teleportDeviceOptions[0]?.value ?? null
   const [overlay, setOverlay] = useState<MapOverlay>(EMPTY_OVERLAY)
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
   const [savedRouteImports, setSavedRouteImports] = useState<Record<string, SavedRouteImport>>({})
@@ -108,25 +119,24 @@ export default function MobileApp() {
     }
   }, [focusedDeviceId, requestFlyTo])
 
-  const favoriteDevice = devices.find((device) => device.udid === focusedDeviceId)
-  const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
-    : favoriteDevice.status !== 'ready' ? deviceStatusMessage(favoriteDevice, t)
-    : (states[favoriteDevice.udid] ?? 'idle') !== 'idle' || Boolean(activeTasks[favoriteDevice.udid]) ? t('teleport.hint.navigating')
-    : null
-  const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
+  const favoriteDevice = devices.find((device) => device.udid === teleportDeviceId)
+  const teleportDisabledReason = favoriteDevice ? null
+    : devices.length > 0 ? t('teleport.hint.navigating')
+    : t('panel.hint.select_device')
+  const handleFavoriteTeleport = useCallback(async (target: Favorite | PlaceTeleportTarget) => {
     if (!favoriteDevice || teleportDisabledReason || favoriteTeleportPending.current) return
     const deviceId = favoriteDevice.udid
     const deviceName = favoriteDevice.name
     favoriteTeleportPending.current = true
-    setTeleportingFavoriteId(favorite.id)
+    setTeleportingFavoriteId(target.id)
     try {
-      await setLocation(deviceId, favorite.lat, favorite.lng)
-      void pushHistory({ lat: favorite.lat, lng: favorite.lng, kind: 'teleport' }).catch(() => {})
+      await setLocation(deviceId, target.lat, target.lng)
+      void pushHistory({ lat: target.lat, lng: target.lng, kind: 'teleport' }).catch(() => {})
       if (mode === 'teleport') {
-        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
+        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: target.lat, lng: target.lng } }))
       }
-      requestFlyTo(favorite.lat, favorite.lng)
-      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+      requestFlyTo(target.lat, target.lng)
+      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', target.name))
     } catch (error) {
       notify.failure(error, t('teleport.status.set_failed'), { id: `favorite:teleport:${deviceId}` })
     } finally {
@@ -134,6 +144,9 @@ export default function MobileApp() {
       setTeleportingFavoriteId(null)
     }
   }, [favoriteDevice, teleportDisabledReason, mode, requestFlyTo, t])
+  const handleTeleportDeviceChange = useCallback((deviceId: string) => {
+    setPreferredTeleportDeviceId(deviceId)
+  }, [])
 
   const handlePlaceSelect = useCallback((lat: number, lng: number) => {
     requestFlyTo(lat, lng)
@@ -183,7 +196,6 @@ export default function MobileApp() {
       liveEtaSeconds: position?.etaSeconds ?? null,
       liveStopIndex: position?.stopIndex ?? null,
       flowerProgress: focusedDeviceId ? flowerProgress[focusedDeviceId] ?? null : null,
-      restoredAt: focusedDeviceId ? restoredAt[focusedDeviceId] : undefined,
       connected,
       setPoint: (point) => {
         if (focusedDeviceId) setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: point }))
@@ -274,9 +286,13 @@ export default function MobileApp() {
             onSelectFavorite={handleFavoriteSelect}
             onSelectPlace={handlePlaceSelect}
             onTeleportFavorite={handleFavoriteTeleport}
+            onTeleportPlace={handleFavoriteTeleport}
             teleportDisabledReason={teleportDisabledReason}
             teleportingFavoriteId={teleportingFavoriteId}
             teleportDeviceName={favoriteDevice?.name ?? null}
+            teleportDevices={teleportDeviceOptions}
+            teleportDeviceId={teleportDeviceId}
+            onTeleportDeviceChange={handleTeleportDeviceChange}
           />
         </MapView>
 

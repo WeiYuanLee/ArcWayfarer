@@ -6,6 +6,7 @@ import type { Device } from '../../services/api'
 import { FloatingCard } from './FloatingCard'
 import { useT, type StringKey } from '../../i18n'
 import { usePikminMap } from '../map/PikminMapContext'
+import { normalizeDeviceId } from '../../hooks/useStableDeviceSlots'
 
 type Props = {
   devices: Device[]
@@ -32,7 +33,7 @@ function shallowEqualPanelProps(left: PanelProps, right: PanelProps): boolean {
 const DevicePanelWorkspace = memo(function DevicePanelWorkspace({ deviceId, focused, mode, panelProps, loadingLabel }: WorkspaceProps) {
   const Panel = PANEL_BY_MODE[mode]
   return (
-    <div key={deviceId} className={focused ? 'device-panel-workspace--focused' : undefined} style={{ display: focused ? 'contents' : 'none' }}>
+    <div className={focused ? 'device-panel-workspace--focused' : undefined} style={{ display: focused ? 'contents' : 'none' }}>
       <Suspense fallback={<p className="panel-hint">{loadingLabel}</p>}>
         <Panel {...panelProps} />
       </Suspense>
@@ -61,7 +62,14 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
   const [panelExpanded, setPanelExpanded] = useState(true)
   const panelExpandedBeforeDrawer = useRef(true)
   const drawerOpen = pikminMap.mode !== null
-  const focusedMode: Mode = (focusedDeviceId && modeByDevice[focusedDeviceId]) || 'teleport'
+  const focusedKey = focusedDeviceId ? normalizeDeviceId(focusedDeviceId) : null
+  const modeForDevice = (deviceId: string): Mode => {
+    const direct = modeByDevice[deviceId]
+    if (direct) return direct
+    const normalizedId = normalizeDeviceId(deviceId)
+    return Object.entries(modeByDevice).find(([id]) => normalizeDeviceId(id) === normalizedId)?.[1] ?? 'teleport'
+  }
+  const focusedMode: Mode = focusedDeviceId ? modeForDevice(focusedDeviceId) : 'teleport'
 
   useEffect(() => {
     if (drawerOpen) {
@@ -96,12 +104,13 @@ export function ControlsOverlay({ devices, focusedDeviceId, modeByDevice, onMode
             </button>
             {devices.length === 0 && <p className="panel-hint">{t('panel.hint.select_device')}</p>}
             {devices.map((device) => {
-              const mode = modeByDevice[device.udid] || 'teleport'
+              const deviceKey = normalizeDeviceId(device.udid)
+              const mode = modeForDevice(device.udid)
               return (
                 <DevicePanelWorkspace
-                  key={device.udid}
+                  key={deviceKey}
                   deviceId={device.udid}
-                  focused={device.udid === focusedDeviceId}
+                  focused={deviceKey === focusedKey}
                   mode={mode}
                   panelProps={panelPropsFor(device.udid)}
                   loadingLabel={t('generic.working')}

@@ -87,6 +87,16 @@ describe('useWebSocket background recovery', () => {
     unmount()
   })
 
+  it('does not persist one-shot restore events for remounted panels to replay', () => {
+    const { result, unmount } = renderHook(() => useWebSocket())
+    const socket = FakeWebSocket.instances[0]
+
+    act(() => socket.emit({ type: 'restored', udid: 'device-1' }))
+
+    expect(result.current).not.toHaveProperty('restoredAt')
+    unmount()
+  })
+
   it('publishes the latest device registry revision to discovery consumers', () => {
     const { result, unmount } = renderHook(() => useWebSocket())
     const socket = FakeWebSocket.instances[0]

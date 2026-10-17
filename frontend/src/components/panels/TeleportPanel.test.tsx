@@ -133,8 +133,8 @@ describe('TeleportPanel Gold Ditto workflow', () => {
     })
   }, 15000)
 
-  it('shows one success notification when the restore event follows the button action', async () => {
-    const { rerender } = render(
+  it('does not replay the restore success notification after the panel remounts', async () => {
+    const { unmount } = render(
       <MantineProvider>
         <TeleportPanel {...defaultProps} />
       </MantineProvider>,
@@ -143,9 +143,10 @@ describe('TeleportPanel Gold Ditto workflow', () => {
     fireEvent.click(screen.getByText('teleport.action.clear'))
     await waitFor(() => expect(mocks.notify.success).toHaveBeenCalledOnce())
 
-    rerender(
+    unmount()
+    render(
       <MantineProvider>
-        <TeleportPanel {...defaultProps} restoredAt={Date.now()} />
+        <TeleportPanel {...defaultProps} />
       </MantineProvider>,
     )
 

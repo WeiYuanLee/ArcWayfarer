@@ -13,11 +13,12 @@ import { useUpdateChecker } from './hooks/useUpdateChecker'
 import { clearLocation, pushHistory, setLocation, type Favorite, type SavedRoute, type SavedRouteMode } from './services/api'
 import { useHiddenDevices } from './hooks/useHiddenDevices'
 import { useDeviceNames } from './hooks/useDeviceNames'
-import { deviceStatusMessage } from './utils/userFacingError'
 import { useT } from './i18n'
-import { normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
+import { mergeDiscoveredAndRetainedDevices, normalizeDeviceId, useStableDeviceSlots } from './hooks/useStableDeviceSlots'
 import { useDevicePanelCallbacks } from './hooks/useDevicePanelCallbacks'
 import { usePikminSync } from './hooks/usePikminSync'
+import type { PlaceTeleportTarget } from './components/map/PlaceSearchDrawer'
+import { getAvailableTeleportDeviceOptions } from './components/common/TeleportDevicePicker'
 
 const CommandPalette = lazy(() => import('./components/layout/CommandPalette').then((module) => ({ default: module.CommandPalette })))
 const UpdateModal = lazy(() => import('./components/common/UpdateModal').then((module) => ({ default: module.UpdateModal })))
@@ -38,6 +39,7 @@ export default function App() {
   usePikminSync()
   const t = useT()
   const [focusedDeviceId, setFocusedDeviceId] = useState<string | null>(null)
+  const [preferredTeleportDeviceId, setPreferredTeleportDeviceId] = useState<string | null>(null)
   const [modeByDevice, setModeByDevice] = useState<Record<string, Mode>>({})
   const [overlaysByDevice, setOverlaysByDevice] = useState<Record<string, MapOverlay>>({})
   const [pointByDevice, setPointByDevice] = useState<Record<string, { lat: number; lng: number } | null>>({})
@@ -52,7 +54,7 @@ export default function App() {
   const [teleportingFavoriteId, setTeleportingFavoriteId] = useState<string | null>(null)
   const favoriteTeleportPending = useRef(false)
   const [pendingHiddenIds, setPendingHiddenIds] = useState<Set<string>>(() => new Set())
-  const { connected, positions, states, restoredAt, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
+  const { connected, positions, states, flowerProgress, activeTasks, deviceSnapshotRevision, send } = useWebSocket()
   const { devices: discoveredDevices, loading: devicesLoading, refresh: refreshDevices, discoveryDiagnostic } = useDevices(includeWifi, deviceSnapshotRevision)
   const { hiddenDevices, hideDevice, unhideDevice } = useHiddenDevices()
   const { deviceNames, getDeviceName, setDeviceName } = useDeviceNames()
@@ -113,10 +115,29 @@ export default function App() {
     MAX_USABLE_DEVICES,
   )
   const usableDeviceIds = useMemo(() => visibleDevices.map((device) => device.udid), [visibleDevices])
+  const managedDevices = useMemo(
+    () => mergeDiscoveredAndRetainedDevices(discoveredDevices, visibleDevices),
+    [discoveredDevices, visibleDevices],
+  )
+  const retainedManagedDeviceIds = useMemo(() => {
+    const discoveredIds = new Set(discoveredDevices.map((device) => normalizeDeviceId(device.udid)))
+    return visibleDevices
+      .filter((device) => !discoveredIds.has(normalizeDeviceId(device.udid)))
+      .map((device) => device.udid)
+  }, [discoveredDevices, visibleDevices])
   const displayDevices = useMemo(
     () => visibleDevices.map((device) => ({ ...device, name: getDeviceName(device.udid) || device.name })),
     [getDeviceName, visibleDevices]
   )
+  const teleportDeviceOptions = useMemo(() => getAvailableTeleportDeviceOptions(
+    displayDevices,
+    (deviceId) => isDeviceBusy(deviceId) || restoringDeviceId === deviceId,
+  ), [displayDevices, isDeviceBusy, restoringDeviceId])
+  const teleportDeviceId = teleportDeviceOptions.some((device) => device.value === preferredTeleportDeviceId)
+    ? preferredTeleportDeviceId
+    : teleportDeviceOptions.some((device) => device.value === focusedDeviceId)
+      ? focusedDeviceId
+      : teleportDeviceOptions[0]?.value ?? null
 
 
   const pendingPickRef = useRef<{
@@ -150,26 +171,25 @@ export default function App() {
       setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
     }
   }, [focusedDeviceId, isDeviceBusy, requestFlyTo])
-  const favoriteDevice = displayDevices.find((device) => device.udid === focusedDeviceId)
-  const teleportDisabledReason = !favoriteDevice ? t('panel.hint.select_device')
-    : favoriteDevice.status !== 'ready' ? deviceStatusMessage(favoriteDevice, t)
-    : isDeviceBusy(favoriteDevice.udid) || restoringDeviceId === favoriteDevice.udid ? t('teleport.hint.navigating')
-    : null
-  const handleFavoriteTeleport = useCallback(async (favorite: Favorite) => {
+  const favoriteDevice = displayDevices.find((device) => device.udid === teleportDeviceId)
+  const teleportDisabledReason = favoriteDevice ? null
+    : displayDevices.length > 0 ? t('teleport.hint.navigating')
+    : t('panel.hint.select_device')
+  const handleFavoriteTeleport = useCallback(async (target: Favorite | PlaceTeleportTarget) => {
     if (!favoriteDevice || teleportDisabledReason || favoriteTeleportPending.current) return
     const deviceId = favoriteDevice.udid
     const deviceName = favoriteDevice.name
     favoriteTeleportPending.current = true
-    setTeleportingFavoriteId(favorite.id)
+    setTeleportingFavoriteId(target.id)
     try {
-      await setLocation(deviceId, favorite.lat, favorite.lng)
-      void pushHistory({ lat: favorite.lat, lng: favorite.lng, kind: 'teleport' }).catch(() => {})
+      await setLocation(deviceId, target.lat, target.lng)
+      void pushHistory({ lat: target.lat, lng: target.lng, kind: 'teleport' }).catch(() => {})
       // Keep coordinates owned by route editors intact.
       if ((modeByDevice[deviceId] ?? 'teleport') === 'teleport') {
-        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: favorite.lat, lng: favorite.lng } }))
+        setPointByDevice((prev) => ({ ...prev, [deviceId]: { lat: target.lat, lng: target.lng } }))
       }
-      requestFlyTo(favorite.lat, favorite.lng)
-      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', favorite.name))
+      requestFlyTo(target.lat, target.lng)
+      notify.success(t('favorites.teleport_success').replace('{device}', deviceName).replace('{name}', target.name))
     } catch (error) {
       notify.failure(error, t('teleport.status.set_failed'), { id: `favorite:teleport:${deviceId}` })
     } finally {
@@ -177,6 +197,9 @@ export default function App() {
       setTeleportingFavoriteId(null)
     }
   }, [favoriteDevice, teleportDisabledReason, modeByDevice, requestFlyTo, t])
+  const handleTeleportDeviceChange = useCallback((deviceId: string) => {
+    setPreferredTeleportDeviceId(deviceId)
+  }, [])
   const handleSelectedPointDragEnd = useCallback((lat: number, lng: number) => {
     if (!focusedDeviceId || isDeviceBusy(focusedDeviceId)) return
     setPointByDevice((prev) => ({ ...prev, [focusedDeviceId]: { lat, lng } }))
@@ -213,10 +236,13 @@ export default function App() {
   // Capacity/queue transitions are not disconnects. Keep per-device drafts and
   // overlays so a returning device can resume its workspace intact.
   useEffect(() => {
-    const connectedIds = new Set(visibleDevices.map((d) => d.udid))
+    const connectedById = new Map(visibleDevices.map((device) => [normalizeDeviceId(device.udid), device.udid]))
 
     setFocusedDeviceId((current) => {
-      if (current && connectedIds.has(current)) return current
+      if (current) {
+        const connectedId = connectedById.get(normalizeDeviceId(current))
+        if (connectedId) return connectedId
+      }
       return visibleDevices[0]?.udid ?? null
     })
   }, [visibleDevices])
@@ -226,8 +252,13 @@ export default function App() {
       let changed = false
       const next = { ...current }
       for (const [udid, task] of Object.entries(activeTasks)) {
-        if ((task.kind === 'flower' || task.kind === 'multi_stop') && next[udid] !== 'multi-stop') {
-          next[udid] = 'multi-stop'
+        const activeMode = task.kind === 'route_loop'
+          ? 'route-loop'
+          : task.kind === 'flower' || task.kind === 'multi_stop'
+            ? 'multi-stop'
+            : null
+        if (activeMode && next[udid] !== activeMode) {
+          next[udid] = activeMode
           changed = true
         }
       }
@@ -364,7 +395,6 @@ export default function App() {
       liveStopIndex: position?.stopIndex ?? null,
       flowerProgress: flowerProgress[udid] ?? null,
       activeTask: activeTasks[udid] ?? null,
-      restoredAt: restoredAt[udid],
       connected,
       setPoint: pointCallbacks.setPoint,
       requestPoint: pointCallbacks.requestPoint,
@@ -465,7 +495,7 @@ export default function App() {
             panelPropsFor={panelPropsFor}
             modeChangeLocked={isFocusedModeChangeLocked}
           />
-          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} onTeleportFavorite={handleFavoriteTeleport} teleportDisabledReason={teleportDisabledReason} teleportingFavoriteId={teleportingFavoriteId} teleportDeviceName={favoriteDevice?.name ?? null} />
+          <IconRail onFlyTo={requestFlyTo} onSelectFavorite={handleFavoriteSelect} onSelectPlace={handlePlaceSelect} onTeleportFavorite={handleFavoriteTeleport} onTeleportPlace={handleFavoriteTeleport} teleportDisabledReason={teleportDisabledReason} teleportingFavoriteId={teleportingFavoriteId} teleportDeviceName={favoriteDevice?.name ?? null} teleportDevices={teleportDeviceOptions} teleportDeviceId={teleportDeviceId} onTeleportDeviceChange={handleTeleportDeviceChange} />
           <div className="overlay-status-dock">
             <StatusBar
               livePosition={focusedPosition ? { lat: focusedPosition.lat, lng: focusedPosition.lng } : null}
@@ -499,7 +529,8 @@ export default function App() {
         {loadedDialogs.devices && <DeviceManagerModal
           isOpen={deviceManagerOpen}
           onClose={() => setDeviceManagerOpen(false)}
-          devices={discoveredDevices}
+          devices={managedDevices}
+          retainedDeviceIds={retainedManagedDeviceIds}
           hiddenDevices={hiddenDevices}
           deviceNames={deviceNames}
           usableDeviceIds={usableDeviceIds}

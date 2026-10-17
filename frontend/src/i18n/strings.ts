@@ -26,6 +26,7 @@ export const STRINGS = {
   // Favorites
   'favorites.title': { zh: '我的最愛', en: 'Favorites' },
   'favorites.teleport_device': { zh: '瞬移裝置', en: 'Teleport device' },
+  'favorites.no_available_device': { zh: '目前沒有空閒裝置', en: 'No idle device available' },
   'favorites.teleport_success': { zh: '已將 {device} 瞬移至 {name}。', en: 'Teleported {device} to {name}.' },
   'favorites.empty': { zh: '尚無收藏。', en: 'No favorites yet.' },
   'favorites.empty_search': { zh: '沒有符合的結果', en: 'No matching favorites.' },

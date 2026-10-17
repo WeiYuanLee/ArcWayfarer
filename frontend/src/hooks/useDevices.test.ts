@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEVICE_SCAN_INTERVAL_MS, useDevices } from './useDevices'
+import { DEVICE_SCAN_INTERVAL_MS, reconcileDeviceSnapshot, useDevices } from './useDevices'
 import { getDeviceDiscoveryDiagnostic, getDeviceSnapshot, type Device } from '../services/api'
 
 vi.mock('../services/api', () => ({
@@ -128,6 +128,32 @@ describe('useDevices', () => {
       await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
     })
     expect(result.current.devices).toEqual([])
+  })
+
+  it('does not replace an existing device workspace when another device is first discovered', async () => {
+    const secondDevice = { ...device, udid: 'device-2', name: 'Second iPhone' }
+    mockedGetDeviceSnapshot
+      .mockResolvedValueOnce(snapshot([device], 1))
+      .mockResolvedValueOnce(snapshot([secondDevice], 2))
+      .mockResolvedValueOnce(snapshot([secondDevice], 3))
+
+    const { result } = renderHook(() => useDevices(true))
+    await flushRequests()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
+    })
+    expect(result.current.devices).toEqual([secondDevice, device])
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEVICE_SCAN_INTERVAL_MS)
+    })
+    expect(result.current.devices).toEqual([secondDevice])
+  })
+
+  it('treats UDID casing changes as the same physical device', () => {
+    const updated = { ...device, udid: device.udid.toUpperCase(), connection_type: 'wifi' as const }
+    expect(reconcileDeviceSnapshot([device], [updated])).toEqual([updated])
   })
 
   it('only polls when Wi-Fi discovery is enabled', async () => {

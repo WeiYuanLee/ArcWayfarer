@@ -15,7 +15,7 @@ import { CoordinateField, ModePanelLayout, PanelFooter, PanelNotice, PanelSectio
 
 type Status = { kind: 'idle' | 'busy' }
 
-export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo, setOverlay, restoredAt, restoreAll }: PanelProps) {
+export function TeleportPanel({ deviceId, device, deviceState, point, livePosition, requestPoint, clearPoint, setPoint, requestFlyTo, setOverlay, restoreAll }: PanelProps) {
   const t = useT()
   const [target, setTarget] = useState<LatLng | null>(point)
   const [targetText, setTargetText] = useState(formatPoint(point))
@@ -50,13 +50,6 @@ export function TeleportPanel({ deviceId, device, deviceState, point, livePositi
     setTarget(point)
     setTargetText(formatPoint(point))
   }, [point])
-
-  useEffect(() => {
-    if (!restoredAt) return
-    // The action that initiated the restore owns user feedback. This event is
-    // state synchronization only; notifying here duplicates button results.
-    setStatus({ kind: 'idle' })
-  }, [restoredAt])
 
   useEffect(() => {
     if (isGoldDittoHolding) {

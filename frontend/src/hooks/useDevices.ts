@@ -4,6 +4,30 @@ import { getDeviceDiscoveryDiagnostic, getDeviceSnapshot, type Device, type Devi
 export const DEVICE_SCAN_INTERVAL_MS = 20_000
 export const DEVICE_RESUME_SCAN_DEBOUNCE_MS = 5_000
 
+function deviceKey(device: Device) {
+  return device.udid.trim().toLowerCase()
+}
+
+/**
+ * A transport refresh can briefly look like a replacement (A disappears in
+ * the same snapshot that B first appears).  Publishing that intermediate
+ * shape unmounts A's workspace and destroys in-progress UI such as the route
+ * library.  Keep the old rows for that transition only; a following snapshot
+ * with no further additions confirms the removal.
+ */
+export function reconcileDeviceSnapshot(current: Device[], incoming: Device[]): Device[] {
+  const currentIds = new Set(current.map(deviceKey))
+  const incomingIds = new Set(incoming.map(deviceKey))
+  const hasAddition = incoming.some((device) => !currentIds.has(deviceKey(device)))
+  const hasRemoval = current.some((device) => !incomingIds.has(deviceKey(device)))
+  if (!hasAddition || !hasRemoval) return incoming
+
+  return [
+    ...incoming,
+    ...current.filter((device) => !incomingIds.has(deviceKey(device))),
+  ]
+}
+
 export function useDevices(includeWifi = false, pushedRevision = 0) {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,13 +83,14 @@ export function useDevices(includeWifi = false, pushedRevision = 0) {
             )
           }
 
-          // A successful scan is authoritative: only currently discovered
-          // routes may appear, and disabling Wi-Fi hides network routes.
+          // A successful scan normally replaces the previous projection. A
+          // simultaneous addition/removal gets one confirmation cycle so a
+          // newly found phone cannot tear down another phone's open workspace.
           const visible = includeWifi ? result : result.filter((device) => device.connection_type !== 'wifi')
           const unique = visible.filter(
             (device, index, self) => index === self.findIndex((d) => d.udid.toLowerCase() === device.udid.toLowerCase())
           )
-          setDevices(unique)
+          setDevices((current) => reconcileDeviceSnapshot(current, unique))
           setScanError(null)
           setLastSuccessfulScanAt(Date.now())
           if (unique.length === 0) {

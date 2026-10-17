@@ -38,7 +38,7 @@ type SubMode = 'manual' | 'pattern'
 
 const WAYPOINT_COLOR = '#4a9af0'
 
-export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, connected, requestPoint, setOverlay, requestFlyTo, savedRouteImport, requestSavedRouteLoad, clearSavedRouteImport }: PanelProps) {
+export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, liveSpeedMps, liveStopIndex, liveEtaSeconds, activeTask, connected, requestPoint, setOverlay, requestFlyTo, savedRouteImport, requestSavedRouteLoad, clearSavedRouteImport }: PanelProps) {
   const t = useT()
   const [subMode, setSubMode] = useState<SubMode>('manual')
   const {
@@ -99,6 +99,7 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
   })
   const lastWaypointRef = useRef<HTMLDivElement | null>(null)
   const focusNewWaypointRef = useRef(false)
+  const hydratedTaskRef = useRef<string | null>(null)
 
   const deviceReady = device?.status === 'ready'
   const isRunning = deviceState === 'looping'
@@ -186,6 +187,24 @@ export function RouteLoopPanel({ deviceId, device, deviceState, livePosition, li
       processPasteSubmit()
     }
   }
+
+  useEffect(() => {
+    if (!activeTask || activeTask.kind !== 'route_loop') return
+    const source = `${activeTask.taskId ?? 'legacy-route-loop'}:${activeTask.revision ?? 0}`
+    if (hydratedTaskRef.current === source) return
+
+    const config = activeTask.config
+    if (config?.waypoints?.length) setAllWaypoints(config.waypoints)
+    if (config?.nav_mode) setNavMode(config.nav_mode)
+    if (typeof config?.pause_enabled === 'boolean') setPauseEnabled(config.pause_enabled)
+    if (typeof config?.pause_min === 'number') setPauseMin(config.pause_min)
+    if (typeof config?.pause_max === 'number') setPauseMax(config.pause_max)
+    if (typeof config?.straight_line === 'boolean') setStraightLine(config.straight_line)
+    if (typeof config?.custom_speed_kmh === 'number') setSpeedKmh(config.custom_speed_kmh)
+    if (config?.jump_leg_indices) setTextJumpLegIndices(config.jump_leg_indices)
+    setRoutePath(limitDisplayPath(activeTask.path))
+    hydratedTaskRef.current = source
+  }, [activeTask, setAllWaypoints])
 
   // Clean up overlay on unmount only
   useEffect(() => {
